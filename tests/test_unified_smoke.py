@@ -17,7 +17,7 @@ def test_unified_smoke(tmp_path,monkeypatch):
     health=client.get("/health")
     assert health.get_json()["app"]=="Axiom"
 
-    for route in ["/","/jobs","/purchase-orders","/inventory","/clocking-errors","/quality","/pm","/vault","/ez-fair","/methods","/ppap","/quoting","/planning","/suppliers","/integrations","/leadership","/automation","/reports","/intelligence","/logic","/audit","/appearance","/health"]:
+    for route in ["/","/jobs","/purchase-orders","/inventory","/clocking-errors","/quality","/pm","/vault","/ez-fair","/methods","/ppap","/quoting","/planning","/suppliers","/integrations","/leadership","/automation","/reports","/payroll","/accounting","/sheets","/intelligence","/logic","/audit","/appearance","/health"]:
         response=client.get(route)
         assert response.status_code==200,route
 
@@ -53,6 +53,8 @@ def test_unified_smoke(tmp_path,monkeypatch):
     assert "EZ Methods / Routings" in labels
     assert "Leadership / Company Pulse" in labels
     assert "Reporting & Output" in labels
+    assert "Accounting Ledger" in labels
+    assert "Sheet Workbench" in labels
     assert "Audit Trail" in labels
 
     source=tmp_path/"jobs.csv"
