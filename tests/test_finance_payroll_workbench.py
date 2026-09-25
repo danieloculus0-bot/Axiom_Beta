@@ -93,6 +93,15 @@ def test_payroll_posts_balanced_ledger_and_payment(tmp_path, monkeypatch):
     assert balances["2120"]["balance"] == 0.0
     assert balances["1000"]["balance"] == -1037.5
 
+    client = app.test_client()
+    payroll_csv = client.get("/reports/export/payroll-runs?format=csv")
+    assert payroll_csv.status_code == 200
+    assert b"PAY-TEST-001" in payroll_csv.data
+
+    accounting_json = client.get("/reports/export/accounting-lines?format=json")
+    assert accounting_json.status_code == 200
+    assert b"Wages & Salaries" in accounting_json.data
+
 
 def test_salary_pay_and_unbalanced_journal_guard(tmp_path, monkeypatch):
     monkeypatch.setenv("AXIOM_DATA_DIR", str(tmp_path / "axiom2"))
