@@ -398,7 +398,7 @@ def create_app(test_config:dict|None=None)->Flask:
 <label>Actor<input name='actor' value='local'></label><div><button>Save 5-Why / Actions</button></div></form></div>"""
 
         body+="<div class='grid'>"
-        body+="<div class='panel'><h2>Workflow Queue</h2>"+table_html(actions,[("workflow_key","Workflow"),("step_key","Step"),("target_module","Target"),("assigned_to","Owner"),("status","Status"),("due_date","Due")],"quality_record","workflow_key")+"</div>"
+        body+="<div class='panel'><h2>Workflow Queue</h2>"+table_html(actions,[("workflow_key","Workflow"),("step_key","Step"),("target_module","Target"),("assigned_to","Owner"),("status","Status"),("due_date","Due")],"workflow_action","workflow_key")+"</div>"
         body+="<div class='panel'><h2>Inspection / FAI / PPAP</h2><p class='statline'>Inspections: <b>"+str(len(inspections))+"</b> · FAI: <b>"+str(len(fai))+"</b> · PPAP: <b>"+str(len(ppap))+"</b></p>"
         if fai:
             body+=table_html(fai,[("fai_number","FAI"),("status","Status"),("characteristic_count","Chars"),("pass_count","Pass"),("fail_count","Fail")],"fai","fai_number")
@@ -484,19 +484,19 @@ def create_app(test_config:dict|None=None)->Flask:
     @app.get("/ppap")
     def ppap():
         rows=_list("SELECT id,ppap_number,level,status,owner,submission_date,approval_date,part_id,customer_id FROM ppap_packages ORDER BY id DESC LIMIT 300")
-        body="<section class='page-head'><div><p class='eyebrow'>APQP / PPAP</p><h1>PPAP</h1><p class='sub'>Level, evidence, FAI, control records and customer approval stay linked to the same part/revision and quality history.</p></div></section>"+context_banner()+"<div class='panel'>"+table_html(rows,[("ppap_number","PPAP"),("level","Level"),("status","Status"),("owner","Owner"),("part_id","Part ID"),("customer_id","Customer ID"),("submission_date","Submitted"),("approval_date","Approved")],"part","ppap_number")+"</div>"
+        body="<section class='page-head'><div><p class='eyebrow'>APQP / PPAP</p><h1>PPAP</h1><p class='sub'>Level, evidence, FAI, control records and customer approval stay linked to the same part/revision and quality history.</p></div></section>"+context_banner()+"<div class='panel'>"+table_html(rows,[("ppap_number","PPAP"),("level","Level"),("status","Status"),("owner","Owner"),("part_id","Part ID"),("customer_id","Customer ID"),("submission_date","Submitted"),("approval_date","Approved")],"ppap_package","ppap_number")+"</div>"
         return page("PPAP",body,module_key="ppap")
 
     @app.get("/quoting")
     def quoting():
         rows=_list("SELECT id,quote_number,customer_id,part_id,due_date,status,owner,estimated_value,notes FROM quote_intakes ORDER BY id DESC LIMIT 300")
-        body="<section class='page-head'><div><p class='eyebrow'>Estimating</p><h1>Quoting</h1><p class='sub'>Quote intake, drawing context, material risk, supplier lead time, capacity and quality history can all feed the same review.</p></div></section>"+context_banner()+"<div class='panel'>"+table_html(rows,[("quote_number","Quote"),("customer_id","Customer ID"),("part_id","Part ID"),("due_date","Due"),("status","Status"),("owner","Owner"),("estimated_value","Value"),("notes","Notes")],"part","quote_number")+"</div>"
+        body="<section class='page-head'><div><p class='eyebrow'>Estimating</p><h1>Quoting</h1><p class='sub'>Quote intake, drawing context, material risk, supplier lead time, capacity and quality history can all feed the same review.</p></div></section>"+context_banner()+"<div class='panel'>"+table_html(rows,[("quote_number","Quote"),("customer_id","Customer ID"),("part_id","Part ID"),("due_date","Due"),("status","Status"),("owner","Owner"),("estimated_value","Value"),("notes","Notes")],"quote_intake","quote_number")+"</div>"
         return page("Quoting",body,module_key="quoting")
 
     @app.get("/planning")
     def planning():
         rows=_list("SELECT id,workflow_key,step_key,source_module,target_module,entity_type,entity_id,assigned_to,status,due_date,created_at FROM workflow_actions ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END,id DESC LIMIT 500")
-        body="<section class='page-head'><div><p class='eyebrow'>Cross-module work</p><h1>Planning / Action Queue</h1><p class='sub'>Derived actions from quality, PM, purchasing, inventory, clocking, jobs and ERP sync land here with source events and target modules attached.</p></div></section>"+context_banner()+"<div class='panel'>"+table_html(rows,[("workflow_key","Workflow"),("step_key","Step"),("source_module","Source"),("target_module","Target"),("entity_type","Entity"),("entity_id","ID"),("assigned_to","Owner"),("status","Status"),("due_date","Due"),("created_at","Created")],"job","workflow_key")+"</div>"
+        body="<section class='page-head'><div><p class='eyebrow'>Cross-module work</p><h1>Planning / Action Queue</h1><p class='sub'>Derived actions from quality, PM, purchasing, inventory, clocking, jobs and ERP sync land here with source events and target modules attached.</p></div></section>"+context_banner()+"<div class='panel'>"+table_html(rows,[("workflow_key","Workflow"),("step_key","Step"),("source_module","Source"),("target_module","Target"),("entity_type","Entity"),("entity_id","ID"),("assigned_to","Owner"),("status","Status"),("due_date","Due"),("created_at","Created")],"workflow_action","workflow_key")+"</div>"
         return page("Planning / Capacity",body,module_key="planning")
 
     @app.route("/suppliers",methods=["GET","POST"])
@@ -556,7 +556,7 @@ def create_app(test_config:dict|None=None)->Flask:
         verify=verify_journal()
         entries=list(reversed(tail_entries(250)))
         rows=[{"id":r.get("sequence"),"time":r.get("timestamp_utc"),"event":r.get("event_type"),"action":r.get("action"),"module":r.get("module"),"entity":f"{r.get('entity_type','')} {r.get('entity_id','')}","actor":r.get("actor"),"correlation":r.get("correlation_id"),"hash":str(r.get("entry_hash",""))[:12]} for r in entries]
-        body=f"<section class='page-head'><div><p class='eyebrow'>Immutable evidence spine</p><h1>Audit Trail</h1><p class='sub'>Append-only JSONL with sequence numbers, before/after hashes, event IDs, correlation IDs and a SHA-256 hash chain. Application uninstall does not target the ProgramData audit directory.</p></div><span class='badge accent'>{'VERIFIED' if verify['ok'] else 'FAILED'}</span></section><div class='panel'><div class='statline'><span>Entries: <b>{verify.get('entries')}</b></span><span>Last hash: <code>{e(str(verify.get('last_hash',''))[:24])}</code></span><span>Path: <code>{e(verify.get('path'))}</code></span></div></div><div class='panel'>"+table_html(rows,[("id","Seq"),("time","Time UTC"),("event","Event"),("action","Action"),("module","Module"),("entity","Entity"),("actor","Actor"),("correlation","Correlation"),("hash","Hash")],"audit_event","event")+"</div>"
+        body=f"<section class='page-head'><div><p class='eyebrow'>Immutable evidence spine</p><h1>Audit Trail</h1><p class='sub'>Append-only JSONL with sequence numbers, before/after hashes, event IDs, correlation IDs and a SHA-256 hash chain. Application uninstall does not target the operational data directory.</p></div><span class='badge accent'>{'VERIFIED' if verify['ok'] else 'FAILED'}</span></section><div class='panel'><div class='statline'><span>Entries: <b>{verify.get('entries')}</b></span><span>Last hash: <code>{e(str(verify.get('last_hash',''))[:24])}</code></span><span>Path: <code>{e(verify.get('path'))}</code></span></div></div><div class='panel'>"+table_html(rows,[("id","Seq"),("time","Time UTC"),("event","Event"),("action","Action"),("module","Module"),("entity","Entity"),("actor","Actor"),("correlation","Correlation"),("hash","Hash")],"audit_event","event")+"</div>"
         return page("Audit Trail",body,module_key="audit")
 
     @app.route("/appearance",methods=["GET","POST"])
@@ -583,7 +583,26 @@ def create_app(test_config:dict|None=None)->Flask:
     def context_record(entity_type,entity_id):
         if entity_type=="quality_record":
             return redirect(url_for("quality_detail",record_id=entity_id))
-        table_map={"job":"jobs","purchase_order":"purchase_orders","inventory_item":"inventory_items","clocking_error":"clocking_errors","quality_record":"quality_records","machine":"machines","document":"documents","supplier":"suppliers","fai":"fai_runs","erp_connection":"erp_connections","integration_run":"integration_runs","learning_proposal":"learning_proposals","method_plan":"ezm_method_plans","method_dependency":"ezm_dependencies","morale_pulse":"morale_pulses","reward_account":"reward_accounts","reward_rule":"reward_rules","reward_nomination":"reward_nominations","training_requirement":"training_requirements","automation_rule":"automation_rules"}
+        if entity_type=="audit_event":
+            entry=next((row for row in tail_entries(5000) if str(row.get("sequence"))==str(entity_id)),None)
+            if not entry:
+                return page("Audit Event","<div class='panel'>Audit event not found.</div>",context_type=entity_type,context_id=entity_id),404
+            details="<table>"+"".join(f"<tr><th>{e(k)}</th><td>{e(v)}</td></tr>" for k,v in entry.items())+"</table>"
+            return page("Audit Event",f"<section class='page-head'><div><p class='eyebrow'>audit_event</p><h1>Audit #{e(entity_id)}</h1></div></section><div class='panel'>{details}</div>",context_type=entity_type,context_id=entity_id)
+        table_map={
+            "job":"jobs","purchase_order":"purchase_orders","inventory_item":"inventory_items",
+            "clocking_error":"clocking_errors","quality_record":"quality_records","corrective_action":"corrective_actions",
+            "machine":"machines","document":"documents","supplier":"suppliers","fai":"fai_runs",
+            "ppap_package":"ppap_packages","quote_intake":"quote_intakes","workflow_action":"workflow_actions",
+            "erp_connection":"erp_connections","integration_run":"integration_runs","learning_proposal":"learning_proposals",
+            "method_plan":"ezm_method_plans","method_dependency":"ezm_dependencies","morale_pulse":"morale_pulses",
+            "reward_account":"reward_accounts","reward_rule":"reward_rules","reward_nomination":"reward_nominations",
+            "training_requirement":"training_requirements","automation_rule":"automation_rules",
+            "payroll_employee":"payroll_employees","payroll_run":"payroll_runs","payroll_item":"payroll_items",
+            "finance_journal":"finance_journals","finance_account":"finance_accounts","sheet_book":"sheet_books",
+            "org_person":"org_people","org_role":"org_roles","decision_protocol":"decision_protocols",
+            "module_suggestion":"module_suggestions"
+        }
         table=table_map.get(entity_type)
         if not table:
             return page("Record",f"<div class='panel'>Unknown entity type: {e(entity_type)}</div>",context_type=entity_type,context_id=entity_id),404
@@ -593,7 +612,7 @@ def create_app(test_config:dict|None=None)->Flask:
             return page("Record","<div class='panel'>Record not found.</div>",context_type=entity_type,context_id=entity_id),404
         d=dict(row)
         details="<table>"+"".join(f"<tr><th>{e(k)}</th><td>{e(v)}</td></tr>" for k,v in d.items())+"</table>"
-        body=f"<section class='page-head'><div><p class='eyebrow'>{e(entity_type)}</p><h1>{e(next((d.get(k) for k in ('record_number','job_number','po_number','item_number','machine_number','fai_number','name','title') if d.get(k)),entity_id))}</h1><p class='sub'>Right-click this page or any linked tracker to carry this record into another module.</p></div></section><div class='panel sf-context' data-entity-type='{e(entity_type)}' data-entity-id='{e(entity_id)}' data-entity-label='{e(entity_type)} {e(entity_id)}'>{details}</div>"
+        body=f"<section class='page-head'><div><p class='eyebrow'>{e(entity_type)}</p><h1>{e(next((d.get(k) for k in ('record_number','job_number','po_number','item_number','machine_number','fai_number','ppap_number','quote_number','run_key','journal_number','account_key','person_key','role_key','proposal_id','name','title') if d.get(k)),entity_id))}</h1><p class='sub'>Right-click this page or any linked tracker to carry this record into another module.</p></div></section><div class='panel sf-context' data-entity-type='{e(entity_type)}' data-entity-id='{e(entity_id)}' data-entity-label='{e(entity_type)} {e(entity_id)}'>{details}</div>"
         return page("Record Detail",body,context_type=entity_type,context_id=entity_id)
 
     @app.get("/health")
