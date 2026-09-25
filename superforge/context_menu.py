@@ -54,6 +54,12 @@ ENTITY_RELEVANCE={
  "org_role":{"executive","leadership","audit"},
  "decision_protocol":{"executive","automation","bean","audit"},
  "module_suggestion":{"executive","leadership","automation","bean","audit"},
+ "workflow_action":{"planning","leadership","executive","automation","reports","audit"},
+ "ppap_package":{"ppap","quality","ezfair","vault","job_tracker","reports","audit"},
+ "quote_intake":{"quoting","job_tracker","purchase_orders","inventory","ez_methods","planning","executive","reports","audit"},
+ "payroll_item":{"payroll","accounting","reports","audit"},
+ "corrective_action":{"quality","leadership","executive","bean","reports","audit"},
+ "audit_event":{"audit"},
 }
 def menu_for(entity_type:str="",entity_id:str="",current_module:str="")->list[dict]:
     allowed=set(ENTITY_RELEVANCE.get(entity_type,{key for key,_,_ in MODULES}))

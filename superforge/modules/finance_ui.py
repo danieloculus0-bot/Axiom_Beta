@@ -10,6 +10,7 @@ from ..db import db
 from ..ui import page
 from .finance import (
     approve_pay_run,
+    apply_approved_iso_hungry_earnings,
     create_account,
     create_employee,
     create_pay_run,
@@ -157,6 +158,14 @@ def payroll_run_detail(run_id: int):
         for x in items
     ) or "<tr><td colspan='10' class='empty'>No payroll items.</td></tr>"
     controls = ""
+    import_notice = ""
+    imported_count = request.args.get("recognition_imported")
+    skipped_count = request.args.get("recognition_skipped")
+    if imported_count is not None:
+        import_notice = (
+            f"<div class='notice'>Recognition import: <b>{_e(imported_count)}</b> imported, "
+            f"<b>{_e(skipped_count or 0)}</b> skipped. Pending or held recognition is never pulled into payroll.</div>"
+        )
     if run["status"] == "draft":
         controls = f"""<details class='panel'><summary><b>Add / update paycheck</b></summary>
 <form method='post' action='/payroll/run/{run_id}/item' class='form-grid' style='margin-top:12px'>
@@ -169,7 +178,10 @@ def payroll_run_detail(run_id: int):
 <label>Payment Method<select name='payment_method'><option>check</option><option>direct deposit</option><option>other</option></select></label>
 <label>Actor<input name='actor' value='local'></label><label class='wide'>Notes<textarea name='notes'></textarea></label><div><button>Save Paycheck</button></div>
 </form></details>
-<form method='post' action='/payroll/run/{run_id}/approve'><input type='hidden' name='actor' value='local'><button>Approve & Post to Ledger</button></form>"""
+<div class='toolbar'>
+<form method='post' action='/payroll/run/{run_id}/import-recognition'><input type='hidden' name='actor' value='local'><button class='secondary'>Import Approved ISO-Hungry Earnings</button></form>
+<form method='post' action='/payroll/run/{run_id}/approve'><input type='hidden' name='actor' value='local'><button>Approve & Post to Ledger</button></form>
+</div>"""
     elif run["status"] == "approved":
         controls = f"""<form method='post' action='/payroll/run/{run_id}/paid' class='panel form-grid'>
 <label>Payment Reference<input name='payment_reference' required placeholder='ACH batch / check run / bank ref'></label>
@@ -184,7 +196,7 @@ def payroll_run_detail(run_id: int):
 <div class='card'><strong class='big'>{_money(totals['tax'])}</strong><span class='label'>Tax Withheld</span></div>
 <div class='card'><strong class='big'>{_money(totals['deductions'])}</strong><span class='label'>Other Deductions</span></div>
 <div class='card'><strong class='big'>{_money(totals['net'])}</strong><span class='label'>Net Pay</span></div>
-</div>{controls}
+</div>{import_notice}{controls}
 <div class='panel' style='margin-top:14px'><h2>Paychecks</h2><table><tr><th>Employee</th><th>Name</th><th>Reg Hrs</th><th>OT Hrs</th><th>Bonus</th><th>Gross</th><th>Tax</th><th>Deductions</th><th>Net</th><th>Method</th></tr>{rows}</table></div>"""
     return page(f"Payroll {run['run_key']}", body, module_key="payroll", context_type="payroll_run", context_id=str(run_id))
 
@@ -204,6 +216,18 @@ def payroll_item_post(run_id: int):
         actor=request.form.get("actor") or "local",
     )
     return redirect(f"/payroll/run/{run_id}")
+
+
+@finance_blueprint.post("/payroll/run/<int:run_id>/import-recognition")
+def payroll_import_recognition_post(run_id: int):
+    result = apply_approved_iso_hungry_earnings(
+        run_id,
+        actor=request.form.get("actor") or "local",
+    )
+    return redirect(
+        f"/payroll/run/{run_id}?recognition_imported={len(result['imported'])}"
+        f"&recognition_skipped={len(result['skipped'])}"
+    )
 
 
 @finance_blueprint.post("/payroll/run/<int:run_id>/approve")
