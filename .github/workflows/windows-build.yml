@@ -1,7 +1,7 @@
-name: SuperForge Windows Build
+name: Axiom Beta Windows Build
 on:
   push:
-    branches: [unified-intelligent-suite]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -24,18 +24,18 @@ jobs:
         shell: pwsh
         run: python -m pytest -q
 
-      - name: Build one-file SuperForge
+      - name: Build one-file Axiom
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --onefile --name SuperForge --collect-all modules.ez_methods desktop.py
-          if (!(Test-Path "dist\SuperForge.exe")) { throw "SuperForge.exe was not created" }
+          pyinstaller --noconfirm --clean --onefile --name Axiom --collect-all modules.ez_methods desktop.py
+          if (!(Test-Path "dist\Axiom.exe")) { throw "Axiom.exe was not created" }
 
       - name: Smoke test frozen executable
         shell: pwsh
         run: |
-          $env:SUPERFORGE_DATA_DIR = Join-Path $env:RUNNER_TEMP "SuperForgeData"
-          $env:SUPERFORGE_NO_BROWSER = "1"
-          $proc = Start-Process -FilePath ".\dist\SuperForge.exe" -PassThru
+          $env:AXIOM_DATA_DIR = Join-Path $env:RUNNER_TEMP "AxiomData"
+          $env:AXIOM_NO_BROWSER = "1"
+          $proc = Start-Process -FilePath ".\dist\Axiom.exe" -PassThru
           try {
             $ok = $false
             foreach ($i in 1..30) {
@@ -47,9 +47,9 @@ jobs:
                   break
                 }
               } catch {}
-              if ($proc.HasExited) { throw "SuperForge.exe exited before health check passed" }
+              if ($proc.HasExited) { throw "Axiom.exe exited before health check passed" }
             }
-            if (!$ok) { throw "Frozen SuperForge health endpoint did not become ready" }
+            if (!$ok) { throw "Frozen Axiom health endpoint did not become ready" }
           } finally {
             if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force }
           }
@@ -57,6 +57,6 @@ jobs:
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
-          name: SuperForge-Windows
-          path: dist/SuperForge.exe
+          name: Axiom-Beta-Windows
+          path: dist/Axiom.exe
           if-no-files-found: error
