@@ -1,6 +1,8 @@
 # Consolidation Audit - 2026-09-24
 
-SuperForge is the integration target for BEAN, EZ-FAIR, EZ Expedite, ForgeQC, ForgeVault, MFGForge, and PM-Tracker.
+> **Historical consolidation record.** During this pass, the working integration branch lived in SuperForge. Axiom is now the canonical integration target. Current source heads, release gates, and provenance are maintained in `components/SOURCE_MANIFEST.json`; this document is retained as evidence of the earlier consolidation work.
+
+At the time of this audit, SuperForge was the working integration target for BEAN, EZ-FAIR, EZ Expedite, ForgeQC, ForgeVault, MFGForge, and PM-Tracker. Axiom has since superseded it as the canonical target.
 
 ## Verified source snapshot status
 
@@ -27,7 +29,7 @@ EZ-FAIR is integrated natively rather than under components/source_snapshots. It
 - ForgeVault validation documentation tripped its own placeholder-word audit. Fixed upstream.
 - MFGForge hosted-runtime verification executed from scripts/ without the repository root on sys.path. Fixed upstream.
 - EZ Expedite and ForgeQC source CI were green.
-- PM-Tracker has no GitHub Actions workflow; SuperForge is the active integration gate for its native replacement.
+- At the time of this audit PM-Tracker did not yet have its later smoke workflow. It now has standalone smoke CI; Axiom is the canonical integration gate.
 
 ## Design boundaries
 
