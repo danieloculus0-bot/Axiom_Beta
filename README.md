@@ -20,8 +20,17 @@ The goal is simple: one package, one context model, one audit spine, and no disc
 - **Payroll / HR backend:** hourly and salary employees, regular/overtime pay, bonuses, explicit withholdings/deductions, pay-run approval, check/direct-deposit references, payment receipts, and automatic ledger posting.
 - **Accounting Ledger:** no-frills double-entry chart of accounts, balanced journal posting, trial balance, payroll clearing and cash settlement.
 - **Sheet Workbench:** lightweight spreadsheet-style grid with safe row formulas, CSV/XLSX import/export, payroll input templates, journal templates, and controlled posting into canonical modules.
+- **Executive Intelligence / Learning ERP:** organization graph, role-based decision protocols, Pareto executive focus, human-governed recommendations, delegated actions, outcome capture, and supervised learning.
 - **Automation:** configurable event rules create assigned, due-dated workflow actions with execution receipts while controlled process rules remain deterministic.
 - **BEAN:** memory/learning direction is adapted into supervised observations and improvement proposals. Learning cannot silently rewrite production logic.
+
+## Learning ERP direction
+
+Axiom's differentiation is the layer between transactional data and management action: normalize input, connect context, apply controlled decision protocols, resolve ownership through the organizational hierarchy, surface the smallest set of signals that explains most current impact, convert accepted recommendations into auditable work, and learn from the result.
+
+See [True Learning ERP Architecture](docs/TRUE_LEARNING_ERP.md).
+
+**Product rule:** ERP records what happened. Axiom should understand what matters next.
 
 ## Non-negotiable architecture
 
