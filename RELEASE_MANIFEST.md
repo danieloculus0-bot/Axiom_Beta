@@ -1,53 +1,60 @@
-# SuperForge Release Manifest
+# Axiom Beta Release Manifest
 
-## Current source branch
-
-```text
-danieloculus0-bot/MFGForge @ integration/superforge-suite
-```
-
-## Build command
-
-From the MFGForge repo root on Windows:
-
-```powershell
-.\scripts\verify_runtime.ps1
-.\scripts\build_windows_exe.ps1
-```
-
-## Expected artifact
+## Canonical source
 
 ```text
-dist\SuperForge.exe
+danieloculus0-bot/Axiom_Beta @ main
 ```
 
-## Required launch verification
+All CI, test, and packaged builds must checkout and build from this repository. The former SuperForge/MFGForge repositories are migration sources and references, not the release root.
 
-The packaged executable must pass:
+## Build
 
-```powershell
-.\dist\SuperForge.exe --health-check
+The GitHub Actions workflow `.github/workflows/windows-build.yml` performs:
+
+1. checkout of `Axiom_Beta/main`
+2. Python 3.12 setup
+3. dependency installation
+4. full pytest source suite
+5. one-file PyInstaller build
+6. frozen executable health smoke test
+7. artifact upload
+
+## Expected Windows artifact
+
+```text
+dist\Axiom.exe
 ```
 
-The health check verifies:
+Actions artifact name:
 
-- dashboard launches
-- Company Pulse launches through the SuperForge wrapper
-- Intelligence Hub launches
-- workflow pages launch
-- AI policy page launches
-- critical create forms launch
-- material cert, machine utilization, supplier performance, and quote intake routes load
+```text
+Axiom-Beta-Windows
+```
 
-## Artifact handling
+## Runtime verification
 
-When a build is promoted, copy release candidates here with:
+The frozen executable must start from the Axiom checkout/build directory and respond successfully at:
 
-- executable
-- checksum file
-- version manifest
+```text
+http://127.0.0.1:5060/health
+```
+
+Expected application identity is `Axiom`.
+
+## Persistent data
+
+Fresh installs use the Axiom data root. Existing SuperForge data/audit storage is detected and preserved for continuity rather than silently creating a disconnected audit history.
+
+## Release evidence
+
+A promoted build should retain:
+
 - source commit SHA
-- build notes
-- launch verification result
+- test result
+- Windows build result
+- frozen health-check result
+- executable artifact
+- checksum when a formal release package is created
 
-Do not add customer data, private drawings, real RMA records, cert files, quote PDFs, attendance data, or private company records.
+Do not commit customer data, drawings, live RMA records, payroll exports, attendance records, material certs, quote PDFs, or other private company records.
