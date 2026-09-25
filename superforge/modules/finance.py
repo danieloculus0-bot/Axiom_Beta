@@ -598,7 +598,6 @@ class _FormulaEvaluator(ast.NodeVisitor):
         if isinstance(node.op, ast.Mult): return left * right
         if isinstance(node.op, ast.Div): return left / right
         if isinstance(node.op, ast.Mod): return left % right
-        if isinstance(node.op, ast.Pow): return left ** right
         raise ValueError("unsupported operator")
 
     def visit_UnaryOp(self, node):
@@ -626,6 +625,16 @@ def evaluate_formula(formula: str, row: dict[str, Any]) -> float:
     names = {_safe_name(key): value for key, value in row.items()}
     tree = ast.parse(expr, mode="eval")
     return money(_FormulaEvaluator(names).visit(tree))
+
+
+def resolve_formula_row(row: dict[str, Any], columns: list[str] | None = None) -> dict[str, Any]:
+    resolved = dict(row)
+    ordered = list(columns or resolved.keys())
+    for col in ordered:
+        value = resolved.get(col, "")
+        if isinstance(value, str) and value.strip().startswith("="):
+            resolved[col] = evaluate_formula(value, resolved)
+    return resolved
 
 
 def create_sheet(name: str, columns: list[str], *, template_type: str = "blank", actor: str = "local") -> int:
@@ -775,7 +784,8 @@ def export_sheet_xlsx(sheet_id: int) -> bytes:
 def post_payroll_sheet(sheet_id: int, run_id: int, *, actor: str = "local") -> int:
     snap = sheet_snapshot(sheet_id, evaluate=False)
     count = 0
-    for row in snap["rows"]:
+    for raw_row in snap["rows"]:
+        row = resolve_formula_row(raw_row, snap["columns"])
         employee_ref = str(row.get("Employee Ref") or row.get("employee_ref") or "").strip()
         if not employee_ref:
             continue
@@ -811,7 +821,11 @@ def post_payroll_sheet(sheet_id: int, run_id: int, *, actor: str = "local") -> i
 
 def post_journal_sheet(sheet_id: int, *, actor: str = "local", memo: str = "Sheet journal") -> int:
     snap = sheet_snapshot(sheet_id, evaluate=False)
-    rows = [r for r in snap["rows"] if str(r.get("Account") or "").strip()]
+    rows = [
+        resolve_formula_row(r, snap["columns"])
+        for r in snap["rows"]
+        if str(r.get("Account") or "").strip()
+    ]
     if not rows:
         raise ValueError("journal sheet has no account rows")
     entry_date = str(rows[0].get("Date") or date.today().isoformat())

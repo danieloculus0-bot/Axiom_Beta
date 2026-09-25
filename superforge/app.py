@@ -10,6 +10,7 @@ from .db import db, init_db
 from .schema_extensions import init_extensions
 from .finance_schema import init_finance_schema
 from .org_schema import init_org_schema
+from .runtime_paths import application_secret
 from .event_bus import logic_matrix, publish, register_default_logic
 from .integrations.service import IntegrationService
 from .modules.learning import patterns
@@ -88,7 +89,7 @@ def create_app(test_config:dict|None=None)->Flask:
     register_collaboration_logic()
     register_executive_logic()
     app=Flask(__name__)
-    app.config.update(SECRET_KEY="superforge-local")
+    app.config.update(SECRET_KEY=application_secret())
     if test_config: app.config.update(test_config)
     app.register_blueprint(leadership_blueprint)
     app.register_blueprint(automation_blueprint)

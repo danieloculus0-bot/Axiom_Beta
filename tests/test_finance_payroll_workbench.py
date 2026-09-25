@@ -169,6 +169,8 @@ def test_sheet_workbench_formula_import_export_and_payroll_post(tmp_path, monkey
     assert evaluate_formula("=Regular_Hours*Hourly_Rate", {"Regular Hours": 40, "Hourly Rate": 20}) == 800.0
     with pytest.raises(ValueError):
         evaluate_formula("=__import__('os').system(1)", {})
+    with pytest.raises(ValueError):
+        evaluate_formula("=9**9", {})
 
     sheet_id = template_sheet("payroll", name="Weekly Payroll", actor="payroll")
     save_sheet_rows(
@@ -177,7 +179,7 @@ def test_sheet_workbench_formula_import_export_and_payroll_post(tmp_path, monkey
             "Employee Ref": "EMP-002",
             "Regular Hours": "40",
             "OT Hours": "2",
-            "Bonus": "25",
+            "Bonus": "=Regular_Hours*0.625",
             "Tax Withheld": "125",
             "Other Deductions": "20",
             "Gross Preview": "",
@@ -215,3 +217,22 @@ def test_finance_routes_and_context_menu(tmp_path, monkeypatch):
     labels = {x["label"] for x in menu["items"]}
     assert "Payroll" in labels
     assert "Sheet Workbench" in labels
+
+
+
+def test_application_secret_is_persistent_and_not_hard_coded(tmp_path, monkeypatch):
+    monkeypatch.setenv("AXIOM_DATA_DIR", str(tmp_path / "axiom-secret"))
+
+    from superforge.app import create_app
+    from superforge.runtime_paths import flask_secret_path
+
+    app1 = create_app({"TESTING": True})
+    secret1 = app1.config["SECRET_KEY"]
+    path = flask_secret_path()
+    assert path.exists()
+    assert secret1 == path.read_text(encoding="utf-8").strip()
+    assert secret1 != "superforge-local"
+    assert len(secret1) >= 32
+
+    app2 = create_app({"TESTING": True})
+    assert app2.config["SECRET_KEY"] == secret1
