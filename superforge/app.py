@@ -8,6 +8,9 @@ from .audit import tail_entries, verify_journal, record_event
 from .context_menu import menu_for
 from .db import db, init_db
 from .schema_extensions import init_extensions
+from .finance_schema import init_finance_schema
+from .org_schema import init_org_schema
+from .runtime_paths import application_secret
 from .event_bus import logic_matrix, publish, register_default_logic
 from .integrations.service import IntegrationService
 from .modules.learning import patterns
@@ -25,6 +28,10 @@ from .modules.reward_rules import register_reward_logic
 from .modules.iso_hungry import register_iso_hungry_logic
 from .modules.collaboration import collaboration_blueprint, register_collaboration_logic
 from .modules.reporting import reporting_blueprint
+from .modules.finance import seed_finance_defaults
+from .modules.finance_ui import finance_blueprint
+from .modules.executive import pareto_queue, register_executive_logic
+from .modules.executive_ui import executive_blueprint
 from .ui import page
 
 def e(value)->str:
@@ -72,18 +79,24 @@ def _list(sql,args=()):
 def create_app(test_config:dict|None=None)->Flask:
     init_db()
     init_extensions()
+    init_finance_schema()
+    init_org_schema()
+    seed_finance_defaults()
     register_default_logic()
     register_automation_logic()
     register_reward_logic()
     register_iso_hungry_logic()
     register_collaboration_logic()
+    register_executive_logic()
     app=Flask(__name__)
-    app.config.update(SECRET_KEY="superforge-local")
+    app.config.update(SECRET_KEY=application_secret())
     if test_config: app.config.update(test_config)
     app.register_blueprint(leadership_blueprint)
     app.register_blueprint(automation_blueprint)
     app.register_blueprint(collaboration_blueprint)
     app.register_blueprint(reporting_blueprint)
+    app.register_blueprint(finance_blueprint)
+    app.register_blueprint(executive_blueprint)
 
     @app.get("/")
     def dashboard():
@@ -96,7 +109,10 @@ def create_app(test_config:dict|None=None)->Flask:
                 "clocking":con.execute("SELECT COUNT(*) n FROM clocking_errors WHERE status!='closed'").fetchone()["n"],
                 "actions":con.execute("SELECT COUNT(*) n FROM workflow_actions WHERE status='open'").fetchone()["n"],
                 "overdue_actions":con.execute("SELECT COUNT(*) n FROM workflow_actions WHERE status='open' AND due_date!='' AND due_date<date('now')").fetchone()["n"],
+                "draft_payroll":con.execute("SELECT COUNT(*) n FROM payroll_runs WHERE status='draft'").fetchone()["n"],
+                "posted_journals":con.execute("SELECT COUNT(*) n FROM finance_journals WHERE status='posted'").fetchone()["n"],
             }
+            executive_pareto=pareto_queue()
             morale=con.execute("SELECT risk_score FROM morale_pulses ORDER BY period_end DESC,id DESC LIMIT 1").fetchone()
             morale_risk="n/a" if morale is None else morale["risk_score"]
         cards=[
@@ -104,8 +120,10 @@ def create_app(test_config:dict|None=None)->Flask:
             ("Inventory Watch",counts["inventory"],"/inventory"),("Clocking Errors",counts["clocking"],"/clocking-errors"),
             ("Open Quality",pulse["open_quality"],"/quality"),("Workflow Actions",counts["actions"],"/planning"),
             ("Overdue Actions",counts["overdue_actions"],"/leadership"),("Company Pulse Risk",morale_risk,"/leadership"),
+            ("Draft Payroll",counts["draft_payroll"],"/payroll"),("Posted Journals",counts["posted_journals"],"/accounting"),
+            ("Executive Pareto",executive_pareto["pareto_count"],"/executive"),
         ]
-        body="<section class='page-head'><div class='grow'><p class='eyebrow'>One system. Shared context. Receipts for everything.</p><h1>Manufacturing command center</h1><p class='sub'>ERP, quality, maintenance, drawing control, FAI, PPAP, purchasing, inventory, clocking, planning, leadership, morale, rewards, automation and BEAN intelligence share one event and audit spine. Right-click any record to move through the related modules without losing context.</p></div><a class='button' href='/quality/new'>New Quality Record</a></section>"
+        body="<section class='page-head'><div class='grow'><p class='eyebrow'>One system. Shared context. Receipts for everything.</p><h1>Manufacturing command center</h1><p class='sub'>ERP, quality, maintenance, drawing control, FAI, PPAP, purchasing, inventory, clocking, planning, payroll, accounting, sheets, executive decision protocols, leadership, morale, rewards, automation and BEAN intelligence share one event and audit spine. Right-click any record to move through the related modules without losing context.</p></div><a class='button' href='/quality/new'>New Quality Record</a></section>"
         body+="<div class='grid'>"+"".join(f"<a class='card sf-context' style='text-decoration:none' href='{href}'><strong class='big'>{val}</strong><span class='label'>{e(label)}</span></a>" for label,val,href in cards)+"</div>"
         body+=f"<div class='panel' style='margin-top:14px'><h2>Quality pulse</h2><div class='statline'><span>Overdue: <b>{pulse['overdue']}</b></span><span>Open CARs: <b>{pulse['open_cars']}</b></span><span>Failed FAI: <b>{pulse['failed_fai']}</b></span><span>30-day PPM: <b>{'n/a' if pulse['ppm']['ppm'] is None else round(pulse['ppm']['ppm'],1)}</b></span></div></div>"
         return page("Command Center",body,module_key="")

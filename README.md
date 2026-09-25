@@ -17,8 +17,20 @@ The goal is simple: one package, one context model, one audit spine, and no disc
 - **EZ Methods:** Vantage-style methods master planning, drawing/PO requirement traceability, operation-level material/tool/gage/fixture readiness, GD&T-to-inspection linkage, and EZ Expedite purchasing triggers.
 - **Leadership / Company Pulse:** cross-functional accountability, aggregate morale/workforce-health trends, recognition rewards, training incentives, and action closure.
 - **ISO-Hungry reporting backend:** auditable conversion of approved reported-event recognition into payroll-ready earnings, approval batches, export hashes, and payment confirmation receipts.
+- **Payroll / HR backend:** hourly and salary employees, regular/overtime pay, bonuses, explicit withholdings/deductions, pay-run approval, check/direct-deposit references, payment receipts, and automatic ledger posting.
+- **Accounting Ledger:** no-frills double-entry chart of accounts, balanced journal posting, trial balance, payroll clearing and cash settlement.
+- **Sheet Workbench:** lightweight spreadsheet-style grid with safe row formulas, CSV/XLSX import/export, payroll input templates, journal templates, and controlled posting into canonical modules.
+- **Executive Intelligence / Learning ERP:** organization graph, role-based decision protocols, Pareto executive focus, human-governed recommendations, delegated actions, outcome capture, and supervised learning.
 - **Automation:** configurable event rules create assigned, due-dated workflow actions with execution receipts while controlled process rules remain deterministic.
 - **BEAN:** memory/learning direction is adapted into supervised observations and improvement proposals. Learning cannot silently rewrite production logic.
+
+## Learning ERP direction
+
+Axiom's differentiation is the layer between transactional data and management action: normalize input, connect context, apply controlled decision protocols, resolve ownership through the organizational hierarchy, surface the smallest set of signals that explains most current impact, convert accepted recommendations into auditable work, and learn from the result.
+
+See [True Learning ERP Architecture](docs/TRUE_LEARNING_ERP.md).
+
+**Product rule:** ERP records what happened. Axiom should understand what matters next.
 
 ## Non-negotiable architecture
 
@@ -159,6 +171,48 @@ Morale/workforce health is stored as department/period aggregates. Recognition a
 Configurable automation rules match domain events and create normal workflow actions with target module, assignee, due date, source event, and execution receipt.
 
 Automation can route work aggressively. It cannot silently rewrite controlled methods, inspection criteria, quality requirements, or ERP source data.
+
+## Install
+
+Axiom is packaged as a real end-user application. Normal uninstall removes program files and preserves the operational database, audit journal, attachments and integration data.
+
+### Windows
+
+Stable tested beta installer:
+
+https://github.com/danieloculus0-bot/Axiom_Beta/releases/download/windows-beta-latest/Axiom_Setup_Latest.exe
+
+The per-user installer normally does not require administrator rights and installs under:
+
+```text
+%LOCALAPPDATA%\Programs\Axiom
+```
+
+New per-user operational data defaults to:
+
+```text
+%LOCALAPPDATA%\Axiom
+```
+
+Existing Axiom or legacy SuperForge operational data under ProgramData is detected and reused rather than silently abandoned.
+
+### Linux x86_64
+
+Stable tested beta package:
+
+https://github.com/danieloculus0-bot/Axiom_Beta/releases/download/linux-beta-latest/Axiom_Linux_x86_64_Latest.tar.gz
+
+Extract it and run:
+
+```bash
+./install.sh
+```
+
+The default install is user-local under `~/.local` and does not require root. Normal `./uninstall.sh` preserves operational data. `./uninstall.sh --purge-data` is intentionally explicit.
+
+### Payroll tax boundary
+
+Axiom calculates gross pay, deductions, net pay, approvals, payments and accounting entries. Statutory tax withholding amounts are explicit inputs/imports until a jurisdiction-specific tax-table adapter is configured. Axiom does not invent federal, state or local withholding rules.
 
 ## Run
 
