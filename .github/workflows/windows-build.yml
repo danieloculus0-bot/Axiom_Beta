@@ -1,7 +1,12 @@
-name: Axiom Beta Windows Build
+name: Axiom Windows Installer
+
+permissions:
+  contents: write
+
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -9,12 +14,11 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Install
+      - name: Install build dependencies
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
@@ -33,30 +37,105 @@ jobs:
       - name: Smoke test frozen executable
         shell: pwsh
         run: |
-          $env:AXIOM_DATA_DIR = Join-Path $env:RUNNER_TEMP "AxiomData"
+          $env:AXIOM_DATA_DIR = Join-Path $env:RUNNER_TEMP "AxiomFrozenData"
           $env:AXIOM_NO_BROWSER = "1"
           $proc = Start-Process -FilePath ".\dist\Axiom.exe" -PassThru
           try {
             $ok = $false
-            foreach ($i in 1..30) {
+            foreach ($i in 1..45) {
               Start-Sleep -Seconds 1
               try {
                 $health = Invoke-RestMethod -Uri "http://127.0.0.1:5060/health" -TimeoutSec 2
-                if ($health.ok -eq $true) {
-                  $ok = $true
-                  break
-                }
+                if ($health.ok -eq $true -and $health.app -eq "Axiom") { $ok = $true; break }
               } catch {}
               if ($proc.HasExited) { throw "Axiom.exe exited before health check passed" }
             }
             if (!$ok) { throw "Frozen Axiom health endpoint did not become ready" }
+            foreach ($route in @("payroll","accounting","sheets","quality","methods","reports")) {
+              $response = Invoke-WebRequest -Uri "http://127.0.0.1:5060/$route" -UseBasicParsing -TimeoutSec 5
+              if ($response.StatusCode -ne 200) { throw "Route /$route failed" }
+            }
           } finally {
             if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force }
           }
 
-      - name: Upload executable
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found" }
+          & $iscc ".\installer\Axiom.iss"
+          if (!(Test-Path ".\dist-installer\Axiom_Setup_1.0.0-beta.exe")) { throw "Axiom installer was not created" }
+
+      - name: Install launch and uninstall test
+        shell: pwsh
+        run: |
+          $dataRoot = Join-Path $env:RUNNER_TEMP "AxiomPersistentData"
+          New-Item -ItemType Directory -Force -Path $dataRoot | Out-Null
+          Set-Content -Path (Join-Path $dataRoot "persistence-marker.txt") -Value "keep"
+          $env:AXIOM_DATA_DIR = $dataRoot
+          $env:AXIOM_NO_BROWSER = "1"
+          $setup = ".\dist-installer\Axiom_Setup_1.0.0-beta.exe"
+          $install = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-" -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Installer exited with code $($install.ExitCode)" }
+          $installedExe = Join-Path $env:LOCALAPPDATA "Programs\Axiom\Axiom.exe"
+          if (-not (Test-Path $installedExe)) { throw "Installed Axiom.exe was not found" }
+          $proc = Start-Process -FilePath $installedExe -PassThru
+          try {
+            $ok = $false
+            foreach ($i in 1..45) {
+              Start-Sleep -Seconds 1
+              try {
+                $health = Invoke-RestMethod -Uri "http://127.0.0.1:5060/health" -TimeoutSec 2
+                if ($health.ok -eq $true -and $health.app -eq "Axiom") { $ok = $true; break }
+              } catch {}
+              if ($proc.HasExited) { throw "Installed Axiom exited before health check passed" }
+            }
+            if (!$ok) { throw "Installed Axiom did not become healthy" }
+            $payroll = Invoke-WebRequest -Uri "http://127.0.0.1:5060/payroll" -UseBasicParsing -TimeoutSec 5
+            if ($payroll.StatusCode -ne 200) { throw "Installed payroll route failed" }
+          } finally {
+            if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+          }
+          $uninstaller = Join-Path $env:LOCALAPPDATA "Programs\Axiom\unins000.exe"
+          if (-not (Test-Path $uninstaller)) { throw "Axiom uninstaller was not registered" }
+          $uninstall = Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "Uninstaller exited with code $($uninstall.ExitCode)" }
+          if (-not (Test-Path (Join-Path $dataRoot "persistence-marker.txt"))) { throw "Operational data was removed by uninstall" }
+
+      - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Axiom-Beta-Windows
-          path: dist/Axiom.exe
+          name: Axiom-Windows-Installer
+          path: |
+            dist/Axiom.exe
+            dist-installer/Axiom_Setup_1.0.0-beta.exe
           if-no-files-found: error
+
+      - name: Publish stable Windows beta installer
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: windows-beta-latest
+        run: |
+          $setup = Resolve-Path ".\dist-installer\Axiom_Setup_1.0.0-beta.exe"
+          $latest = Join-Path (Split-Path $setup) "Axiom_Setup_Latest.exe"
+          Copy-Item $setup $latest -Force
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f $env:RELEASE_TAG $env:GITHUB_SHA
+          git push -f origin "refs/tags/$env:RELEASE_TAG"
+          gh release view $env:RELEASE_TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:RELEASE_TAG $setup $latest --clobber
+          } else {
+            gh release create $env:RELEASE_TAG $setup $latest --title "Axiom Windows Beta Latest" --notes "Latest tested Windows beta installer. Operational data is preserved on normal uninstall." --prerelease
+          }
+          $stableUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:RELEASE_TAG/Axiom_Setup_Latest.exe"
+          curl.exe -fL --retry 5 --retry-delay 2 --head $stableUrl
+          if ($LASTEXITCODE -ne 0) { throw "Stable Windows installer URL did not resolve: $stableUrl" }
