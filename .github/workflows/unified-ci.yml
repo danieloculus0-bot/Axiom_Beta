@@ -1,7 +1,7 @@
-name: Unified SuperForge CI
+name: Axiom Beta CI
 on:
   push:
-    branches: [unified-intelligent-suite]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 jobs:
