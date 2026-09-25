@@ -1,0 +1,29 @@
+{
+  "job_number": "EXAMPLE-JOB",
+  "part_number": "EXAMPLE-PART",
+  "operation": {
+    "sequence": 50,
+    "work_center": "MACHINING",
+    "operation": "DRILL / TAP",
+    "instruction": "Using Fastenal PN 12345678 tap, tap (7) 5/16-18 holes as shown on DWG 33344455 Sht 2.",
+    "controlled_operation": true,
+    "inspection_requirement": "Verify thread size, quantity, location, and applicable GD&T before release."
+  },
+  "tool_dependency": {
+    "kind": "TOOL",
+    "description": "5/16-18 tap",
+    "supplier": "Fastenal",
+    "supplier_part_number": "12345678",
+    "internal_tool_id": "",
+    "required_qty": 1,
+    "need_by": "OPERATION_SCHEDULE_DATE",
+    "availability": "UNKNOWN",
+    "next_action": "Enter Tool ID if controlled internally; otherwise confirm on-hand quantity or create purchasing event."
+  },
+  "source": {
+    "source_type": "DRAWING",
+    "document_number": "33344455",
+    "sheet": "2",
+    "note": "(7) 5/16-18 tapped holes"
+  }
+}
