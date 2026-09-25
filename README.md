@@ -53,7 +53,7 @@ Examples:
 
 ### 2. Everything is auditable
 
-`%PROGRAMDATA%\SuperForge\audit\superforge_audit.jsonl` on Windows is append-only from the application's point of view.
+`%LOCALAPPDATA%\Axiom\audit\axiom_audit.jsonl` is the default for new per-user Windows installs and is append-only from the application's point of view. Existing deployments with legacy Axiom/SuperForge data continue using their detected legacy operational-data path rather than silently forking history.
 
 Each entry contains:
 
