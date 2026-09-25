@@ -245,3 +245,89 @@ def test_application_secret_is_persistent_and_not_hard_coded(tmp_path, monkeypat
 
     app2 = create_app({"TESTING": True})
     assert app2.config["SECRET_KEY"] == secret1
+
+
+def test_approved_recognition_imports_once_and_follows_payroll_lifecycle(tmp_path, monkeypatch):
+    monkeypatch.setenv("AXIOM_DATA_DIR", str(tmp_path / "axiom-recognition-bridge"))
+
+    from superforge.app import create_app
+    from superforge.db import db
+    from superforge.modules.finance import (
+        apply_approved_iso_hungry_earnings,
+        approve_pay_run,
+        create_employee,
+        create_pay_run,
+        mark_pay_run_paid,
+        payroll_run_snapshot,
+    )
+    from superforge.modules.iso_hungry import create_cash_policy, upsert_pay_profile
+    from superforge.modules.leadership import create_reward_account
+
+    create_app({"TESTING": True})
+    create_employee("EMP-BONUS", "Bonus Tester", hourly_rate="20", actor="hr")
+    run_id = create_pay_run(
+        "2026-09-21", "2026-09-27", "2026-10-02",
+        pay_group="WEEKLY", run_key="PAY-BONUS-001", actor="hr",
+    )
+
+    account_id = create_reward_account("BONUS-CARD", display_name="Bonus Tester", actor="tester")
+    profile_id = upsert_pay_profile(
+        account_id, employee_ref="EMP-BONUS", pay_group="WEEKLY", actor="tester"
+    )
+    policy_id = create_cash_policy(
+        {
+            "name": "Bridge test",
+            "reward_category": "quality",
+            "dollars_per_point": "1",
+            "requires_approval": "1",
+        },
+        actor="tester",
+    )
+    with db() as con:
+        reward = con.execute(
+            """INSERT INTO reward_events(account_id,event_type,category,points,reason,approved_by)
+               VALUES(?,'credit','quality',15,'Verified recognition','tester')""",
+            (account_id,),
+        )
+        reward_event_id = int(reward.lastrowid)
+        earning = con.execute(
+            """INSERT INTO iso_hungry_earnings(
+                 profile_id,policy_id,reward_event_id,points,amount,currency,earning_code,
+                 category,reason,status,approved_by,approved_at
+               ) VALUES(?,?,?,?,?,'USD','ISOH_BONUS','quality','Verified recognition',
+                        'approved','payroll-reviewer',CURRENT_TIMESTAMP)""",
+            (profile_id, policy_id, reward_event_id, 15, 15),
+        )
+        earning_id = int(earning.lastrowid)
+
+    result = apply_approved_iso_hungry_earnings(run_id, actor="payroll")
+    assert result["imported"] == [earning_id]
+    assert result["skipped"] == []
+    assert payroll_run_snapshot(run_id)["items"][0]["bonus"] == 15.0
+
+    second = apply_approved_iso_hungry_earnings(run_id, actor="payroll")
+    assert second["imported"] == []
+    with db() as con:
+        assert con.execute(
+            "SELECT COUNT(*) n FROM payroll_bonus_links WHERE earning_id=?", (earning_id,)
+        ).fetchone()["n"] == 1
+        assert con.execute(
+            "SELECT status FROM iso_hungry_earnings WHERE id=?", (earning_id,)
+        ).fetchone()["status"] == "approved"
+
+    approve_pay_run(run_id, actor="payroll-approver")
+    with db() as con:
+        assert con.execute(
+            "SELECT status FROM iso_hungry_earnings WHERE id=?", (earning_id,)
+        ).fetchone()["status"] == "batched"
+
+    mark_pay_run_paid(
+        run_id,
+        payment_reference="ACH-BONUS-001",
+        payment_method="direct deposit",
+        actor="payroll",
+    )
+    with db() as con:
+        assert con.execute(
+            "SELECT status FROM iso_hungry_earnings WHERE id=?", (earning_id,)
+        ).fetchone()["status"] == "paid"
