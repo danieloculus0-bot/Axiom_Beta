@@ -70,7 +70,7 @@ function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;',
 <html data-mode="{{ mode }}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{ title }}</title><style>{{ css|safe }}</style></head>
 <body data-module="{{ module_key }}" class="sf-context" data-entity-type="{{ context_type }}" data-entity-id="{{ context_id }}" data-entity-label="{{ title }}">
-<div class="app"><aside class="sidebar"><div class="brand">SuperForge<small>Unified Manufacturing OS</small></div>{{ nav|safe }}
+<div class="app"><aside class="sidebar"><div class="brand">Axiom<small>Unified Operations Intelligence</small></div>{{ nav|safe }}
 <hr style="border:0;border-top:1px solid var(--line);margin:12px 7px">
 <a class="nav-item" href="/logic">Logic Map</a><a class="nav-item" href="/audit">Audit Trail</a><a class="nav-item" href="/appearance">Appearance</a>
 </aside><main class="main"><div class="topbar"><div class="crumb">{{ title }}</div><div class="grow"></div><div class="hint">Right-click anything</div></div>
