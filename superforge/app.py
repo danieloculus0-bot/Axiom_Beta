@@ -458,7 +458,7 @@ def create_app(test_config:dict|None=None)->Flask:
         elif ctype=="part": sql+=" WHERE f.part_id=?"; args=(cid,)
         sql+=" ORDER BY f.id DESC LIMIT 300"
         rows=_list(sql,args)
-        body="<section class='page-head'><div><p class='eyebrow'>EZ FAIR</p><h1>FAI / Inspection Planning</h1><p class='sub'>Actual EZ FAIR extraction and FAI workbook logic is vendored into SuperForge. Drawing extraction, ballooning, characteristic review and measurements become auditable records instead of detached files.</p></div></section>"+context_banner()+"<div class='panel'>"+table_html(rows,[("fai_number","FAI"),("status","Status"),("part_number","Part"),("job_number","Job"),("drawing_revision","Rev"),("characteristic_count","Chars"),("pass_count","Pass"),("fail_count","Fail"),("ballooned_pdf","Ballooned"),("fai_workbook","Workbook")],"fai","fai_number")+"</div>"
+        body="<section class='page-head'><div><p class='eyebrow'>EZ FAIR</p><h1>FAI / Inspection Planning</h1><p class='sub'>Actual EZ FAIR extraction and FAI workbook logic is vendored into Axiom. Drawing extraction, ballooning, characteristic review and measurements become auditable records instead of detached files.</p></div></section>"+context_banner()+"<div class='panel'>"+table_html(rows,[("fai_number","FAI"),("status","Status"),("part_number","Part"),("job_number","Job"),("drawing_revision","Rev"),("characteristic_count","Chars"),("pass_count","Pass"),("fail_count","Fail"),("ballooned_pdf","Ballooned"),("fai_workbook","Workbook")],"fai","fai_number")+"</div>"
         return page("EZ FAIR / FAI",body,module_key="ezfair")
 
     @app.get("/ppap")
@@ -522,7 +522,7 @@ def create_app(test_config:dict|None=None)->Flask:
         pats=patterns()
         proposals=_list("SELECT id,proposal_id,title,target_module,risk_level,status,execution_permission,reviewed_by,updated_at FROM learning_proposals ORDER BY id DESC LIMIT 100")
         observed="".join(f"<tr><td>{e(x['signal_key'])}</td><td>{x['count']}</td><td>{e(x['average_human_rating'])}</td><td>{e(x['latest_outcome'])}</td></tr>" for x in pats) or "<tr><td colspan='4' class='empty'>Not enough repeated observations yet.</td></tr>"
-        body="<section class='page-head'><div><p class='eyebrow'>BEAN inside SuperForge</p><h1>Intelligence / Learning</h1><p class='sub'>BEAN can remember outcomes, detect repeating patterns and propose better routing, thresholds or controls. Production logic remains deterministic; proposed changes require recorded review and permission.</p></div></section>"+context_banner()+f"<div class='panel'><h2>Learned patterns</h2><table><tr><th>Signal</th><th>Count</th><th>Human Rating</th><th>Latest Outcome</th></tr>{observed}</table></div><div class='panel'><h2>Improvement proposals</h2>"+table_html(proposals,[("proposal_id","Proposal"),("title","Title"),("target_module","Module"),("risk_level","Risk"),("status","Status"),("execution_permission","Permission"),("reviewed_by","Reviewed By"),("updated_at","Updated")],"learning_proposal","title")+"</div>"
+        body="<section class='page-head'><div><p class='eyebrow'>BEAN inside Axiom</p><h1>Intelligence / Learning</h1><p class='sub'>BEAN can remember outcomes, detect repeating patterns and propose better routing, thresholds or controls. Production logic remains deterministic; proposed changes require recorded review and permission.</p></div></section>"+context_banner()+f"<div class='panel'><h2>Learned patterns</h2><table><tr><th>Signal</th><th>Count</th><th>Human Rating</th><th>Latest Outcome</th></tr>{observed}</table></div><div class='panel'><h2>Improvement proposals</h2>"+table_html(proposals,[("proposal_id","Proposal"),("title","Title"),("target_module","Module"),("risk_level","Risk"),("status","Status"),("execution_permission","Permission"),("reviewed_by","Reviewed By"),("updated_at","Updated")],"learning_proposal","title")+"</div>"
         return page("BEAN Intelligence",body,module_key="bean")
 
     @app.get("/logic")
@@ -578,6 +578,6 @@ def create_app(test_config:dict|None=None)->Flask:
 
     @app.get("/health")
     def health():
-        return jsonify({"ok":True,"app":"SuperForge","schema":"1.0.0-unified","audit":verify_journal()})
+        return jsonify({"ok":True,"app":"Axiom","schema":"1.0.0-unified","audit":verify_journal()})
 
     return app
