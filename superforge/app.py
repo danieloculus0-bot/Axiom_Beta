@@ -24,6 +24,7 @@ from .modules.automation import automation_blueprint, register_automation_logic
 from .modules.reward_rules import register_reward_logic
 from .modules.iso_hungry import register_iso_hungry_logic
 from .modules.collaboration import collaboration_blueprint, register_collaboration_logic
+from .modules.reporting import reporting_blueprint
 from .ui import page
 
 def e(value)->str:
@@ -82,6 +83,7 @@ def create_app(test_config:dict|None=None)->Flask:
     app.register_blueprint(leadership_blueprint)
     app.register_blueprint(automation_blueprint)
     app.register_blueprint(collaboration_blueprint)
+    app.register_blueprint(reporting_blueprint)
 
     @app.get("/")
     def dashboard():

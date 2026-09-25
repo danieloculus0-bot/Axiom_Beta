@@ -18,6 +18,7 @@ MODULES=[
  ("integrations","ERP / Systems","/integrations"),
  ("leadership","Leadership / Company Pulse","/leadership"),
  ("automation","Automation Rules","/automation"),
+ ("reports","Reporting & Output","/reports"),
  ("bean","BEAN Intelligence","/intelligence"),
  ("audit","Audit Trail","/audit"),
 ]
@@ -42,7 +43,8 @@ ENTITY_RELEVANCE={
  "automation_rule":{"automation","leadership","audit"},
 }
 def menu_for(entity_type:str="",entity_id:str="",current_module:str="")->list[dict]:
-    allowed=ENTITY_RELEVANCE.get(entity_type,{key for key,_,_ in MODULES})
+    allowed=set(ENTITY_RELEVANCE.get(entity_type,{key for key,_,_ in MODULES}))
+    allowed.add("reports")
     query=urlencode({"context_type":entity_type,"context_id":entity_id}) if entity_type and entity_id else ""
     rows=[]
     for key,label,path in MODULES:

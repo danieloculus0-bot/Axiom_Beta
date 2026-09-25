@@ -194,3 +194,23 @@ Legacy repos remain untouched while migration continues.
 ## Compatibility note
 
 The internal Python package namespace remains `superforge` during the consolidation period so the proven module imports do not get broken for cosmetic reasons. Product identity, executable naming, runtime environment variables, UI branding, CI, and release artifacts are Axiom. New runtime variables use the `AXIOM_` prefix; legacy `SUPERFORGE_` variables remain supported for continuity.
+
+
+### 9. Reporting is a first-class output layer
+
+Axiom's Reporting Center reads the same canonical operational records used by the transaction modules rather than maintaining a second reporting database.
+
+Current export families include:
+
+- Quality records
+- Purchasing / PO risk
+- Workflow actions
+- KPI history
+- BEAN intelligence proposals
+- Domain event ledger
+
+CSV and JSON exports are generated from the canonical records and each export leaves an audit receipt. The output layer is intentionally designed so PDF, Excel, scheduled packets, executive scorecards and customer/supplier-specific report templates can be added without duplicating business logic.
+
+## Consolidation boundary
+
+Axiom is now the canonical integration target. Parallel experimental cores found in older SuperForge branches are reference material only unless they are explicitly migrated behind Axiom's current event bus, canonical database, context router and audit contract. Axiom must have one nervous system, not several competing ones.

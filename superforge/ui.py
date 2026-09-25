@@ -45,7 +45,7 @@ document.addEventListener('contextmenu',async e=>{
   const target=e.target.closest('.sf-context');
   const type=target?.dataset.entityType||'';
   const id=target?.dataset.entityId||'';
-  const label=target?.dataset.entityLabel||'SuperForge';
+  const label=target?.dataset.entityLabel||'Axiom';
   const current=document.body.dataset.module||'';
   const q=new URLSearchParams({entity_type:type,entity_id:id,current_module:current});
   try{
