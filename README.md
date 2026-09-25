@@ -1,8 +1,8 @@
-# SuperForge Unified Intelligent Suite
+# Axiom Beta
 
-This branch turns the former SuperForge artifact shell into a real source tree for one manufacturing operating system.
+Axiom is the consolidated operating system for quality, planning, purchasing, maintenance, controlled documents, reporting, leadership, automation, and supervised intelligence.
 
-**Branch:** `unified-intelligent-suite`
+**Canonical branch:** `main`
 
 The goal is simple: one package, one context model, one audit spine, and no disconnected departmental islands.
 
@@ -117,7 +117,7 @@ The shared schema supports:
 
 ### 5. ERP integration is adapter-based
 
-SuperForge does not hard-code itself to JobBOSS².
+Axiom does not hard-code itself to JobBOSS².
 
 Built-in adapter contracts cover:
 
@@ -186,6 +186,11 @@ http://127.0.0.1:5060
 
 ## Current build status
 
-This branch is the new unified foundation. It already contains the shared schema, event bus, audit journal, context router, ERP adapter framework, native quality services, EZ Methods, Leadership / Company Pulse, recognition and training ledgers, configurable automation, supervised learning services, and vendored EZ FAIR extraction/workbook engines.
+This repository is the canonical Axiom Beta foundation. It already contains the shared schema, event bus, audit journal, context router, ERP adapter framework, native quality services, EZ Methods, Leadership / Company Pulse, recognition and training ledgers, configurable automation, supervised learning services, and vendored EZ FAIR extraction/workbook engines.
 
 Legacy repos remain untouched while migration continues.
+
+
+## Compatibility note
+
+The internal Python package namespace remains `superforge` during the consolidation period so the proven module imports do not get broken for cosmetic reasons. Product identity, executable naming, runtime environment variables, UI branding, CI, and release artifacts are Axiom. New runtime variables use the `AXIOM_` prefix; legacy `SUPERFORGE_` variables remain supported for continuity.
