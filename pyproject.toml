@@ -3,9 +3,9 @@ requires = ["setuptools>=75", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "superforge-unified"
+name = "axiom-beta"
 version = "1.0.0"
-description = "Unified auditable manufacturing operating system"
+description = "Axiom unified auditable operations, quality, intelligence, and automation system"
 requires-python = ">=3.12"
 dependencies = [
   "Flask>=3.0,<4.0",
