@@ -50,7 +50,7 @@ class IntegrationService:
         adapter=self.adapter(connection)
         mappings=self.mappings(connection_id,entity_type,"in")
         table,key_field=ENTITY_TABLES.get(entity_type,(None,None))
-        if not table: raise ValueError(f"entity type not yet mapped to a SuperForge table: {entity_type}")
+        if not table: raise ValueError(f"entity type not yet mapped to an Axiom table: {entity_type}")
         read=applied=skipped=errors=0
         for external in adapter.pull(entity_type):
             read+=1
@@ -113,6 +113,6 @@ class IntegrationService:
                     con.execute("UPDATE integration_outbox SET status='sent',attempts=attempts+1,sent_at=CURRENT_TIMESTAMP,last_error=NULL WHERE id=?",(row["id"],)); sent+=1
                 else:
                     con.execute("UPDATE integration_outbox SET status='retry',attempts=attempts+1,last_error=? WHERE id=?",(receipt.message[:2000],row["id"])); failed+=1
-            record_event(event_type="ERP_OUTBOX",action="SENT" if receipt.ok else "FAILED",module="integrations",source_module="SuperForge",target_module=connection["name"],
+            record_event(event_type="ERP_OUTBOX",action="SENT" if receipt.ok else "FAILED",module="integrations",source_module="Axiom",target_module=connection["name"],
                          entity_type=row["entity_type"],entity_id=row["entity_id"],actor=actor,reason=receipt.message,data={"outbox_id":row["id"],"receipt":receipt.raw})
         return {"sent":sent,"failed":failed}

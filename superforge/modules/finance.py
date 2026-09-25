@@ -429,6 +429,119 @@ def payroll_run_snapshot(run_id: int) -> dict[str, Any]:
     return {"run": dict(run), "items": items, "totals": totals}
 
 
+def apply_approved_iso_hungry_earnings(
+    run_id: int,
+    *,
+    actor: str = "local",
+    earning_ids: list[int] | None = None,
+) -> dict[str, Any]:
+    """Explicitly attach approved recognition earnings to a draft pay run.
+
+    Recognition never enters a paycheck silently. Only approved USD earnings
+    with a compatible pay group and a matching active payroll employee are
+    eligible. A durable link prevents double-importing the same earning.
+    """
+    with db() as con:
+        run_row = con.execute("SELECT * FROM payroll_runs WHERE id=?", (int(run_id),)).fetchone()
+        if not run_row:
+            raise ValueError("pay run not found")
+        run = dict(run_row)
+        if run["status"] != "draft":
+            raise ValueError("recognition earnings can only be imported into a draft pay run")
+        sql = """SELECT e.*,pr.employee_ref,pr.pay_group,l.id link_id
+                 FROM iso_hungry_earnings e
+                 JOIN iso_hungry_pay_profiles pr ON pr.id=e.profile_id
+                 LEFT JOIN payroll_bonus_links l ON l.earning_id=e.id
+                 WHERE e.status='approved' AND l.id IS NULL"""
+        args: list[Any] = []
+        if earning_ids:
+            ids = [int(x) for x in earning_ids]
+            sql += " AND e.id IN (" + ",".join("?" for _ in ids) + ")"
+            args.extend(ids)
+        sql += " ORDER BY e.id"
+        earnings = [dict(r) for r in con.execute(sql, tuple(args)).fetchall()]
+
+    imported: list[int] = []
+    skipped: list[dict[str, Any]] = []
+    for earning in earnings:
+        reason = ""
+        if str(earning.get("currency") or "USD").upper() != "USD":
+            reason = "currency_not_supported"
+        elif earning.get("pay_group") and str(earning["pay_group"]).strip() != str(run["pay_group"]).strip():
+            reason = "pay_group_mismatch"
+
+        with db() as con:
+            employee = con.execute(
+                "SELECT * FROM payroll_employees WHERE employee_ref=? AND status='active'",
+                (earning["employee_ref"],),
+            ).fetchone()
+            existing_item = None
+            if employee:
+                existing_item = con.execute(
+                    "SELECT * FROM payroll_items WHERE run_id=? AND employee_id=?",
+                    (int(run_id), int(employee["id"])),
+                ).fetchone()
+        if not employee:
+            reason = reason or "missing_active_payroll_employee"
+
+        if reason:
+            skipped.append({"earning_id": int(earning["id"]), "employee_ref": earning["employee_ref"], "reason": reason})
+            record_event(
+                event_type="ISO_HUNGRY_PAYROLL_BRIDGE",
+                action="SKIPPED",
+                module="payroll",
+                source_module="iso_hungry",
+                target_module="payroll",
+                entity_type="payable_earning",
+                entity_id=int(earning["id"]),
+                actor=actor,
+                reason=reason,
+                data={"run_id": int(run_id), "employee_ref": earning["employee_ref"], "amount": earning["amount"]},
+            )
+            continue
+
+        current = dict(existing_item) if existing_item else {}
+        item_id = upsert_pay_item(
+            int(run_id),
+            earning["employee_ref"],
+            regular_hours=current.get("regular_hours") or 0,
+            overtime_hours=current.get("overtime_hours") or 0,
+            bonus=money(_d(current.get("bonus") or 0) + _d(earning["amount"])),
+            tax_withheld=current.get("tax_withheld") or 0,
+            other_deductions=current.get("other_deductions") or 0,
+            payment_method=current.get("payment_method") or "",
+            notes=current.get("notes") or "",
+            actor=actor,
+        )
+        with db() as con:
+            con.execute(
+                """INSERT INTO payroll_bonus_links(earning_id,run_id,payroll_item_id,amount,imported_by)
+                   VALUES(?,?,?,?,?)""",
+                (int(earning["id"]), int(run_id), int(item_id), money(earning["amount"]), actor),
+            )
+        imported.append(int(earning["id"]))
+        record_event(
+            event_type="ISO_HUNGRY_PAYROLL_BRIDGE",
+            action="IMPORTED",
+            module="payroll",
+            source_module="iso_hungry",
+            target_module="payroll",
+            entity_type="payable_earning",
+            entity_id=int(earning["id"]),
+            actor=actor,
+            data={"run_id": int(run_id), "payroll_item_id": int(item_id), "employee_ref": earning["employee_ref"], "amount": money(earning["amount"])},
+        )
+        publish(
+            "payroll.recognition.imported",
+            source_module="payroll",
+            entity_type="payroll_run",
+            entity_id=str(run_id),
+            actor=actor,
+            payload={"earning_id": int(earning["id"]), "payroll_item_id": int(item_id), "employee_ref": earning["employee_ref"], "amount": money(earning["amount"])},
+        )
+    return {"run_id": int(run_id), "imported": imported, "skipped": skipped}
+
+
 def approve_pay_run(run_id: int, *, actor: str = "local") -> int:
     snap = payroll_run_snapshot(run_id)
     if snap["run"]["status"] == "approved":
@@ -464,6 +577,13 @@ def approve_pay_run(run_id: int, *, actor: str = "local") -> int:
             (actor, totals["gross"], totals["tax"], totals["deductions"], totals["net"], journal_id, int(run_id)),
         )
         con.execute("UPDATE payroll_items SET status='approved' WHERE run_id=?", (int(run_id),))
+        con.execute(
+            """UPDATE iso_hungry_earnings
+               SET status='batched'
+               WHERE status='approved'
+                 AND id IN (SELECT earning_id FROM payroll_bonus_links WHERE run_id=?)""",
+            (int(run_id),),
+        )
     record_event(
         event_type="PAYROLL_RUN",
         action="APPROVE",
@@ -523,6 +643,13 @@ def mark_pay_run_paid(
         con.execute(
             "UPDATE payroll_items SET status='paid',payment_reference=? WHERE run_id=?",
             (payment_reference, int(run_id)),
+        )
+        con.execute(
+            """UPDATE iso_hungry_earnings
+               SET status='paid'
+               WHERE status='batched'
+                 AND id IN (SELECT earning_id FROM payroll_bonus_links WHERE run_id=?)""",
+            (int(run_id),),
         )
     record_event(
         event_type="PAYROLL_RUN",

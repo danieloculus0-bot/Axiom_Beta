@@ -113,6 +113,17 @@ CREATE TABLE IF NOT EXISTS payroll_items(
 CREATE INDEX IF NOT EXISTS ix_payroll_item_run ON payroll_items(run_id,status);
 CREATE INDEX IF NOT EXISTS ix_payroll_item_employee ON payroll_items(employee_id,run_id);
 
+CREATE TABLE IF NOT EXISTS payroll_bonus_links(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  earning_id INTEGER NOT NULL UNIQUE REFERENCES iso_hungry_earnings(id),
+  run_id INTEGER NOT NULL REFERENCES payroll_runs(id),
+  payroll_item_id INTEGER NOT NULL REFERENCES payroll_items(id),
+  amount REAL NOT NULL,
+  imported_by TEXT,
+  imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_payroll_bonus_run ON payroll_bonus_links(run_id,payroll_item_id);
+
 CREATE TABLE IF NOT EXISTS sheet_books(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
