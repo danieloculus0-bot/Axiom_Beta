@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 def test_unified_smoke(tmp_path,monkeypatch):
-    monkeypatch.setenv("SUPERFORGE_DATA_DIR",str(tmp_path/"data"))
+    monkeypatch.setenv("AXIOM_DATA_DIR",str(tmp_path/"data"))
     from superforge.app import create_app
     from superforge.audit import verify_journal
     from superforge.db import db
@@ -14,7 +14,7 @@ def test_unified_smoke(tmp_path,monkeypatch):
     app=create_app({"TESTING":True})
     client=app.test_client()
 
-    for route in ["/","/jobs","/purchase-orders","/inventory","/clocking-errors","/quality","/pm","/vault","/ez-fair","/methods","/ppap","/quoting","/planning","/suppliers","/integrations","/leadership","/automation","/intelligence","/logic","/audit","/appearance","/health"]:
+    health=client.get("/health")\n    assert health.get_json()["app"]=="Axiom"\n\n    for route in ["/","/jobs","/purchase-orders","/inventory","/clocking-errors","/quality","/pm","/vault","/ez-fair","/methods","/ppap","/quoting","/planning","/suppliers","/integrations","/leadership","/automation","/intelligence","/logic","/audit","/appearance","/health"]:
         response=client.get(route)
         assert response.status_code==200,route
 
