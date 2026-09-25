@@ -1,0 +1,17 @@
+{
+  "audited_at": "2026-09-24",
+  "target": {
+    "repository": "danieloculus0-bot/SuperForge_Unofficial",
+    "branch": "unified-intelligent-suite",
+    "parent_before_audit": "4463422eb976a98327ef010f7e9c50e8464728f3"
+  },
+  "sources": {
+    "BEAN": "e8731bd31d06ec8af6cfdcabd0338ff144970489",
+    "EZ-FAIR": "302248fcb0dd2c8fdf2425a0a78faa6b5eaf2506",
+    "EZ_Expedite": "9cb4ae36345fdac5bf189b824d171be87e4e7ec4",
+    "ForgeQC": "b847456791849446902f3ff5fa912b7e534b3551",
+    "ForgeVault": "e5624421d5e7568883fa8f49b0aa02f96af7f740",
+    "MFGForge": "b1ebcd2a313764a2a3fbb1cc8813c3ee05368852",
+    "PM-Tracker": "c171fcefd97a08756956447f15dee2cb2d5dc45f"
+  }
+}

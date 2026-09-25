@@ -1,0 +1,62 @@
+name: SuperForge Windows Build
+on:
+  push:
+    branches: [unified-intelligent-suite]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,build]"
+
+      - name: Test source
+        shell: pwsh
+        run: python -m pytest -q
+
+      - name: Build one-file SuperForge
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --onefile --name SuperForge --collect-all modules.ez_methods desktop.py
+          if (!(Test-Path "dist\SuperForge.exe")) { throw "SuperForge.exe was not created" }
+
+      - name: Smoke test frozen executable
+        shell: pwsh
+        run: |
+          $env:SUPERFORGE_DATA_DIR = Join-Path $env:RUNNER_TEMP "SuperForgeData"
+          $env:SUPERFORGE_NO_BROWSER = "1"
+          $proc = Start-Process -FilePath ".\dist\SuperForge.exe" -PassThru
+          try {
+            $ok = $false
+            foreach ($i in 1..30) {
+              Start-Sleep -Seconds 1
+              try {
+                $health = Invoke-RestMethod -Uri "http://127.0.0.1:5060/health" -TimeoutSec 2
+                if ($health.ok -eq $true) {
+                  $ok = $true
+                  break
+                }
+              } catch {}
+              if ($proc.HasExited) { throw "SuperForge.exe exited before health check passed" }
+            }
+            if (!$ok) { throw "Frozen SuperForge health endpoint did not become ready" }
+          } finally {
+            if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+          }
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: SuperForge-Windows
+          path: dist/SuperForge.exe
+          if-no-files-found: error
