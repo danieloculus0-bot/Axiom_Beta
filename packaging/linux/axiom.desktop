@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Axiom
+Comment=Unified manufacturing operations, quality, payroll and accounting
+Exec=@@EXEC@@
+Path=@@PATH@@
+Terminal=false
+Categories=Office;Utility;
