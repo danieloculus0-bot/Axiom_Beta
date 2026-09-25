@@ -295,7 +295,7 @@ def sheets_dashboard():
 
 @finance_blueprint.get("/sheets/<int:sheet_id>")
 def sheet_detail(sheet_id: int):
-    snap = sheet_snapshot(sheet_id, evaluate=False)
+    snap = sheet_snapshot(sheet_id, evaluate=True)
     columns, rows = snap["columns"], snap["rows"]
     if not rows:
         rows = [{c: "" for c in columns} for _ in range(8)]
@@ -303,6 +303,24 @@ def sheet_detail(sheet_id: int):
     body_rows = "".join(
         "<tr>" + "".join(f"<td contenteditable='true'>{_e(row.get(c,''))}</td>" for c in columns) + "</tr>"
         for row in rows
+    )
+    formula_rows = snap.get("evaluated_rows") or []
+    has_formulas = any(
+        isinstance(row.get(col), str) and row.get(col, "").strip().startswith("=")
+        for row in snap["rows"] for col in columns
+    )
+    preview_rows = "".join(
+        "<tr>" + "".join(
+            f"<td>{_e(row.get(col + ' (value)', row.get(col, '')))}</td>"
+            for col in columns
+        ) + "</tr>"
+        for row in formula_rows
+    )
+    formula_preview = (
+        "<details class='panel'><summary><b>Calculated Preview</b></summary>"
+        "<p class='sub'>Server-evaluated formula results. Posting to Payroll or Accounting uses these resolved values.</p>"
+        "<table><tr>" + "".join(f"<th>{_e(col)}</th>" for col in columns) + "</tr>" + preview_rows + "</table></details>"
+        if has_formulas else ""
     )
     post_controls = ""
     if snap["template_type"] == "payroll":
@@ -322,6 +340,7 @@ def sheet_detail(sheet_id: int):
 <button type='button' class='secondary' id='save-grid'>Save Grid</button>
 <a class='button secondary' href='/sheets/{sheet_id}/export.csv'>CSV</a><a class='button secondary' href='/sheets/{sheet_id}/export.xlsx'>XLSX</a></div>
 <div style='overflow:auto'><table id='sheet-grid'><thead><tr>{head}</tr></thead><tbody>{body_rows}</tbody></table></div></div>
+{formula_preview}
 <form id='sheet-save' method='post' action='/sheets/{sheet_id}/save'><input type='hidden' name='grid_json' id='grid-json'><input type='hidden' name='actor' value='local'></form>
 <div class='grid'>
 <form class='panel' method='post' action='/sheets/{sheet_id}/import' enctype='multipart/form-data'><h2>Import</h2>

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 from pathlib import Path
 
 APP_NAME = "Axiom"
@@ -72,3 +73,28 @@ def integration_dir() -> Path:
     path = data_root() / "integrations"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def secrets_dir() -> Path:
+    path = data_root() / "secrets"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def flask_secret_path() -> Path:
+    return secrets_dir() / "flask_secret.txt"
+
+
+def application_secret() -> str:
+    path = flask_secret_path()
+    if path.exists():
+        value = path.read_text(encoding="utf-8").strip()
+        if value:
+            return value
+    value = secrets.token_urlsafe(48)
+    path.write_text(value, encoding="utf-8")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+    return value
