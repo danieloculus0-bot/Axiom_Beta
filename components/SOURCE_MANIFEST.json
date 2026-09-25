@@ -1,17 +1,69 @@
 {
-  "audited_at": "2026-09-24",
-  "target": {
-    "repository": "danieloculus0-bot/SuperForge_Unofficial",
-    "branch": "unified-intelligent-suite",
-    "parent_before_audit": "4463422eb976a98327ef010f7e9c50e8464728f3"
+  "audited_at_utc": "2026-09-25",
+  "canonical_target": {
+    "repository": "danieloculus0-bot/Axiom_Beta",
+    "branch": "main",
+    "integrated_runtime_commit": "d793f6abf2c8c1e712dec368e81ca61c4141ba4f",
+    "integration_pr": 7,
+    "product": "Axiom"
   },
-  "sources": {
-    "BEAN": "e8731bd31d06ec8af6cfdcabd0338ff144970489",
-    "EZ-FAIR": "302248fcb0dd2c8fdf2425a0a78faa6b5eaf2506",
-    "EZ_Expedite": "9cb4ae36345fdac5bf189b824d171be87e4e7ec4",
-    "ForgeQC": "b847456791849446902f3ff5fa912b7e534b3551",
-    "ForgeVault": "e5624421d5e7568883fa8f49b0aa02f96af7f740",
-    "MFGForge": "b1ebcd2a313764a2a3fbb1cc8813c3ee05368852",
-    "PM-Tracker": "c171fcefd97a08756956447f15dee2cb2d5dc45f"
+  "preservation_policy": {
+    "statement": "Original repositories remain preserved and independently usable. Axiom is the canonical future integration target; source repositories remain provenance and upstream capability references unless explicitly retired.",
+    "internal_namespace": "The superforge Python package namespace is intentionally retained during consolidation for import compatibility. It is not the product identity."
+  },
+  "observed_source_heads": {
+    "BEAN": {
+      "repository": "danieloculus0-bot/BEAN",
+      "branch": "main",
+      "sha": "3657b4c6a262dfcaba4dd52712ce6c57d36e50f1"
+    },
+    "EZ-FAIR": {
+      "repository": "danieloculus0-bot/EZ-FAIR",
+      "branch": "main",
+      "sha": "88123c5b5777f5a814f518c4d445f97fef6b91f9"
+    },
+    "EZ_Expedite": {
+      "repository": "danieloculus0-bot/EZ_Expedite",
+      "branch": "main",
+      "sha": "dcb5a09bafc59eed92beb397dcca41bc8d622ede"
+    },
+    "ForgeQC": {
+      "repository": "danieloculus0-bot/ForgeQC",
+      "branch": "main",
+      "sha": "b847456791849446902f3ff5fa912b7e534b3551"
+    },
+    "ForgeVault": {
+      "repository": "danieloculus0-bot/ForgeVault",
+      "branch": "main",
+      "sha": "c7239ce00db0e76b2dd89999074cd812f8f3752d"
+    },
+    "MFGForge": {
+      "repository": "danieloculus0-bot/MFGForge",
+      "branch": "main",
+      "sha": "b1ebcd2a313764a2a3fbb1cc8813c3ee05368852"
+    },
+    "PM-Tracker": {
+      "repository": "danieloculus0-bot/PM-Tracker",
+      "branch": "main",
+      "sha": "c866399de706a73c4a0236d439a781c7e8ff8dcb"
+    },
+    "SuperForge_Unofficial": {
+      "repository": "danieloculus0-bot/SuperForge_Unofficial",
+      "branch": "unified-intelligent-suite",
+      "sha": "5c78286adfde41c299ed661bf8ea0656d1dd97ca",
+      "status": "reference lineage; Axiom is canonical"
+    }
+  },
+  "snapshot_status": {
+    "note": "components/source_snapshots are reference copies used during consolidation. This manifest does not claim those copies are byte-identical to every current upstream head. Current source-repository heads above remain the provenance authority for their original products."
+  },
+  "release_verification": {
+    "required_gates": [
+      "Axiom Beta CI",
+      "Axiom Windows Installer",
+      "Axiom Linux Package"
+    ],
+    "windows_test_scope": "source tests, frozen executable, route health, Inno installer, real install, installed launch, payroll route, uninstall, data-preservation check",
+    "linux_test_scope": "source tests, frozen executable, route health, tar package, user-local install, installed launch, methods/payroll routes, uninstall, data-preservation check"
   }
 }
