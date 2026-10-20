@@ -17,6 +17,7 @@ Current ERP consolidation target: a local-first manufacturing operations and qua
 
 - Native Flask/SQLite workspaces for manufacturing, quality, methods, documents, preventive maintenance, reporting and other modules.
 - Verified cross-repository **ForgeVault → EZ-FAIR → Axiom** controlled drawing workflow: released PDF checksum, exact version/package/revision, extracted **review-required** characteristics and idempotent FAI import.
+- Existing EZ Methods plans can link to the exact ForgeVault version **only after** a matching controlled FAI import and released document record; mismatched part/revisions are rejected. This is source traceability, not automatic routing approval.
 - Gothic Lime workbench; source provenance visible in the FAI list. Actual Linux and Windows CI/packaging workflows.
 
 ## Run and verify
@@ -36,6 +37,7 @@ Strengthen authentication and durable API boundaries; expose controlled import v
 ## Documentation
 
 - [Suite design standard](docs/BEAN_GOTHIC_LIME_DESIGN.md)
+- [Verified engineering suite implementation ledger](docs/ENGINEERING_SUITE_PROGRESS_2026-10-20.md)
 - [Controlled FAI wiring workflow](.github/workflows/controlled-fai-wiring.yml)
 - [Portfolio audit (historical snapshot)](docs/PORTFOLIO_AUDIT_2026-10-20.md)
 - [**Complete prior README, including history and detailed instructions**](docs/archive/README_2026-10-20_before_refresh.md)
