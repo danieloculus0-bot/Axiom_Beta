@@ -17,3 +17,6 @@ local_outputs/
 *.xlsm
 *.csv
 !examples/*.csv
+
+# Local workspace executable configuration
+workspace.modules.json

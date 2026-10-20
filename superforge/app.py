@@ -33,6 +33,7 @@ from .modules.finance_ui import finance_blueprint
 from .modules.executive import pareto_queue, register_executive_logic
 from .modules.executive_ui import executive_blueprint
 from .ui import page
+from .workspace import workspace_blueprint
 
 def e(value)->str:
     return html.escape("" if value is None else str(value))
@@ -98,6 +99,7 @@ def create_app(test_config:dict|None=None)->Flask:
     app.register_blueprint(reporting_blueprint)
     app.register_blueprint(finance_blueprint)
     app.register_blueprint(executive_blueprint)
+    app.register_blueprint(workspace_blueprint)
 
     @app.get("/")
     def dashboard():
