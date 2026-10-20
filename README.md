@@ -2,7 +2,7 @@
 
 Current ERP consolidation target: a local-first manufacturing operations and quality application with a shared database/event/audit structure. Do not confuse bundled source snapshots with continuously synchronized standalone apps.
 
-[**Current 15-repository portfolio, CI status, and ownership map**](docs/CURRENT_PORTFOLIO.md)
+[**Current 16-repository portfolio, CI status, and ownership map**](docs/CURRENT_PORTFOLIO.md)
 
 ## Current build state
 
@@ -45,6 +45,14 @@ Strengthen authentication and durable API boundaries; expose controlled import v
 - [**Complete prior README, including history and detailed instructions**](docs/archive/README_2026-10-20_before_refresh.md)
 
 Historical experiments, dated reports and superseded architectural claims have been moved out of this landing page, **not deleted**.
+
+## Suite-wide pre-build audit and live connector boundaries
+
+[**October 20 README, connector and demo readiness audit**](docs/BUILD_READINESS_SWEEP_2026-10-20.md) documents all 16 portfolio repositories, branch-aware CI receipts, public-demo limitations, missing native ERP adapter mappings and the recommended single-job end-to-end acceptance test.
+
+**Latest connector checkpoint:** The local EZstimate/ForgeVault/Axiom/BEAN quote-import integration workflow has been updated to consume the tested current EZstimate source instead of the previous pinned alpha. The refreshed [Windows/Linux wiring job](https://github.com/danieloculus0-bot/Axiom_Beta/actions/runs/39516325217) passed. Its coverage is **controlled source → estimating draft → Axiom review-required quote**, not supplier purchasing or native ERP request acceptance.
+
+**New, separate EZstimate purchasing component:** The independent local EZstimate runtime supports material request drafts, recorded approval and CSV/JSON or configured HTTPS PR delivery. This capability is **not yet consumed by an Axiom native requisition connector** and does not create supplier purchase orders. See [the original adapter contract](https://github.com/danieloculus0-bot/EZstimate/blob/main/docs/ERP_PURCHASE_REQUESTS.md) and the [reconciliation matrix](docs/BUILD_READINESS_SWEEP_2026-10-20.md).
 
 ## EZstimate quote proposals
 
