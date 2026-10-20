@@ -268,3 +268,9 @@ CSV and JSON exports are generated from the canonical records and each export le
 ## Consolidation boundary
 
 Axiom is now the canonical integration target. Parallel experimental cores found in older SuperForge branches are reference material only unless they are explicitly migrated behind Axiom's current event bus, canonical database, context router and audit contract. Axiom must have one nervous system, not several competing ones.
+
+## Cross-repository audit and integration truth (2026-10-20)
+
+Axiom Beta is the **current ERP consolidation target**, not proof that every source project has been fully integrated or deployed. `components/source_snapshots/` contains selected **historical source snapshots**, while native implementations and explicit adapters live under `superforge/` and `modules/`. Snapshot presence is not a live data connector, migration, synchronized release, or unified production database. The Sep 25 CI and packaging workflows passed, but operating-site validation and full external integration remain separate gates.
+
+The [15-repository portfolio audit](docs/PORTFOLIO_AUDIT_2026-10-20.md) lists component ownership, observed CI evidence, unverified capabilities and open integration boundaries. **MFGForge** is the earlier SuperForge source line; **SuperForge Unofficial** is an artifact/planning repo; Axiom is the newer canonical consolidation target.
