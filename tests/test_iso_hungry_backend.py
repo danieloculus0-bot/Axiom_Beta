@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 
 def test_iso_hungry_report_to_pay_pipeline(tmp_path, monkeypatch):
     monkeypatch.setenv("SUPERFORGE_DATA_DIR", str(tmp_path / "data"))
@@ -101,11 +103,14 @@ def test_iso_hungry_report_to_pay_pipeline(tmp_path, monkeypatch):
             "SELECT status FROM iso_hungry_earnings WHERE id=?", (earning_id,)
         ).fetchone()["status"] == "approved"
 
+    # Earnings are stamped with the real SQLite CURRENT_TIMESTAMP, so a
+    # fixed historical payroll month would eventually make this test fail.
+    today_utc = datetime.now(timezone.utc).date()
     batch_id = create_pay_batch(
-        "2026-09-01",
-        "2026-09-30",
+        today_utc.replace(day=1).isoformat(),
+        today_utc.isoformat(),
         pay_group="WEEKLY",
-        batch_key="ISOH-TEST-2026-09",
+        batch_key=f"ISOH-TEST-{today_utc:%Y-%m}",
         actor="payroll-reviewer",
     )
     approve_pay_batch(batch_id, actor="payroll-approver")
