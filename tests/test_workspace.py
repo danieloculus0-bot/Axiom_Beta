@@ -107,3 +107,25 @@ def test_launcher_rejects_bad_commands_and_duplicate_ids(tmp_path):
     ]}), encoding="utf-8")
     with pytest.raises(ValueError, match="command"):
         load_config(path)
+
+
+def test_workspace_is_mounted_in_axiom_app(monkeypatch):
+    from superforge import workspace
+    from superforge.app import create_app
+
+    monkeypatch.setattr(workspace, "runtime_snapshot", lambda **_kw: {
+        "mode": "local_workstation",
+        "core": {"id": "axiom", "status": "running", "url": "/"},
+        "services": [{"id": s["id"], "name": s["name"],
+                      "description": s["description"], "repository": s["repo"],
+                      "status": "offline", "url": None} for s in SERVICES],
+    })
+    client = create_app({"TESTING": True}).test_client()
+    ui = client.get("/workspace")
+    assert ui.status_code == 200
+    assert b"Engineering suite" in ui.data
+    assert b"EZstimate" in ui.data
+    api = client.get("/api/workspace/status")
+    assert api.status_code == 200
+    assert api.get_json()["core"]["status"] == "running"
+    assert api.headers["Cache-Control"] == "no-store"
