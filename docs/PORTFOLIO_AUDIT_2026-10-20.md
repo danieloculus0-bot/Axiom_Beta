@@ -8,10 +8,10 @@
 | --- | --- | --- |
 | [64Δ](https://github.com/danieloculus0-bot/64-) | Static 8×8 browser board, human-facing pawn/map workflow, separate Python deterministic causal-move research engine | Prototype has unrestricted board moves; Python causal law is not enforced by the browser UI; no recorded GitHub Actions runs in inspected history |
 | [AIscend](https://github.com/danieloculus0-bot/AIscend) | Windows/Flask trading experiment, Base/Coinbase Advanced order adapters, persistence and experimental strategy research; successful recent research workflows | Research tests do not prove real trading profitability or that a deployed instance is running |
-| [Axiom Beta](https://github.com/danieloculus0-bot/Axiom_Beta) | **Current ERP consolidation target**, event/audit infrastructure and native modules for quality, methods, finance, leadership, reporting, automation and integrations; successful Sep 25 CI/package jobs | Vendored/source snapshots are not proof of live bidirectional integration, production migration or deployment |
+| [Axiom Beta](https://github.com/danieloculus0-bot/Axiom_Beta) | **Current ERP consolidation target**, event/audit infrastructure and native modules for quality, methods, finance, leadership, reporting, automation and integrations; successful Oct 20 CI and Linux package checks after a test-fixture date repair | Vendored/source snapshots are not proof of live bidirectional integration, production migration or deployment |
 | [BEAN](https://github.com/danieloculus0-bot/BEAN) | Persistent experimental reasoning/memory system with numerous evidence and autonomy labs; core regression passed Oct 18 | Oct 20 autonomous code-author self-repair workflow **failed** independent Linux/Windows validation; no qualifying fix promoted |
 | [BEAN AI Bridge](https://github.com/danieloculus0-bot/BEAN-AI-Bridge-) | Generic, synthetic-data ERP evidence ingestion, ledger/replay/KPI and experimental learning/repair labs; metamorphic checks passed Oct 20 | Oct 20 novel repair run **failed** while requesting usable model-authored candidate; no automatic repair accepted; no live ERP connector |
-| [EZ-FAIR](https://github.com/danieloculus0-bot/EZ-FAIR) | Desktop assisted drawing characteristic extraction and FAI workbook/PDF creation with editable review | Last visible passing GitHub test run was Sep 25, before newer Oct 16 source updates; current head needs a new CI run and real drawing validation |
+| [EZ-FAIR](https://github.com/danieloculus0-bot/EZ-FAIR) | Desktop assisted drawing characteristic extraction and FAI workbook/PDF creation with editable review | Oct 20 GitHub test workflow passed after newer Oct 16 source changes; real drawings and difficult extraction cases still need validation |
 | [EZ-FEA](https://github.com/danieloculus0-bot/EZ-FEA) | Gmsh/CalculiX real 3D linear-static solver, multiple face fixtures and loads, force-balance checks, three reproducible monolithic frame specimens; native solver CI passed Oct 20 | Not a validated engineering sign-off tool; no real joints, contact, multi-part assemblies, nonlinear physics or mesh-convergence evidence |
 | [EZ Expedite](https://github.com/danieloculus0-bot/EZ_Expedite) | Standalone GPL no-cost case ownership, actions, deadlines, RMA/quality expediting; Oct 18 smoke CI passed | ERP integrations are separate/future; earlier successful installer CI should not be mistaken for a new release at current HEAD |
 | [ForgeQC](https://github.com/danieloculus0-bot/ForgeQC) | Standalone quality records, RMA/NCR/CAR workflow and quote/material review; Sep 24 smoke/build success | Axiom source snapshot does not automatically mean live integration or migration is complete |
@@ -42,3 +42,18 @@
 ## Audit maintenance rule
 
 This file captures evidence seen on **2026-10-20**, not a continuous CI feed. Read the live Actions pages and current source before relying on these statuses for a release or decision. Claims in project READMEs should be labeled **implemented**, **bench-tested**, **experimental**, **planned**, or **unverified**, with source or CI evidence.
+
+## Post-audit verification receipts (2026-10-20)
+
+The documentation edits triggered fresh GitHub Actions runs. Selected outcomes:
+
+- [EZ-FAIR head tests](https://github.com/danieloculus0-bot/EZ-FAIR/actions): **passed** after the Oct 16 source updates (automated scope only).
+- [EZ-FEA native solver, frame suite and unit tests](https://github.com/danieloculus0-bot/EZ-FEA/actions): **passed** on subsequent main-branch runs.
+- [BEAN full Core regression](https://github.com/danieloculus0-bot/BEAN/actions): **passed** on the README update. This does not resolve the separate failed autonomous self-repair experiment.
+- [BEAN Bridge offline smoke and evidence gate](https://github.com/danieloculus0-bot/BEAN-AI-Bridge-/actions): **passed** after README update. The failed novel-repair experiment remains separate.
+- [ForgeVault tests and primary CI](https://github.com/danieloculus0-bot/ForgeVault/actions): **passed**, but the independent Windows smoke/build workflow still failed due to missing Cairo DLLs.
+- [AIscend Windows Build](https://github.com/danieloculus0-bot/AIscend/actions): **passed** at documentation HEAD; not proof of trading profitability.
+- [ForgeQC Windows Server Build](https://github.com/danieloculus0-bot/ForgeQC/actions), [PM-Tracker Server Release](https://github.com/danieloculus0-bot/PM-Tracker/actions), and [venvWin tests](https://github.com/danieloculus0-bot/venvWin/actions): **passed** after README updates.
+- **Axiom Beta** surfaced a pre-existing calendar-dependent `ISO-Hungry` test fixture: real-time earnings were placed in a fixed September 2026 batch, failing after month-end. The test now chooses the current UTC month ([test fix `734a4a5`](https://github.com/danieloculus0-bot/Axiom_Beta/commit/734a4a52b6db4127af7ce4336fe85edaea8c4239)); [21-test CI](https://github.com/danieloculus0-bot/Axiom_Beta/actions/runs/39490219813) and [Linux packaging](https://github.com/danieloculus0-bot/Axiom_Beta/actions/runs/39490219795) passed. Windows installer packaging was still running when this receipt was added.
+
+These are time-stamped outcomes. Inspect latest Actions status for future releases.
