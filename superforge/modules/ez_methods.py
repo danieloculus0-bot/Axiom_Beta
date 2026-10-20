@@ -75,8 +75,15 @@ def dependency_readiness(row: dict[str, Any], as_of: date | None = None) -> dict
 
 def method_dashboard(context_type: str = "", context_id: str = "") -> tuple[list[Any], list[dict[str, Any]]]:
     sql = """SELECT m.id,m.job_id,m.part_id,m.job_number,m.part_number,m.revision,m.customer,m.quantity,
-                    m.required_date,m.status,m.updated_at
-             FROM ezm_method_plans m"""
+                    m.required_date,m.status,m.updated_at,
+                    s.document_number AS controlled_drawing,
+                    s.location AS controlled_version_uri,
+                    s.revision AS controlled_revision
+             FROM ezm_method_plans m
+             LEFT JOIN ezm_sources s ON s.id=(
+                SELECT MAX(s2.id) FROM ezm_sources s2
+                WHERE s2.plan_id=m.id AND s2.source_type='CONTROLLED_DRAWING'
+             )"""
     args: tuple[Any, ...] = ()
     if context_type == "job":
         sql += " WHERE m.job_id=?"
