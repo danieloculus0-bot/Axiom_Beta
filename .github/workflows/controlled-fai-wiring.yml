@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - "superforge/integrations/controlled_fai.py"
+      - "superforge/integrations/controlled_methods.py"
       - "superforge/db.py"
       - "integration_tests/**"
       - ".github/workflows/controlled-fai-wiring.yml"
@@ -10,6 +11,7 @@ on:
     branches: [main]
     paths:
       - "superforge/integrations/controlled_fai.py"
+      - "superforge/integrations/controlled_methods.py"
       - "superforge/db.py"
       - "integration_tests/**"
       - ".github/workflows/controlled-fai-wiring.yml"
