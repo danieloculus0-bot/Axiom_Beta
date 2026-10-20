@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - "superforge/integrations/controlled_fai.py"
+      - "superforge/integrations/controlled_methods.py"
       - "superforge/db.py"
       - "integration_tests/**"
       - ".github/workflows/controlled-fai-wiring.yml"
@@ -10,6 +11,7 @@ on:
     branches: [main]
     paths:
       - "superforge/integrations/controlled_fai.py"
+      - "superforge/integrations/controlled_methods.py"
       - "superforge/db.py"
       - "integration_tests/**"
       - ".github/workflows/controlled-fai-wiring.yml"
@@ -32,7 +34,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: danieloculus0-bot/ForgeVault
-          ref: 4b0c21c9b7e68b900e1cac7af02fdd2f292f7249
+          ref: e1156cdc6271822b73a4563a10e283b371753978
           path: forgevault-src
           persist-credentials: false
       - uses: actions/checkout@v4

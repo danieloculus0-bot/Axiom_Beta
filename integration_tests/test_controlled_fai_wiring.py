@@ -75,3 +75,30 @@ def test_real_three_repository_handoff(tmp_path, monkeypatch):
     assert source["sha256"][:16].encode() in html.data
     with pytest.raises(ValueError, match="checksum"):
         import_controlled_fai(proposal, content+b"changed", fai_number="FAI-OTHER", actor="tester")
+    # The next independent engine reuses the exact controlled drawing identity.
+    from superforge.modules.ez_methods import create_method_plan
+    from superforge.integrations.controlled_methods import link_controlled_drawing_to_method
+    plan_id = create_method_plan({
+        "job_number": "J-METHOD-001", "part_number": source["customer_part_number"],
+        "revision": source["customer_revision"], "required_date": "2026-11-01",
+        "quantity": 4,
+    }, actor="tester")
+    result_source = link_controlled_drawing_to_method(plan_id, source, actor="tester")
+    assert not result_source["idempotent"]
+    assert link_controlled_drawing_to_method(plan_id, source, actor="tester")["idempotent"]
+    with db() as con:
+        method_source = con.execute("SELECT * FROM ezm_sources WHERE plan_id=?", (plan_id,)).fetchone()
+        assert method_source["location"].endswith(source["file_version_id"])
+        assert method_source["revision"] == source["customer_revision"]
+        assert source["sha256"] in method_source["note"]
+    with pytest.raises(ValueError, match="conflicting"):
+        link_controlled_drawing_to_method(
+            plan_id, dict(source, file_version_id="changed-version-id"), actor="tester"
+        )
+    with pytest.raises(ValueError, match="part/revision"):
+        wrong_plan = create_method_plan({
+            "job_number": "J-WRONG", "part_number": source["customer_part_number"],
+            "revision": "WRONG", "required_date": "2026-11-01",
+        }, actor="tester")
+        link_controlled_drawing_to_method(wrong_plan, source, actor="tester")
+
