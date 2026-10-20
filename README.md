@@ -41,3 +41,5 @@ Strengthen authentication and durable API boundaries; expose controlled import v
 - [**Complete prior README, including history and detailed instructions**](docs/archive/README_2026-10-20_before_refresh.md)
 
 Historical experiments, dated reports and superseded architectural claims have been moved out of this landing page, **not deleted**.
+
+**Engineering suite implementation ledger:** [October 20 verified integration and UI milestones](docs/ENGINEERING_SUITE_PROGRESS_2026-10-20.md). Describes tested source paths, custody boundaries and incomplete production gates.
