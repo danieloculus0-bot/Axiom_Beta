@@ -1,0 +1,51 @@
+{
+  "_notes": [
+    "Copy to workspace.modules.json, adjust paths and installed interpreters, then use --config workspace.modules.json.",
+    "Only explicitly enabled applications launch. --all is an opt-in convenience for locally installed sources.",
+    "Axiom already contains native manufacturing, inspection, quoting, PM, quality and intelligence workspaces.",
+    "Do not start an additional PM-Tracker over the currently running shop instance or use a different workbook inadvertently.",
+    "Use port 8766 for ForgeVault because EZstimate uses 8765."
+  ],
+  "modules": [
+    {
+      "id": "forgevault",
+      "directory": "../ForgeVault",
+      "command": ["{python}", "-m", "forgevault.desktop", "--no-browser", "--port", "8766"],
+      "port": 8766,
+      "enabled": false,
+      "env": {}
+    },
+    {
+      "id": "ezstimate",
+      "directory": "../EZstimate",
+      "command": ["{python}", "-m", "ezstimate.server"],
+      "port": 8765,
+      "enabled": false,
+      "env": {"EZSTIMATE_PORT": "8765"}
+    },
+    {
+      "id": "forgeqc",
+      "directory": "../ForgeQC",
+      "command": ["{python}", "desktop.py"],
+      "port": 5080,
+      "enabled": false,
+      "env": {"FORGEQC_HOST": "127.0.0.1", "FORGEQC_PORT": "5080", "FORGEQC_NO_BROWSER": "1"}
+    },
+    {
+      "id": "ezexpedite",
+      "directory": "../EZ_Expedite",
+      "command": ["{python}", "desktop.py"],
+      "port": 5050,
+      "enabled": false,
+      "env": {}
+    },
+    {
+      "id": "pmtracker",
+      "directory": "../PM-Tracker",
+      "command": ["{python}", "app.py"],
+      "port": 5000,
+      "enabled": false,
+      "env": {}
+    }
+  ]
+}
