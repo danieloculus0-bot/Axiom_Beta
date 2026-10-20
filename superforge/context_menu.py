@@ -2,6 +2,7 @@ from __future__ import annotations
 from urllib.parse import urlencode
 
 MODULES=[
+ ("workspace","Axiom Workspace","/workspace"),
  ("job_tracker","Job Tracker","/jobs"),
  ("purchase_orders","Purchase Order Tracker","/purchase-orders"),
  ("inventory","Inventory Tracker","/inventory"),
