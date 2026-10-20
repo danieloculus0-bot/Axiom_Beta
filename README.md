@@ -2,6 +2,8 @@
 
 Current ERP consolidation target: a local-first manufacturing operations and quality application with a shared database/event/audit structure. Do not confuse bundled source snapshots with continuously synchronized standalone apps.
 
+[**Current 15-repository portfolio, CI status, and ownership map**](docs/CURRENT_PORTFOLIO.md)
+
 ## Current build state
 
 **Reviewed:** 2026-10-20 · **Inspected main:** `bd86e7a2227c` · **Type:** working experimental/beta code; not automatically production-certified.
