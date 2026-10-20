@@ -274,3 +274,7 @@ Axiom is now the canonical integration target. Parallel experimental cores found
 Axiom Beta is the **current ERP consolidation target**, not proof that every source project has been fully integrated or deployed. `components/source_snapshots/` contains selected **historical source snapshots**, while native implementations and explicit adapters live under `superforge/` and `modules/`. Snapshot presence is not a live data connector, migration, synchronized release, or unified production database. The Sep 25 CI and packaging workflows passed, but operating-site validation and full external integration remain separate gates.
 
 The [15-repository portfolio audit](docs/PORTFOLIO_AUDIT_2026-10-20.md) lists component ownership, observed CI evidence, unverified capabilities and open integration boundaries. **MFGForge** is the earlier SuperForge source line; **SuperForge Unofficial** is an artifact/planning repo; Axiom is the newer canonical consolidation target.
+
+## Controlled inspection source visibility
+
+The existing Axiom `/ez-fair` workspace displays the source **ForgeVault record**, **exact version UUID**, **release package** and **SHA-256 prefix** for FAI records created by the controlled import contract. The full hash stays in `fai_source_links`. Legacy unlinked FAI rows remain unlinked; the application does not invent a PDM reference. Extracted characteristics are explicitly **review required**, with no automatic measurement or acceptance. The checked-out three-repository integration test validates these UI values on Windows and Ubuntu.

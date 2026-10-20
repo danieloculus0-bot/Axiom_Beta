@@ -67,5 +67,11 @@ def test_real_three_repository_handoff(tmp_path, monkeypatch):
         assert row["pass_count"] == 0 and row["fail_count"] == 0
         link = con.execute("SELECT * FROM fai_source_links WHERE fai_run_id=?", (result["id"],)).fetchone()
         assert link["pdf_sha256"] == source["sha256"]
+    html = create_app({"TESTING": True}).test_client().get("/ez-fair")
+    assert html.status_code == 200
+    assert b"Vault Record" in html.data and b"Release Package" in html.data
+    assert source["record_id"].encode() in html.data
+    assert source["release_package_number"].encode() in html.data
+    assert source["sha256"][:16].encode() in html.data
     with pytest.raises(ValueError, match="checksum"):
         import_controlled_fai(proposal, content+b"changed", fai_number="FAI-OTHER", actor="tester")
