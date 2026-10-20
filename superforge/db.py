@@ -110,6 +110,15 @@ CREATE TABLE IF NOT EXISTS fai_characteristics(
   reference_location TEXT,raw_text TEXT,nominal REAL,lsl REAL,usl REAL,actual REAL,characteristic_type TEXT,tooling TEXT,
   result TEXT,notes TEXT,source_metadata TEXT,UNIQUE(fai_run_id,char_number)
 );
+CREATE TABLE IF NOT EXISTS fai_source_links(
+  fai_run_id INTEGER PRIMARY KEY REFERENCES fai_runs(id),
+  vault_record_id TEXT NOT NULL,
+  vault_version_id TEXT NOT NULL,
+  release_package_number TEXT NOT NULL,
+  pdf_sha256 TEXT NOT NULL,
+  payload_sha256 TEXT NOT NULL,
+  UNIQUE(vault_version_id,fai_run_id)
+);
 CREATE TABLE IF NOT EXISTS ppap_packages(
   id INTEGER PRIMARY KEY AUTOINCREMENT,ppap_number TEXT NOT NULL UNIQUE,customer_id INTEGER REFERENCES customers(id),part_id INTEGER REFERENCES parts(id),
   level INTEGER NOT NULL DEFAULT 3,status TEXT NOT NULL DEFAULT 'draft',owner TEXT,submission_date TEXT,approval_date TEXT,notes TEXT,
@@ -173,7 +182,7 @@ CREATE TABLE IF NOT EXISTS sync_conflicts(
   resolution TEXT,resolved_by TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,resolved_at TEXT
 );
 CREATE TABLE IF NOT EXISTS user_preferences(
-  user_key TEXT PRIMARY KEY,theme_mode TEXT NOT NULL DEFAULT 'dark',accent TEXT NOT NULL DEFAULT '#1F6FBC',
+  user_key TEXT PRIMARY KEY,theme_mode TEXT NOT NULL DEFAULT 'dark',accent TEXT NOT NULL DEFAULT '#79DE4B',
   compact_mode INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 INSERT OR REPLACE INTO system_meta(key,value,updated_at) VALUES('schema_version','1.0.0-unified',CURRENT_TIMESTAMP);
