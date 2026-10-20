@@ -278,3 +278,7 @@ The [15-repository portfolio audit](docs/PORTFOLIO_AUDIT_2026-10-20.md) lists co
 ## Controlled inspection source visibility
 
 The existing Axiom `/ez-fair` workspace displays the source **ForgeVault record**, **exact version UUID**, **release package** and **SHA-256 prefix** for FAI records created by the controlled import contract. The full hash stays in `fai_source_links`. Legacy unlinked FAI rows remain unlinked; the application does not invent a PDM reference. Extracted characteristics are explicitly **review required**, with no automatic measurement or acceptance. The checked-out three-repository integration test validates these UI values on Windows and Ubuntu.
+
+## Released drawing → EZ Methods source linkage
+
+Axiom can now attach a controlled drawing to an **existing** EZ Methods plan using `link_controlled_drawing_to_method(plan_id, source, actor=...)`. This requires a matching part/revision and a previously imported FAI receipt for the **same ForgeVault release package, version and SHA-256**. The plan's `ezm_sources` keeps the version URI and digest with idempotent re-import; conflicting revisions are rejected rather than silently overwriting the original source. This is source traceability only, **not** automatic routing generation or approval. The actual three-repository [cross-platform integration test](.github/workflows/controlled-fai-wiring.yml) exercises this additional source link.
