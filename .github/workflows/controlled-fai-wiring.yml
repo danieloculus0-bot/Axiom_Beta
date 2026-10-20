@@ -1,0 +1,50 @@
+name: Controlled FAI wiring across Windows and Linux
+on:
+  pull_request:
+    paths:
+      - "superforge/integrations/controlled_fai.py"
+      - "superforge/db.py"
+      - "integration_tests/**"
+      - ".github/workflows/controlled-fai-wiring.yml"
+  push:
+    branches: [main]
+    paths:
+      - "superforge/integrations/controlled_fai.py"
+      - "superforge/db.py"
+      - "integration_tests/**"
+      - ".github/workflows/controlled-fai-wiring.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wiring:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: danieloculus0-bot/ForgeVault
+          ref: 4b0c21c9b7e68b900e1cac7af02fdd2f292f7249
+          path: forgevault-src
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: danieloculus0-bot/EZ-FAIR
+          ref: 00d5a8831061f53318936cfe0548bdab0ef95ac1
+          path: ezfair-src
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install actual application code and dependencies
+        run: python -m pip install -e ".[dev]" -e "./forgevault-src[dev]" -r ezfair-src/requirements.txt
+      - name: Verify actual released drawing through all three applications
+        run: python -m pytest -q integration_tests/test_controlled_fai_wiring.py
