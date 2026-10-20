@@ -8,7 +8,7 @@ def preference():
     with db() as con:
         row=con.execute("SELECT * FROM user_preferences WHERE user_key='local'").fetchone()
     if not row:
-        return {"theme_mode":"dark","accent":"#1F6FBC","compact_mode":0}
+        return {"theme_mode":"dark","accent":"#79DE4B","compact_mode":0}
     return dict(row)
 
 def page(title:str,body:str,*,module_key:str="",context_type:str="",context_id:str="")->str:
@@ -18,7 +18,7 @@ def page(title:str,body:str,*,module_key:str="",context_type:str="",context_id:s
         for key,label,path in MODULES if key not in {"audit"}
     )
     css=r"""
-:root{--accent:ACCENT;--bg:#090B0E;--panel:#11161C;--panel2:#171E26;--line:#28313C;--text:#F4F7FB;--muted:#9BA8B7;--shadow:0 16px 45px rgba(0,0,0,.24)}
+:root{--accent:ACCENT;--bg:#0F1113;--panel:#1A1D20;--panel2:#22282A;--line:#303A3B;--text:#E6EAE7;--muted:#9FAEB0;--shadow:0 16px 45px rgba(0,0,0,.24)}
 html[data-mode="light"]{--bg:#F4F6F8;--panel:#FFFFFF;--panel2:#F8FAFC;--line:#D8DEE7;--text:#121820;--muted:#5C6978;--shadow:0 14px 36px rgba(30,40,55,.10)}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px}
 a{color:inherit}.app{min-height:100vh;display:grid;grid-template-columns:245px 1fr}.sidebar{background:var(--panel);border-right:1px solid var(--line);position:sticky;top:0;height:100vh;overflow:auto;padding:18px 12px}
@@ -27,7 +27,7 @@ a{color:inherit}.app{min-height:100vh;display:grid;grid-template-columns:245px 1
 .main{min-width:0}.topbar{height:58px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 22px;background:color-mix(in srgb,var(--panel) 94%,transparent);position:sticky;top:0;z-index:20;backdrop-filter:blur(12px)}
 .topbar .grow{flex:1}.crumb{font-weight:800}.hint{color:var(--muted);font-size:12px}.content{padding:22px;max-width:1600px;margin:auto}.page-head{display:flex;align-items:flex-start;gap:18px;margin-bottom:18px}.page-head .grow{flex:1}.eyebrow{font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);font-weight:800;margin:0 0 6px}h1,h2,h3{margin-top:0}h1{font-size:29px;letter-spacing:-.7px;margin-bottom:6px}h2{font-size:19px}.sub{color:var(--muted);max-width:900px;line-height:1.55}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.card,.panel{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:16px;box-shadow:var(--shadow)}.card strong.big{font-size:28px;display:block;margin-bottom:4px}.card .label{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.7px}
-.panel{margin:0 0 14px}.toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}.button,button{border:0;background:var(--accent);color:white;padding:9px 13px;border-radius:8px;font-weight:800;text-decoration:none;cursor:pointer}.button.secondary,button.secondary{background:var(--panel2);color:var(--text);border:1px solid var(--line)}.button:hover,button:hover{filter:brightness(1.08)}
+.panel{margin:0 0 14px}.toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}.button,button{border:0;background:var(--accent);color:#0F160D;padding:9px 13px;border-radius:8px;font-weight:800;text-decoration:none;cursor:pointer}.button.secondary,button.secondary{background:var(--panel2);color:var(--text);border:1px solid var(--line)}.button:hover,button:hover{filter:brightness(1.08)}
 table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.6px;text-align:left;padding:9px 10px;border-bottom:1px solid var(--line)}td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}tr.sf-context:hover td{background:color-mix(in srgb,var(--accent) 6%,transparent);cursor:context-menu}
 .badge{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:999px;padding:3px 8px;font-size:11px;font-weight:800;background:var(--panel2)}.badge.accent{border-color:color-mix(in srgb,var(--accent) 55%,var(--line));color:var(--text);background:color-mix(in srgb,var(--accent) 16%,var(--panel2))}
 input,select,textarea{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px 10px;min-height:38px;width:100%}textarea{min-height:96px}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.wide{grid-column:1/-1}label{font-weight:750;font-size:12px;color:var(--muted)}label input,label select,label textarea{display:block;margin-top:5px}
