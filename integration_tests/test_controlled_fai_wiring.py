@@ -91,6 +91,11 @@ def test_real_three_repository_handoff(tmp_path, monkeypatch):
         assert method_source["location"].endswith(source["file_version_id"])
         assert method_source["revision"] == source["customer_revision"]
         assert source["sha256"] in method_source["note"]
+    methods_page = create_app({"TESTING": True}).test_client().get("/methods")
+    assert methods_page.status_code == 200
+    assert b"Vault Drawing" in methods_page.data
+    assert source["record_id"].encode() in methods_page.data
+    assert source["file_version_id"].encode() in methods_page.data
     with pytest.raises(ValueError, match="no verified FAI import"):
         link_controlled_drawing_to_method(
             plan_id, dict(source, file_version_id="changed-version-id"), actor="tester"
