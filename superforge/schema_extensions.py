@@ -9,6 +9,18 @@ CREATE TABLE IF NOT EXISTS quote_intakes(
   owner TEXT,estimated_value REAL,lead_time_days INTEGER,material_risk TEXT,capacity_risk TEXT,quality_risk TEXT,notes TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS ezstimate_quote_evidence(
+  quote_intake_id INTEGER PRIMARY KEY REFERENCES quote_intakes(id),
+  source_record_id TEXT NOT NULL,
+  source_version_id TEXT NOT NULL,
+  release_package_number TEXT NOT NULL,
+  drawing_sha256 TEXT NOT NULL,
+  payload_sha256 TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_ezstimate_source ON ezstimate_quote_evidence(source_version_id, drawing_sha256);
+
 CREATE TABLE IF NOT EXISTS planning_watchlists(
   id INTEGER PRIMARY KEY AUTOINCREMENT,job_id INTEGER REFERENCES jobs(id),customer_id INTEGER REFERENCES customers(id),
   source_module TEXT,source_event_id TEXT,risk_type TEXT NOT NULL,risk_level TEXT NOT NULL DEFAULT 'medium',due_date TEXT,owner TEXT,
