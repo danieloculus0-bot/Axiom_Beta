@@ -50,7 +50,8 @@ def table_html(rows,columns,entity_type,label_field=None):
         for key,_ in columns:
             value=d.get(key)
             if key=="status":
-                out.append(f"<td><span class='badge accent'>{e(value)}</span></td>")
+                state = "pending" if str(value).lower() in {"draft","open","queued","in_progress","review","review_required","pending"} else "good" if str(value).lower() in {"complete","completed","approved","released","pass","success","closed"} else "danger" if str(value).lower() in {"failed","error","rejected","blocked"} else ""
+                out.append(f"<td><span class='badge {state}'>{e(value)}</span></td>")
             elif key==(label_field or columns[0][0]):
                 detail=f"/quality/{d.get('id')}" if entity_type=="quality_record" else f"/context/{entity_type}/{d.get('id')}"
                 out.append(f"<td><a href='{detail}' style='font-weight:850;text-decoration:none'>{e(value)}</a></td>")
