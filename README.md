@@ -4,6 +4,12 @@ Current ERP consolidation target: a local-first manufacturing operations and qua
 
 [**Current 15-repository portfolio, CI status, and ownership map**](docs/CURRENT_PORTFOLIO.md)
 
+## Axiom Workspace: single local suite entry point
+
+**New integration shell:** open `http://127.0.0.1:5060/workspace` after starting Axiom with `python workspace_launcher.py`. The Gothic Lime workspace includes Axiom's built-in routes, reports independently detected companion services and distinguishes desktop tools and BEAN adapters. Configure optional ForgeVault, EZstimate, ForgeQC, EZ Expedite and PM-Tracker process startup using `workspace.modules.example.json`. Different apps retain their own databases and execution engines. **This is not yet a one-click all-engines installer or proof of active cross-app synchronization.**
+
+[Workspace quickstart, capabilities and deployment limits](docs/WORKSPACE.md)
+
 ## Current build state
 
 **Reviewed:** 2026-10-20 · **Inspected main:** `bd86e7a2227c` · **Type:** working experimental/beta code; not automatically production-certified.
