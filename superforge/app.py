@@ -492,8 +492,8 @@ def create_app(test_config:dict|None=None)->Flask:
 
     @app.get("/quoting")
     def quoting():
-        rows=_list("SELECT id,quote_number,customer_id,part_id,due_date,status,owner,estimated_value,notes FROM quote_intakes ORDER BY id DESC LIMIT 300")
-        body="<section class='page-head'><div><p class='eyebrow'>Estimating</p><h1>Quoting</h1><p class='sub'>Quote intake, drawing context, material risk, supplier lead time, capacity and quality history can all feed the same review.</p></div></section>"+context_banner()+"<div class='panel'>"+table_html(rows,[("quote_number","Quote"),("customer_id","Customer ID"),("part_id","Part ID"),("due_date","Due"),("status","Status"),("owner","Owner"),("estimated_value","Value"),("notes","Notes")],"quote_intake","quote_number")+"</div>"
+        rows=_list("""SELECT q.id,q.quote_number,q.customer_id,q.part_id,q.due_date,q.status,q.owner,q.estimated_value,q.notes, e.source_record_id, e.source_version_id, e.release_package_number, substr(e.drawing_sha256,1,16) AS drawing_sha_prefix FROM quote_intakes q LEFT JOIN ezstimate_quote_evidence e ON e.quote_intake_id=q.id ORDER BY q.id DESC LIMIT 300""")
+        body="<section class='page-head'><div><p class='eyebrow'>Estimating</p><h1>Quoting</h1><p class='sub'>Quote intake, drawing context, material risk, supplier lead time, capacity and quality history can all feed the same review.</p></div></section>"+context_banner()+"<div class='panel'>"+table_html(rows,[("quote_number","Quote"),("customer_id","Customer ID"),("part_id","Part ID"),("due_date","Due"),("status","Status"),("owner","Owner"),("estimated_value","Draft Value"),("source_record_id","Vault Drawing"),("source_version_id","Version UUID"),("release_package_number","Released Package"),("drawing_sha_prefix","PDF Hash"),("notes","Notes")],"quote_intake","quote_number")+"</div>"
         return page("Quoting",body,module_key="quoting")
 
     @app.get("/planning")
