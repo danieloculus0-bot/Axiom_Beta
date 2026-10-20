@@ -45,3 +45,7 @@ Strengthen authentication and durable API boundaries; expose controlled import v
 - [**Complete prior README, including history and detailed instructions**](docs/archive/README_2026-10-20_before_refresh.md)
 
 Historical experiments, dated reports and superseded architectural claims have been moved out of this landing page, **not deleted**.
+
+## EZstimate quote proposals
+
+The Axiom quoting workspace now shows the original ForgeVault drawing/version, release package and PDF hash for quote proposals imported by the local ezstimate_quote integration. Quote math is independently recalculated; differing totals and conflicting quote numbers are rejected. Every imported proposal remains review_required and is never a customer-approved quote or PO. The cross-platform integration test uses actual EZstimate, ForgeVault and BEAN source checkouts. An authenticated shared-network write API is NOT implemented.
