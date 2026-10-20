@@ -472,13 +472,15 @@ def create_app(test_config:dict|None=None)->Flask:
     @app.get("/ez-fair")
     def ez_fair():
         ctype,cid=request.args.get("context_type"),request.args.get("context_id")
-        sql="""SELECT f.id,f.fai_number,f.status,f.characteristic_count,f.pass_count,f.fail_count,p.part_number,j.job_number,f.drawing_revision,f.ballooned_pdf,f.fai_workbook
-               FROM fai_runs f LEFT JOIN parts p ON p.id=f.part_id LEFT JOIN jobs j ON j.id=f.job_id"""; args=()
+        sql="""SELECT f.id,f.fai_number,f.status,f.characteristic_count,f.pass_count,f.fail_count,p.part_number,j.job_number,f.drawing_revision,f.ballooned_pdf,f.fai_workbook,
+               l.vault_record_id,l.vault_version_id AS controlled_version, l.release_package_number AS release_package, substr(l.pdf_sha256,1,16) AS pdf_sha_prefix
+               FROM fai_runs f LEFT JOIN parts p ON p.id=f.part_id LEFT JOIN jobs j ON j.id=f.job_id
+               LEFT JOIN fai_source_links l ON l.fai_run_id=f.id"""; args=()
         if ctype=="job": sql+=" WHERE f.job_id=?"; args=(cid,)
         elif ctype=="part": sql+=" WHERE f.part_id=?"; args=(cid,)
         sql+=" ORDER BY f.id DESC LIMIT 300"
         rows=_list(sql,args)
-        body="<section class='page-head'><div><p class='eyebrow'>EZ FAIR</p><h1>FAI / Inspection Planning</h1><p class='sub'>Actual EZ FAIR extraction and FAI workbook logic is vendored into Axiom. Drawing extraction, ballooning, characteristic review and measurements become auditable records instead of detached files.</p></div></section>"+context_banner()+"<div class='panel'>"+table_html(rows,[("fai_number","FAI"),("status","Status"),("part_number","Part"),("job_number","Job"),("drawing_revision","Rev"),("characteristic_count","Chars"),("pass_count","Pass"),("fail_count","Fail"),("ballooned_pdf","Ballooned"),("fai_workbook","Workbook")],"fai","fai_number")+"</div>"
+        body="<section class='page-head'><div><p class='eyebrow'>EZ FAIR</p><h1>FAI / Inspection Planning</h1><p class='sub'>Actual EZ FAIR extraction and FAI workbook logic is vendored into Axiom. Controlled drawing imports show their exact ForgeVault version, release package and PDF hash beside review-required inspection characteristics. Extraction is not approval.</p></div></section>"+context_banner()+"<div class='panel'>"+table_html(rows,[("fai_number","FAI"),("status","Status"),("part_number","Part"),("job_number","Job"),("drawing_revision","Rev"),("vault_record_id","Vault Record"),("controlled_version","Exact Version UUID"),("release_package","Release Package"),("pdf_sha_prefix","SHA-256 Prefix"),("characteristic_count","Chars"),("pass_count","Pass"),("fail_count","Fail"),("ballooned_pdf","Ballooned"),("fai_workbook","Workbook")],"fai","fai_number")+"</div>"
         return page("EZ FAIR / FAI",body,module_key="ezfair")
 
     @app.get("/ppap")
