@@ -91,7 +91,7 @@ def test_real_three_repository_handoff(tmp_path, monkeypatch):
         assert method_source["location"].endswith(source["file_version_id"])
         assert method_source["revision"] == source["customer_revision"]
         assert source["sha256"] in method_source["note"]
-    with pytest.raises(ValueError, match="conflicting"):
+    with pytest.raises(ValueError, match="no verified FAI import"):
         link_controlled_drawing_to_method(
             plan_id, dict(source, file_version_id="changed-version-id"), actor="tester"
         )
