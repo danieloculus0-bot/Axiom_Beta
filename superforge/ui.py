@@ -9,7 +9,11 @@ def preference():
         row=con.execute("SELECT * FROM user_preferences WHERE user_key='local'").fetchone()
     if not row:
         return {"theme_mode":"dark","accent":"#79DE4B","compact_mode":0}
-    return dict(row)
+    prefs=dict(row)
+    # Carry only the original product default forward; preserve custom accents.
+    if str(prefs.get("accent") or "").upper()=="#1F6FBC":
+        prefs["accent"]="#79DE4B"
+    return prefs
 
 def page(title:str,body:str,*,module_key:str="",context_type:str="",context_id:str="")->str:
     pref=preference()
