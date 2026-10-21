@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS procurement_method_links (
   dependency_id INTEGER PRIMARY KEY REFERENCES ezm_dependencies(id),
   item_id INTEGER NOT NULL REFERENCES inventory_items(id),
   required_qty REAL NOT NULL CHECK(required_qty>0),
+  fulfilled_qty REAL NOT NULL DEFAULT 0 CHECK(fulfilled_qty>=0 AND fulfilled_qty<=required_qty),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 """
@@ -225,6 +226,25 @@ def consume(item_id, quantity, movement_key, *, job_id=None, actor="local"):
         con.execute("""UPDATE inventory_items SET on_hand=ROUND(on_hand-?,4),
                        allocated=ROUND(allocated-?,4),updated_at=CURRENT_TIMESTAMP WHERE id=?""",
                     (qty,use_reserved,item_id))
+        if job_id is not None:
+            # Consumed stock satisfies explicit method demand, starting with the
+            # earliest mapped dependency. Posting the same key never repeats it.
+            pending=con.execute("""SELECT l.dependency_id,l.required_qty,l.fulfilled_qty
+                FROM procurement_method_links l
+                JOIN ezm_dependencies d ON d.id=l.dependency_id
+                JOIN ezm_operations o ON o.id=d.operation_id
+                JOIN ezm_method_plans m ON m.id=o.plan_id
+                WHERE l.item_id=? AND m.job_id=?
+                  AND upper(m.status) NOT IN ('COMPLETE','CLOSED','CANCELLED')
+                ORDER BY d.need_by,l.dependency_id""",(item_id,job_id)).fetchall()
+            left=qty
+            for demand in pending:
+                if left<=0:break
+                take=min(left,round(demand['required_qty']-demand['fulfilled_qty'],4))
+                if take>0:
+                    con.execute("UPDATE procurement_method_links SET fulfilled_qty=ROUND(fulfilled_qty+?,4) WHERE dependency_id=?",
+                                (take,demand['dependency_id']))
+                    left=round(left-take,4)
         cur=con.execute("""INSERT INTO inventory_transactions(item_id,job_id,txn_type,quantity,reference,actor)
                            VALUES(?,?,'consumption',?,?,?)""",(item_id,job_id,-qty,key,actor))
         txn=int(cur.lastrowid)
@@ -354,7 +374,9 @@ def link_method_demand(dependency_id, item_id, quantity, *, actor="local"):
             raise ValueError("Only material or purchased requirements can map to stock items")
         con.execute("""INSERT INTO procurement_method_links(dependency_id,item_id,required_qty)
                        VALUES(?,?,?) ON CONFLICT(dependency_id) DO UPDATE
-                       SET item_id=excluded.item_id,required_qty=excluded.required_qty""",(did,iid,qty))
+                       SET fulfilled_qty=CASE WHEN item_id=excluded.item_id
+                              THEN MIN(fulfilled_qty,excluded.required_qty) ELSE 0 END,
+                           item_id=excluded.item_id,required_qty=excluded.required_qty""",(did,iid,qty))
     _event("METHOD_DEMAND_LINKED",iid,actor,{"dependency_id":did,"quantity":qty})
     return {"dependency_id":did,"item_id":iid,"quantity":qty}
 
@@ -362,21 +384,24 @@ def link_method_demand(dependency_id, item_id, quantity, *, actor="local"):
 def method_stock_signals():
     """Evidence only: available stock is shared across jobs and is not allocated automatically."""
     with db() as con:
-        rows=con.execute("""SELECT l.dependency_id,l.item_id,l.required_qty,i.item_number,
-                             i.on_hand,i.allocated,
-                             COALESCE((SELECT SUM(r.quantity) FROM inventory_reservations r
-                               JOIN ezm_operations o ON o.id=d.operation_id
-                               JOIN ezm_method_plans m ON m.id=o.plan_id
+        rows=con.execute("""SELECT l.dependency_id,l.item_id,l.required_qty,
+                             l.fulfilled_qty,i.item_number,i.on_hand,i.allocated,
+                             COALESCE((SELECT r.quantity FROM inventory_reservations r
                                WHERE r.item_id=l.item_id AND r.job_id=m.job_id),0) AS reserved_for_job
                              FROM procurement_method_links l
                              JOIN ezm_dependencies d ON d.id=l.dependency_id
+                             JOIN ezm_operations o ON o.id=d.operation_id
+                             JOIN ezm_method_plans m ON m.id=o.plan_id
                              JOIN inventory_items i ON i.id=l.item_id""").fetchall()
     signals={}
     for r in rows:
         ready=max(0,float(r["on_hand"])-float(r["allocated"]))+float(r["reserved_for_job"])
+        remaining=round(max(0,r['required_qty']-r['fulfilled_qty']),4)
         signals[r["dependency_id"]]={"item":r["item_number"],"available_not_promised":round(ready,4),
-             "required":r["required_qty"],"short":round(max(0,r["required_qty"]-ready),4),
-             "status":"STOCK SIGNAL ONLY" if ready>=r["required_qty"] else "SHORTAGE"}
+             "required":remaining,"fulfilled":r['fulfilled_qty'],
+             "short":round(max(0,remaining-ready),4),
+             "status":"FULFILLED" if remaining==0 else
+                      "STOCK SIGNAL ONLY" if ready>=remaining else "SHORTAGE"}
     return signals
 
 
@@ -399,7 +424,7 @@ def purchasing_snapshot():
         reservations={(x["item_id"],x["job_id"]):float(x["quantity"]) for x in con.execute(
           "SELECT item_id,job_id,quantity FROM inventory_reservations")}
         jobs={}
-        for x in con.execute("""SELECT l.item_id,m.job_id,SUM(l.required_qty) qty
+        for x in con.execute("""SELECT l.item_id,m.job_id,SUM(l.required_qty-l.fulfilled_qty) qty
                      FROM procurement_method_links l
                      JOIN ezm_dependencies d ON d.id=l.dependency_id
                      JOIN ezm_operations o ON o.id=d.operation_id
