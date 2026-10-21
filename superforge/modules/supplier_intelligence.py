@@ -213,7 +213,7 @@ def _completed_lines(con, supplier_id=None):
                AND origin.supplier_id IS NOT NULL"""
     args = ()
     if supplier_id is not None:
-        sql += " AND line_po.supplier_id=?"
+        sql += " AND origin.supplier_id=?"
         args = (supplier_id,)
     completed = []
     for row in con.execute(sql, args).fetchall():
