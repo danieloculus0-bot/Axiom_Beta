@@ -113,9 +113,11 @@ def record_po_price(po_line_id, unit_price, source_ref, *, supplier_quote_id=Non
     with db() as con:
         con.execute("BEGIN IMMEDIATE")
         line=con.execute("""SELECT l.item_id,l.unit,l.ordered_qty,l.received_qty,
-                                   p.supplier_id,p.status
+                                   origin.supplier_id,p.status
                             FROM purchase_order_lines l JOIN purchase_orders p
-                            ON p.id=l.purchase_order_id WHERE l.id=?""",(line_id,)).fetchone()
+                            ON p.id=l.purchase_order_id
+                            JOIN supplier_line_origins origin ON origin.po_line_id=l.id
+                            WHERE l.id=?""",(line_id,)).fetchone()
         if line is None:
             raise ValueError("Purchase order line not found")
         if line["supplier_id"] is None:
