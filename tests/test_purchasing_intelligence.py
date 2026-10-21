@@ -255,9 +255,6 @@ def test_po_late_delivery_expediting_without_duplicate_reorder(tmp_path,monkeypa
                     ((date.today()+timedelta(days=2)).isoformat(),po))
     # Header edits cannot silently erase the supplier's original line promise.
     assert purchasing_snapshot()[0]["inbound_due_in_lead"]==0
-    from superforge.modules.supplier_intelligence import record_supplier_promise
-    with db() as con:
-        line=con.execute("SELECT id FROM purchase_order_lines WHERE purchase_order_id=?",(po,)).fetchone()[0]
     record_supplier_promise(line,(date.today()+timedelta(days=2)).isoformat(),
                             source_ref="Supplier revised confirmation")
     early=purchasing_snapshot()[0]
