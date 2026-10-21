@@ -17,9 +17,9 @@ Delivery history is displayed as a sample count. Less than three original-promis
 When an approved local PR is first attached to a purchase order line, Axiom captures immutable evidence of:
 
 - The original supplier from the PO header (when assigned) and original PO placement date
-- The original promised delivery date, if the PO header has one
+- The PO header expected date remains a planning estimate, not a supplier promise. The first explicitly sourced supplier confirmation is the original promise for KPI purposes
 
-Further confirmed promise dates append versioned entries on that PO line. Inventory forecast uses the latest recorded line promise for expected inbound; historical supplier punctuality compares the **original promise** with final arrival date, so a late supplier does not erase a miss by revising the promise.
+Explicitly recorded supplier confirmations append versioned entries on that PO line. Inventory forecast uses the latest recorded line promise for expected inbound; historical supplier punctuality compares the **original promise** with final arrival date, so a late supplier does not erase a miss by revising the promise.
 
 The receiving form includes the physical receipt date. Each successful receipt records the date within the same transaction as the inventory increment, and an identical idempotency key cannot be reused with different quantity/PO line/date. An entry dated in the future, or before an existing PO order date, is rejected. If an old receipt has no physical date record, its date is not invented.
 
