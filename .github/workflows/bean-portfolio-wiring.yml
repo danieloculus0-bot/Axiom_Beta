@@ -1,0 +1,32 @@
+name: Axiom BEAN portfolio state learning
+on:
+  push:
+    branches: ['experiment/axiom-bean-portfolio-learning-*']
+  pull_request:
+    paths:
+      - 'superforge/integrations/bean_portfolio.py'
+      - 'tests/test_bean_portfolio_integration.py'
+      - '.github/workflows/bean-portfolio-wiring.yml'
+  workflow_dispatch:
+jobs:
+  bridge-check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.11', '3.12']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: danieloculus0-bot/BEAN
+          ref: 0f5e74f9b797ae22a2141f64166a5c61b7f86e08
+          path: bean-core
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Verify real source and separate durable learning state
+        env:
+          BEAN_CORE_DIR: bean-core
+        run: python -m unittest discover -s tests -p test_bean_portfolio_integration.py -v
