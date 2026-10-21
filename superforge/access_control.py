@@ -111,7 +111,7 @@ def install_access_control(app) -> None:
         app.config.update(
             SESSION_COOKIE_HTTPONLY=True,
             SESSION_COOKIE_SAMESITE="Strict",
-            SESSION_COOKIE_SECURE=True,
+            SESSION_COOKIE_SECURE=not app.config.get("TESTING", False),
             PERMANENT_SESSION_LIFETIME=28800,
         )
 
