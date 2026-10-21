@@ -143,7 +143,7 @@ def install_access_control(app) -> None:
         if not _can_read(info["role"], request.path):
             abort(403)
         if request.method in _UNSAFE:
-            if not _can_write(info["role"], request.path):
+            if request.path != "/logout" and not _can_write(info["role"], request.path):
                 abort(403)
             if not _csrf_valid():
                 abort(403)
