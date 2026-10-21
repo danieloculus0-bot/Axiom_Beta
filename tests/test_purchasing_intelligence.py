@@ -78,7 +78,7 @@ def test_min_max_job_consumption_method_and_reservations(tmp_path,monkeypatch):
 
     with pytest.raises(ValueError,match="exceeds available"):
         consume(stock,11,"issue-too-much",job_id=other)
-    with pytest.raises(ValueError,match="Stocking unit cannot change"):
+    with pytest.raises(ValueError,match="stocking unit"):
         set_policy(stock,"lb",10,40,0,5)
     # The browser page really binds to the same records and doesn't create sample data.
     client=app.test_client()
@@ -158,6 +158,8 @@ def test_policy_validation_and_http_400_do_not_mutate(tmp_path,monkeypatch):
     assert app.test_client().post("/purchasing",data={"action":"request","item_id":str(stock),
                                    "quantity":"1","request_key":"early"}).status_code==400
     set_policy(stock,"sheet",8,40)
+    with pytest.raises(ValueError,match="stocking unit"):
+        set_policy(stock,"lb",8,40)
     with pytest.raises(ValueError,match="at most four"):
         create_requisition(stock,0.123456,"bad-precision")
     with pytest.raises(ValueError,match="not found"):
