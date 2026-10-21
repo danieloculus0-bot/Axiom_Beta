@@ -418,7 +418,7 @@ def estimator_price_feedback():
                 "source":"Axiom.vendor_invoice_reconciliation",
                 "price_memory_status":"review_required",
                 "material_key":invoice["item_number"],"supplier":invoice["supplier"],
-                "unit":entry["unit"],"currency":"USD",
+                "unit":entry["unit"],"currency":"USD","invoiced_qty":entry["qty"],
                 "invoiced_unit_price":entry["billed_unit_price"],
                 "landed_unit_cost":entry["landed_unit_cost"],
                 "purchase_order_unit_price":entry["po_unit_price"],
