@@ -171,3 +171,83 @@ def test_policy_validation_and_http_400_do_not_mutate(tmp_path,monkeypatch):
     with db() as con:
         assert con.execute("SELECT COUNT(*) FROM procurement_requisitions").fetchone()[0]==1
         assert con.execute("SELECT COUNT(*) FROM procurement_method_links").fetchone()[0]==0
+
+
+
+def test_ezstimate_import_is_atomic_exact_and_idempotent(tmp_path,monkeypatch):
+    import copy
+    import hashlib
+    import json
+    app,db,job,other,stock,po,other_po,dep=initialized(tmp_path,monkeypatch)
+    from superforge.modules.purchasing import (
+        set_policy,import_ezstimate_request,create_requisition
+    )
+    set_policy(stock,"sheet",10,40,7,5)
+    payload={"schema":"axiom.purchase_request.v1","requested_by":"Estimator",
+             "department":"Purchasing","source_system":"EZstimate",
+             "justification":"Material need",
+             "lines":[{"material_key":"AL-6061","description":"Plate",
+                       "quantity":"12","unit":"sheet","needed_by":"2026-11-15",
+                       "job":"WO-PUR-1","supplier_preference":"Any approved supplier",
+                       "source_ref":"estimate-1"}]}
+    def envelope(body,request_id):
+        digest=hashlib.sha256(json.dumps(body,sort_keys=True,separators=(",",":")).encode()).hexdigest()
+        return {"request_id":request_id,"payload":body,"payload_sha256":digest}
+    document=envelope(payload,"PR-123456789ABCDEF0")
+    good=import_ezstimate_request(document)
+    assert good["duplicate"] is False
+    assert import_ezstimate_request(document)["duplicate"] is True
+    with db() as con:
+        req=con.execute("SELECT * FROM procurement_requisitions WHERE id=?",
+                        (good["requisitions"][0],)).fetchone()
+        assert req["status"]=="draft"
+        assert req["job_id"]==job
+        assert req["source_request_id"]=="PR-123456789ABCDEF0"
+        assert req["needed_by"]=="2026-11-15"
+        assert req["supplier_preference"]=="Any approved supplier"
+        assert con.execute("SELECT COUNT(*) FROM purchase_order_lines").fetchone()[0]==0
+    mutated=copy.deepcopy(document)
+    mutated["payload"]["lines"][0]["quantity"]="15"
+    with pytest.raises(ValueError,match="digest"):
+        import_ezstimate_request(mutated)
+    missing=copy.deepcopy(payload)
+    missing["lines"].append({**missing["lines"][0],"material_key":"NONEXISTENT"})
+    with pytest.raises(ValueError,match="unknown Axiom inventory"):
+        import_ezstimate_request(envelope(missing,"PR-123456789ABCDEF1"))
+    wrong=copy.deepcopy(payload)
+    wrong["lines"][0]["unit"]="lb"
+    with pytest.raises(ValueError,match="unit mismatch"):
+        import_ezstimate_request(envelope(wrong,"PR-123456789ABCDEF2"))
+    with db() as con:
+        assert con.execute("SELECT COUNT(*) FROM procurement_requisitions").fetchone()[0]==1
+        assert con.execute("SELECT COUNT(*) FROM procurement_source_imports").fetchone()[0]==1
+    assert app.test_client().get("/purchasing").status_code==200
+
+
+def test_po_late_delivery_expediting_without_duplicate_reorder(tmp_path,monkeypatch):
+    app,db,job,other,stock,po,other_po,dep=initialized(tmp_path,monkeypatch)
+    from superforge.modules.purchasing import (
+        set_policy,create_requisition,approve_requisition,attach_to_po,purchasing_snapshot
+    )
+    from datetime import date,timedelta
+    # Stock below min and future open PO exceeds restock target.
+    with db() as con:
+        con.execute("UPDATE inventory_items SET on_hand=5 WHERE id=?",(stock,))
+        con.execute("UPDATE purchase_orders SET expected_date=? WHERE id=?",
+                    ((date.today()+timedelta(days=30)).isoformat(),po))
+    set_policy(stock,"sheet",10,40,7,1)
+    req=create_requisition(stock,100,"late-1")
+    approve_requisition(req["id"])
+    attach_to_po(req["id"],po)
+    snap=purchasing_snapshot()[0]
+    assert snap["inbound"]==100
+    assert snap["inbound_due_in_lead"]==0
+    assert snap["projected"]==5
+    assert snap["suggested_qty"]==0
+    assert snap["signal"]=="EXPEDITE"
+    with db() as con:
+        con.execute("UPDATE purchase_orders SET expected_date=? WHERE id=?",
+                    ((date.today()+timedelta(days=2)).isoformat(),po))
+    early=purchasing_snapshot()[0]
+    assert early["inbound_due_in_lead"]==100
+    assert early["signal"]=="OK"
