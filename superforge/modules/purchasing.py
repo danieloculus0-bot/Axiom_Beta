@@ -8,6 +8,9 @@ stocking unit; no implicit sheet-to-lb, ft-to-ea, or ERP material conversion.
 from __future__ import annotations
 
 from datetime import date
+import hashlib
+import json
+import re
 from decimal import Decimal, InvalidOperation, ROUND_CEILING
 import uuid
 
@@ -43,8 +46,23 @@ CREATE TABLE IF NOT EXISTS procurement_requisitions (
   status TEXT NOT NULL DEFAULT 'draft'
     CHECK(status IN ('draft','approved','ordered','received','cancelled')),
   approved_by TEXT,
+  needed_by TEXT,
+  supplier_preference TEXT,
+  source_ref TEXT,
+  description TEXT,
+  source_request_id TEXT,
+  source_line_index INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  approved_at TEXT
+  approved_at TEXT,
+  UNIQUE(source_request_id,source_line_index)
+);
+CREATE TABLE IF NOT EXISTS procurement_source_imports (
+  source_request_id TEXT PRIMARY KEY,
+  source_system TEXT NOT NULL,
+  payload_sha256 TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  line_count INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS purchase_order_lines (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -151,7 +169,9 @@ def set_policy(item_id, unit, minimum, maximum, lead_days=0, order_multiple=1, *
               (SELECT COUNT(*) FROM procurement_requisitions WHERE item_id=? AND status!='cancelled')
               +(SELECT COUNT(*) FROM purchase_order_lines WHERE item_id=?)
               +(SELECT COUNT(*) FROM procurement_movements WHERE item_id=?)
-              AS n""", (item_id, item_id, item_id)).fetchone()["n"]
+              +(SELECT COUNT(*) FROM inventory_reservations WHERE item_id=? AND quantity>0)
+              +(SELECT COUNT(*) FROM procurement_method_links WHERE item_id=?)
+              AS n""", (item_id, item_id, item_id, item_id, item_id)).fetchone()["n"]
             if n:
                 raise ValueError("Stocking unit cannot change with purchasing/consumption history; use an explicit conversion process")
         con.execute("""INSERT INTO inventory_policies(item_id,stocking_unit,min_qty,max_qty,lead_days,order_multiple)
@@ -255,24 +275,39 @@ def consume(item_id, quantity, movement_key, *, job_id=None, actor="local"):
     return {"duplicate":False,"transaction_id":txn,"item_id":item_id,"quantity":qty}
 
 
-def create_requisition(item_id, quantity, request_key, *, job_id=None, actor="local"):
+def create_requisition(item_id, quantity, request_key, *, job_id=None, actor="local",
+                       needed_by=None, supplier_preference="", source_ref="", description=""):
     item_id,qty = _id(item_id,"item ID"),_qty(quantity)
     job_id = _id(job_id,"job ID") if job_id not in (None,"") else None
     if not isinstance(request_key,str) or not 1<=len(request_key.strip())<=120:
         raise ValueError("Request key required")
     key=request_key.strip()
+    if needed_by not in (None,''):
+        try:
+            if date.fromisoformat(needed_by).isoformat()!=needed_by:
+                raise ValueError('Bad date')
+        except (ValueError,TypeError) as exc:
+            raise ValueError('Needed-by date must be YYYY-MM-DD') from exc
+    needed_by=needed_by or None
+    for name,value in [('supplier preference',supplier_preference),('source ref',source_ref),('description',description)]:
+        if not isinstance(value,str) or len(value)>400:
+            raise ValueError(name+' invalid')
     with db() as con:
         con.execute("BEGIN IMMEDIATE")
         old=con.execute("SELECT * FROM procurement_requisitions WHERE request_key=?",(key,)).fetchone()
         if old:
-            if (old["item_id"]!=item_id or old["job_id"]!=job_id or abs(old["quantity"]-qty)>1e-7):
+            if (old["item_id"]!=item_id or old["job_id"]!=job_id or abs(old["quantity"]-qty)>1e-7
+                or old['needed_by']!=needed_by or (old['supplier_preference'] or '')!=supplier_preference
+                or (old['source_ref'] or '')!=source_ref or (old['description'] or '')!=description):
                 raise ValueError("Request key conflicts with an earlier requisition")
             return {"id":old["id"],"duplicate":True,"status":old["status"]}
         policy=_policy(con,item_id)
         if job_id is not None:_exists(con,"jobs",job_id)
         cur=con.execute("""INSERT INTO procurement_requisitions
-                           (request_key,item_id,job_id,quantity,unit,requested_by)
-                           VALUES(?,?,?,?,?,?)""",(key,item_id,job_id,qty,policy["stocking_unit"],actor))
+                           (request_key,item_id,job_id,quantity,unit,requested_by,
+                            needed_by,supplier_preference,source_ref,description)
+                           VALUES(?,?,?,?,?,?,?,?,?,?)""",(key,item_id,job_id,qty,policy["stocking_unit"],actor,
+                                                       needed_by,supplier_preference,source_ref,description))
         rid=int(cur.lastrowid)
     _event("REQUISITION_DRAFTED",item_id,actor,{"requisition_id":rid,"quantity":qty,"job_id":job_id})
     return {"id":rid,"duplicate":False,"status":"draft"}
