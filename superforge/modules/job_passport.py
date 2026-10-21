@@ -176,6 +176,22 @@ def job_passport_page(job_id: int):
         body += ("<section class='panel'><h2>" + _esc(title) + "</h2>"
                  + _table(rows, fields, empty="No records directly linked to this job.")
                  + "</section>")
+    from .cost_reconciliation import job_material_costs
+    material=job_material_costs(job_id)
+    body+=("<section class='panel'><h2>Documented actual material costs (partial)</h2>"
+            "<p class='sub'>Reconciled invoice expenses explicitly associated with posted job consumption."
+            " This is NOT automatically inferred from a matching part, PO, or inventory item;"
+            " stock-lot provenance and complete job profitability are not established.</p>"
+            "<p>Verified-cost associations total: <b>$"+_esc(material["documented_consumption_cost"])
+            +"</b> | Unreconciled associations: "+_esc(material["unreconciled_cost_links"])+"</p>"
+            +_table(material["links"],[
+                ("item_number","Inventory item"),("consumption_key","Consumption ref"),
+                ("invoice_line_id","Invoice line"),("assigned_qty","Associated quantity"),
+                ("landed_unit_cost","Landed cost / unit"),
+                ("assigned_landed_cost","Assigned cost"),
+                ("reconciliation_status","Reconciliation")],
+                empty="No invoice-backed material consumption cost assignments for this job.")
+            +"<p class='sub'><a href='/purchasing/costs'>Open invoice reconciliation</a></p></section>")
     body += (
         "<section class='panel'><h2>Part-level references (not job evidence)</h2>"
         "<p class='sub'>Matching the same part does not establish a purchase commitment, "
