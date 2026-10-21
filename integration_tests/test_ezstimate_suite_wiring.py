@@ -142,3 +142,71 @@ def test_real_ezstimate_pr_to_axiom_local_draft(tmp_path,monkeypatch):
         import_ezstimate_request(wrong_unit)
     with db() as con:
         assert con.execute("SELECT COUNT(*) FROM procurement_requisitions").fetchone()[0]==1
+
+
+
+def test_real_axiom_invoice_cost_to_ezstimate_price_memory(tmp_path,monkeypatch):
+    """End-to-end cross-repo price evidence: receipt, three-way match, stage, adopt."""
+    from datetime import date
+    from decimal import Decimal
+    from superforge.app import create_app
+    from superforge.db import db
+    from superforge.modules.purchasing import (
+        set_policy,create_requisition,approve_requisition,attach_to_po,receive
+    )
+    from superforge.modules.cost_reconciliation import (
+        record_po_price,record_vendor_invoice,review_invoice_line,
+        reconcile_invoice,estimator_price_feedback
+    )
+    from ezstimate.axiom_cost_feedback import (
+        stage_axiom_cost_feedback,actual_cost_inbox,adopt_axiom_cost
+    )
+    from ezstimate.pricing import price_history
+
+    monkeypatch.setenv("AXIOM_DATA_DIR",str(tmp_path/"axiom_cost_bridge"))
+    create_app({"TESTING":True})
+    with db() as con:
+        supplier=con.execute(
+           "INSERT INTO suppliers(name) VALUES('Cross Repo Metals')").lastrowid
+        item=con.execute(
+           "INSERT INTO inventory_items(item_number,on_hand) VALUES('SHT-AL-6061',0)").lastrowid
+        job=con.execute(
+           "INSERT INTO jobs(job_number) VALUES('WO-XREPO-10')").lastrowid
+        po=con.execute("""INSERT INTO purchase_orders
+          (po_number,supplier_id,job_id,order_date,status)
+          VALUES('PO-XREPO',?,?,?,'open')""",
+          (supplier,job,date.today().isoformat())).lastrowid
+    set_policy(item,"sheet",1,10,4,1)
+    request=create_requisition(item,5,"xrepo-invoice-request",job_id=job)
+    approve_requisition(request["id"])
+    line=attach_to_po(request["id"],po)["line_id"]
+    record_po_price(line,"22.50","Signed purchase order for aluminum")
+    receive(line,5,"xrepo-delivery",received_on=date.today().isoformat())
+    inv=record_vendor_invoice(supplier,"INV-XREPO",date.today().isoformat(),[
+        {"po_line_id":line,"quantity":"5","unit":"sheet",
+         "unit_price":"23.50","freight":"5","other":"0","tax":"0"}
+    ],"Vendor invoice PDF reference")
+    pending=reconcile_invoice(inv["invoice_id"])
+    assert pending["status"]=="VARIANCE_REVIEW"
+    invoice_line_id=pending["lines"][0]["id"]
+    review_invoice_line(invoice_line_id,"Accepted documented price difference and freight")
+    assert reconcile_invoice(inv["invoice_id"])["status"]=="RECONCILED"
+    feed=estimator_price_feedback()
+    assert feed["schema"]=="axiom.actual_material_cost_feedback.v1"
+    assert len(feed["observations"])==1
+    assert Decimal(feed["observations"][0]["invoiced_qty"])==Decimal("5")
+    ez_db=tmp_path/"ez_actual_prices.db"
+    assert stage_axiom_cost_feedback(feed,path=ez_db)["staged"]==1
+    assert stage_axiom_cost_feedback(feed,path=ez_db)["staged"]==0
+    assert actual_cost_inbox(path=ez_db)[0]["status"]=="pending"
+    assert price_history("SHT-AL-6061","sheet",
+                         as_of=date.today().isoformat(),path=ez_db)["candidate"] is None
+    adopt_axiom_cost("AXIOM-INVOICE-LINE-"+str(invoice_line_id),
+                     "fixture purchasing reviewer",path=ez_db)
+    price=price_history("SHT-AL-6061","sheet",
+                        as_of=date.today().isoformat(),path=ez_db)["candidate"]
+    assert price["source_type"]=="invoice"
+    assert price["unit_price"]=="23.50"
+    assert Decimal(price["quantity"])==Decimal("5")
+    assert "24.5" in price["notes"]  # all-in USD 122.50 for five sheets
+    assert price["source_ref"]=="AXIOM-INVOICE-LINE-"+str(invoice_line_id)
