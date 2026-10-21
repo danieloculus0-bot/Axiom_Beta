@@ -17,6 +17,7 @@ spec=importlib.util.spec_from_file_location("axiom_bean_q_lab_run",SRC)
 module=importlib.util.module_from_spec(spec)
 sys.modules[spec.name]=module
 spec.loader.exec_module(module)
+from bean.optimization.learning_quota import quota
 
 def write_bytes(path, data):
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -28,11 +29,27 @@ def main():
     parser.add_argument("--out-dir",required=True,type=Path)
     parser.add_argument("--episodes",type=int,default=3000)
     parser.add_argument("--holdout-cases",type=int,default=400)
+    parser.add_argument("--verified-fixes-json",type=Path,default=None,
+                        help="External evaluator-signed, BEAN-authored source-fix receipts")
     args=parser.parse_args()
+    fixes=(json.loads(args.verified_fixes_json.read_text(encoding="utf-8"))
+           if args.verified_fixes_json else [])
+    key_hex=os.environ.get("BEAN_INDEPENDENT_QUOTA_HMAC_HEX","")
+    verifier_key=bytes.fromhex(key_hex) if key_hex else None
+    initial=quota(target=args.episodes,q_episodes=0,
+                  repair_receipts=fixes,evaluator_key=verifier_key)
+    episode_target=initial["remaining"]
+    if not episode_target:
+        raise ValueError("quota already completed entirely through signed BEAN fixes")
     args.out_dir.mkdir(parents=True,exist_ok=True)
     db=args.out_dir/"axiom-bean-q-learning.sqlite"
     report,trials=module.run_training(
-        db,episodes=args.episodes,test_cases=args.holdout_cases)
+        db,episodes=episode_target,test_cases=args.holdout_cases)
+    report["research_quota"]=quota(target=args.episodes,
+        q_episodes=report["actual_q_updates"],repair_receipts=fixes,
+        evaluator_key=verifier_key)
+    if report["research_quota"]["remaining"]:
+        raise AssertionError("unfulfilled measured Q + BEAN bugfix quota")
     # The original measured synthetic cases, losses and action candidates
     # are independently recoverable alongside BEAN's compact ledger.
     lines=b"".join(module.canonical(trial)+b"\n" for trial in trials)
@@ -46,7 +63,7 @@ def main():
         "records":len(trials),"source_bytes":len(lines),
         "compressed_bytes":len(archive),
         "round_trip_exact":gzip.decompress(archive)==lines}
-    if not manifest["round_trip_exact"] or manifest["records"]!=args.episodes:
+    if not manifest["round_trip_exact"] or manifest["records"]!=episode_target:
         raise AssertionError("full training history did not recover exactly")
     report["evidence_archive"]=manifest
     report["revision"]=os.environ.get("GITHUB_SHA","local_unpinned")
@@ -56,6 +73,7 @@ def main():
     write_bytes(report_path,json.dumps(report,sort_keys=True,indent=2).encode("utf-8")+b"\n")
     header={
         "training_episodes":report["training_episodes"],
+        "quota":report["research_quota"],
         "actual_q_updates":report["actual_q_updates"],
         "ledger_verification":report["ledger_verify"],
         "before":report["pretraining_validation"]["mean_cost"],
