@@ -81,6 +81,11 @@ def test_dated_partial_receipts_original_promise_and_revisions(tmp_path,monkeypa
     req=create_requisition(item,10,"supplier-req-1",job_id=job)
     approve_requisition(req["id"])
     line=attach_to_po(req["id"],po)["line_id"]
+    # An internal PO expected date alone is NOT evidence that the supplier
+    # ever promised that date: require an explicit confirmation record.
+    assert supplier_promise_history(line)==[]
+    record_supplier_promise(line,(today-timedelta(days=2)).isoformat(),
+                            source_ref="Supplier original confirmation")
     hist=supplier_promise_history(line)
     assert hist[0]["promised_on"]==(today-timedelta(days=2)).isoformat()
     # Later changing the promise does not erase the original lateness.
