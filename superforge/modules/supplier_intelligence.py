@@ -320,7 +320,7 @@ def recommend_suppliers(item_id, required_qty, needed_by=None, *, as_of=None):
             "quote_id":quote["id"],"unit":quote["stocking_unit"],
             "unit_price_usd":quote["unit_price"],"quote_ref":quote["source_ref"],
             "quoted_on":quote["quoted_on"],"valid_until":quote["valid_until"],
-            "required_qty":str(qty),"purchase_qty":str(purchase_qty),
+            "required_qty":format(qty.normalize(),"f"),"purchase_qty":format(purchase_qty.normalize(),"f"),
             "extended_usd":_money(cost),"lead_days":days,
             "quoted_lead_days":quote["quoted_lead_days"],
             "historical_median_lead_days":past_days,
