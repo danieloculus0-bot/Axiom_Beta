@@ -93,3 +93,52 @@ def test_real_estimate_and_erp(tmp_path,monkeypatch):
     assert advice["bean_core_invoked"] is False
     bean_receipt=journal([extracted],quote,advice)
     assert bean_receipt["connected"] and bean_receipt["bean_core_invoked"]
+
+
+
+def test_real_ezstimate_pr_to_axiom_local_draft(tmp_path,monkeypatch):
+    """Actual EZstimate canonical DB PR, staged into real Axiom stock tables."""
+    from ezstimate.procurement import create_request
+    from superforge.modules.purchasing import set_policy,import_ezstimate_request
+    from superforge.app import create_app
+    from superforge.db import db
+    monkeypatch.setenv("AXIOM_DATA_DIR",str(tmp_path/"axiom-pr"))
+    create_app({"TESTING":True})
+    with db() as con:
+        con.execute("INSERT INTO jobs(job_number) VALUES('WO-REAL-PR')")
+        con.execute("INSERT INTO inventory_items(item_number,on_hand) VALUES('AL-6061',4)")
+    with db() as con:
+        item=con.execute("SELECT id FROM inventory_items WHERE item_number='AL-6061'").fetchone()[0]
+    set_policy(item,"sheet",2,12,7,1)
+    body={
+        "requested_by":"Fixture buyer","department":"Purchasing",
+        "justification":"Machine job planned material shortage",
+        "lines":[{"material_key":"AL-6061","description":"Aluminum plate",
+                  "quantity":"5","unit":"sheet","needed_by":"2026-11-01",
+                  "job":"WO-REAL-PR","supplier_preference":"Supplier A",
+                  "source_ref":"EZstimate material forecast case 1"}]
+    }
+    saved=create_request(body,path=tmp_path/"ezstimate-pr.sqlite3")["request"]
+    result=import_ezstimate_request(saved,actor="cross-repo-fixture")
+    assert result["duplicate"] is False
+    assert import_ezstimate_request(saved,actor="cross-repo-fixture")["duplicate"] is True
+    with db() as con:
+        pr=con.execute("SELECT * FROM procurement_requisitions WHERE id=?",
+                       (result["requisitions"][0],)).fetchone()
+        assert pr["status"]=="draft"
+        assert pr["quantity"]==5
+        assert pr["unit"]=="sheet"
+        assert pr["source_request_id"]==saved["request_id"]
+        assert pr["needed_by"]=="2026-11-01"
+        assert pr["supplier_preference"]=="Supplier A"
+        assert con.execute("SELECT COUNT(*) FROM purchase_order_lines").fetchone()[0]==0
+    tampered=json.loads(json.dumps(saved))
+    tampered["payload"]["lines"][0]["quantity"]="999"
+    with pytest.raises(ValueError,match="digest"):
+        import_ezstimate_request(tampered)
+    wrong_unit=create_request({**body,"lines":[{**body["lines"][0],"unit":"lb"}]},
+                  path=tmp_path/"ezstimate-pr.sqlite3")["request"]
+    with pytest.raises(ValueError,match="unit mismatch"):
+        import_ezstimate_request(wrong_unit)
+    with db() as con:
+        assert con.execute("SELECT COUNT(*) FROM procurement_requisitions").fetchone()[0]==1

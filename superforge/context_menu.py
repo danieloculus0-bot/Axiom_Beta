@@ -4,6 +4,7 @@ from urllib.parse import urlencode
 MODULES=[
  ("job_tracker","Job Tracker","/jobs"),
  ("purchase_orders","Purchase Order Tracker","/purchase-orders"),
+ ("purchasing","Purchasing Intelligence","/purchasing"),
  ("inventory","Inventory Tracker","/inventory"),
  ("clocking","Job Clocking Errors","/clocking-errors"),
  ("quality","Quality Forge","/quality"),
@@ -27,9 +28,9 @@ MODULES=[
  ("audit","Audit Trail","/audit"),
 ]
 ENTITY_RELEVANCE={
- "job":{"job_tracker","purchase_orders","inventory","clocking","quality","pm","ez_methods","vault","ezfair","ppap","planning","integrations","leadership","executive","payroll","accounting","sheets","bean","audit"},
- "purchase_order":{"purchase_orders","job_tracker","inventory","quality","ez_methods","suppliers","integrations","bean","audit"},
- "inventory_item":{"inventory","purchase_orders","job_tracker","quality","ez_methods","suppliers","quoting","integrations","bean","audit"},
+ "job":{"job_tracker","purchase_orders","purchasing","inventory","clocking","quality","pm","ez_methods","vault","ezfair","ppap","planning","integrations","leadership","executive","payroll","accounting","sheets","bean","audit"},
+ "purchase_order":{"purchase_orders","purchasing","job_tracker","inventory","quality","ez_methods","suppliers","integrations","bean","audit"},
+ "inventory_item":{"inventory","purchasing","purchase_orders","job_tracker","quality","ez_methods","suppliers","quoting","integrations","bean","audit"},
  "clocking_error":{"clocking","job_tracker","quality","payroll","sheets","bean","audit"},
  "quality_record":{"quality","job_tracker","purchase_orders","inventory","pm","ez_methods","vault","ezfair","ppap","suppliers","leadership","executive","bean","audit"},
  "machine":{"pm","job_tracker","quality","ez_methods","planning","leadership","bean","audit"},
