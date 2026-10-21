@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .access_control import verified_actor
+
 import hashlib
 import json
 import os
@@ -82,7 +84,7 @@ def record_event(
             "target_module":str(target_module or module)[:120],
             "entity_type":str(entity_type)[:120],
             "entity_id":str(entity_id)[:200],
-            "actor":str(actor)[:200],
+            "actor":str(verified_actor(actor))[:200],
             "reason":str(reason)[:4000],
             "before":sanitize(before),
             "after":sanitize(after),
