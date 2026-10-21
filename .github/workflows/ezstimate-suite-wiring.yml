@@ -44,6 +44,12 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
+          repository: danieloculus0-bot/EZ-FAIR
+          ref: 15cc8cafe7af66c45326b61630ed2e82da90885c
+          path: ezfair-src
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
           repository: danieloculus0-bot/BEAN
           ref: 0110bc7214ac8e9b69e5b781293f1b04d372287b
           path: bean-core
@@ -51,6 +57,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install -e ".[dev]" -e "./forgevault-src[dev]" -e ./ezstimate-src psutil
-      - name: Verify real PDM, quote math, Axiom review state and BEAN journal
+      - run: python -m pip install -e ".[dev]" -e "./forgevault-src[dev]" -e ./ezstimate-src -r ezfair-src/requirements.txt psutil
+      - name: Verify joined released drawing, quote, FAI and BEAN journal
+        env:
+          AXIOM_JOINED_RECEIPT_DIR: integration-evidence
         run: python -m pytest -q integration_tests/test_ezstimate_suite_wiring.py
+      - name: Preserve machine-readable synthetic integration receipt
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: joined-quote-fai-${{ matrix.os }}
+          path: integration-evidence/receipt.json
+          if-no-files-found: error
