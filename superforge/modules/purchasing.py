@@ -352,12 +352,10 @@ def attach_to_po(requisition_id, purchase_order_id, *, actor="local"):
                            (purchase_order_id,requisition_id,item_id,ordered_qty,unit)
                            VALUES(?,?,?,?,?)""",(pid,rid,req["item_id"],req["quantity"],req["unit"]))
         line_id=int(cur.lastrowid)
-        from .supplier_intelligence import _capture_origin, _capture_promise
+        from .supplier_intelligence import _capture_origin
+        # A PO header's expected_date might be an internal goal, NOT a supplier
+        # promise. Only a separately sourced confirmation qualifies for KPI.
         _capture_origin(con,line_id,po["supplier_id"],po["order_date"])
-        if po["expected_date"]:
-            # Snapshot original PO promise, instead of silently rewriting history
-            # when someone later changes the freeform PO header date.
-            _capture_promise(con,line_id,po["expected_date"],"PO header at attachment")
         con.execute("UPDATE procurement_requisitions SET status='ordered' WHERE id=?",(rid,))
     _event("REQUISITION_LINKED_TO_PO",req["item_id"],actor,{"po_id":pid,"line_id":line_id,"requisition_id":rid})
     return {"line_id":line_id,"duplicate":False}
