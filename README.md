@@ -102,7 +102,7 @@ the Axiom application. The separately hosted ChatGPT app cannot reach
 
 Tests: `python -m pytest tests/test_favorites_navigation.py -q`.
 
-## Job Passport and public manufacturing lab (feature branch)
+## Job Passport and public manufacturing lab
 
 **Local application:** choose **Jobs**, then click a job number. The read-only
 Job Passport at `/jobs/<id>/passport` brings together directly linked
@@ -120,10 +120,12 @@ and JSON export. The demo does not connect to the local ERP, BEAN agent, shop
 machines, live ForgeVault drawing bytes, or suppliers. It does not claim
 production-grade Decimal math or authenticated, immutable server receipts.
 
-After this feature is merged and the Pages deployment succeeds, the expected
-URL is **https://danieloculus0-bot.github.io/Axiom_Beta/**. The URL is not a
-deployment confirmation. See the GitHub Pages workflow result and verify the
-hosted page before publishing it on the portfolio hub.
+The planned public Workshop hosting URL is
+**https://danieloculus0-bot.github.io/BEAN/portfolio/axiom/**, backed by a
+byte-for-byte copy of this repository's browser lab. BEAN Workshop publishing
+must be verified before this is called a live deployment. Axiom's repository
+currently has no separately configured GitHub Pages site, so its own workflow
+checks the browser lab without attempting deployment.
 
 Test the local workbench with `python -m pytest -q`, and the public demo
 logic with `node --test web/engine.test.mjs` (Node 22). GitHub Actions runs
