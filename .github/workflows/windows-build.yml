@@ -12,6 +12,9 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
+    env:
+      AXIOM_SMOKE_USER: package-ci-admin
+      AXIOM_SMOKE_PASSWORD: isolated-ci-identity-only
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,7 +29,15 @@ jobs:
 
       - name: Test source
         shell: pwsh
+        env:
+          AXIOM_LEGACY_TEST_BYPASS: '1'
         run: python -m pytest -q
+
+      - name: Provision disposable packaging user
+        shell: pwsh
+        run: |
+          $entry = python -c 'import os,json; from werkzeug.security import generate_password_hash; print("AXIOM_USERS_JSON="+json.dumps({os.environ["AXIOM_SMOKE_USER"]:{"password_hash":generate_password_hash(os.environ["AXIOM_SMOKE_PASSWORD"]),"role":"admin"}},separators=(",",":")))'
+          Add-Content -Path $env:GITHUB_ENV -Value $entry
 
       - name: Build one-file Axiom
         shell: pwsh
