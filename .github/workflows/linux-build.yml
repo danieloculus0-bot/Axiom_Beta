@@ -12,6 +12,9 @@ on:
 jobs:
   build-linux:
     runs-on: ubuntu-latest
+    env:
+      AXIOM_SMOKE_USER: package-ci-admin
+      AXIOM_SMOKE_PASSWORD: isolated-ci-identity-only
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,7 +27,22 @@ jobs:
           pip install -e '.[dev,build]'
 
       - name: Test source
+        env:
+          AXIOM_LEGACY_TEST_BYPASS: '1'
         run: python -m pytest -q
+
+      - name: Provision disposable authenticated packaging smoke
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import os, json
+          from werkzeug.security import generate_password_hash
+          print("AXIOM_USERS_JSON=" + json.dumps({
+              os.environ["AXIOM_SMOKE_USER"]: {
+                  "password_hash": generate_password_hash(os.environ["AXIOM_SMOKE_PASSWORD"]),
+                  "role": "admin"
+              }
+          }, separators=(",", ":")))
+          PY
 
       - name: Build one-file Axiom
         run: |
@@ -41,14 +59,12 @@ jobs:
           trap 'kill $pid 2>/dev/null || true' EXIT
           ready=0
           for i in $(seq 1 45); do
-            if curl -fsS http://127.0.0.1:5061/health | grep -q '"Axiom"'; then ready=1; break; fi
+            if curl -fsS http://127.0.0.1:5061/login | grep -q 'Axiom Sign In'; then ready=1; break; fi
             if ! kill -0 $pid 2>/dev/null; then cat "$RUNNER_TEMP/axiom.log"; exit 1; fi
             sleep 1
           done
           test "$ready" = "1"
-          curl -fsS http://127.0.0.1:5061/payroll >/dev/null
-          curl -fsS http://127.0.0.1:5061/accounting >/dev/null
-          curl -fsS http://127.0.0.1:5061/sheets >/dev/null
+          python tools/packaging_auth_smoke.py http://127.0.0.1:5061
           kill $pid
           wait $pid 2>/dev/null || true
           trap - EXIT
@@ -77,13 +93,12 @@ jobs:
           pid=$!
           ready=0
           for i in $(seq 1 45); do
-            if curl -fsS http://127.0.0.1:5062/health | grep -q '"Axiom"'; then ready=1; break; fi
+            if curl -fsS http://127.0.0.1:5062/login | grep -q 'Axiom Sign In'; then ready=1; break; fi
             if ! kill -0 $pid 2>/dev/null; then cat "$RUNNER_TEMP/installed-axiom.log"; exit 1; fi
             sleep 1
           done
           test "$ready" = "1"
-          curl -fsS http://127.0.0.1:5062/methods >/dev/null
-          curl -fsS http://127.0.0.1:5062/payroll >/dev/null
+          python "$GITHUB_WORKSPACE/tools/packaging_auth_smoke.py" http://127.0.0.1:5062
           kill $pid
           wait $pid 2>/dev/null || true
           test -f "$AXIOM_DATA_DIR/axiom.db"
