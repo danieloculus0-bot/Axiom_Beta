@@ -1,0 +1,51 @@
+name: Axiom Browser Lab Pages
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "web/**"
+      - ".github/workflows/pages.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test web/engine.test.mjs
+      - name: Assert source files and synthetic boundary are present
+        run: |
+          test -s web/index.html
+          test -s web/engine.mjs
+          grep -q 'Interactive sample, not live ERP' web/index.html
+          grep -q 'No production approval implied' web/index.html
+
+  publish:
+    if: github.event_name != 'pull_request'
+    needs: verify-demo
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+      - id: deployment
+        uses: actions/deploy-pages@v4
