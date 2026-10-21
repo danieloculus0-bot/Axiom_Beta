@@ -4,6 +4,23 @@ Current ERP consolidation target: a local-first manufacturing operations and qua
 
 [**Current 16-repository portfolio, CI status, and ownership map**](docs/CURRENT_PORTFOLIO.md)
 
+## Axiom × BEAN — the operating model
+
+**[Public project overview](https://danieloculus0-bot.github.io/BEAN/axiom.html)** ·
+**[Managed workbook architecture](docs/MANAGED_WORKBOOKS_ARCHITECTURE.md)**
+
+Keep the Excel-compatible editor and the existing workbook. Axiom should
+retain the controlled original, interpret tables as **proposals**, and move
+**approved** data into proper linked manufacturing and business records.
+The goal is to retire disconnected private shadow-ERP spreadsheets, **not**
+replace Excel with another new spreadsheet engine.
+
+The present Sheet Workbench is a useful simplified grid, **not** a full-fidelity
+native XLSX editor and not yet a document-revision ingestion service. That
+capability is scoped in the architecture document with explicit acceptance
+tests. The persistent Axiom Favorites UI and local BEAN navigation connector
+are already implemented and separately verified.
+
 ## Current build state
 
 **Reviewed:** 2026-10-20 · **Inspected main:** `bd86e7a2227c` · **Type:** working experimental/beta code; not automatically production-certified.
