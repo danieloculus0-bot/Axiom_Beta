@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from html import escape
+import json
 import uuid
 
 from flask import Blueprint, redirect, request
@@ -49,13 +50,20 @@ def purchasing_workbench():
             elif action=="request":
                 engine.create_requisition(f.get("item_id"),f.get("quantity"),
                                           f.get("request_key"),job_id=f.get("job_id") or None,
-                                          actor=actor)
+                                          needed_by=f.get('needed_by') or None,
+                                          supplier_preference=f.get('supplier_preference') or '',actor=actor)
             elif action=="approve":
                 engine.approve_requisition(f.get("requisition_id"),actor=actor)
             elif action=="attach":
                 engine.attach_to_po(f.get("requisition_id"),f.get("purchase_order_id"),actor=actor)
             elif action=="receive":
                 engine.receive(f.get("line_id"),f.get("quantity"),f.get("movement_key"),actor=actor)
+            elif action=='import_ezstimate':
+                try:
+                    document=json.loads(f.get('payload_json') or '{}')
+                except (TypeError,ValueError) as exc:
+                    raise ValueError('EZstimate input must be valid JSON') from exc
+                engine.import_ezstimate_request(document,actor=actor)
             elif action=="method":
                 engine.link_method_demand(f.get("dependency_id"),f.get("item_id"),f.get("quantity"),actor=actor)
             else:
@@ -171,12 +179,15 @@ def purchasing_workbench():
        +"".join("<option value='"+h(j["id"])+"'>"+h(j["job_number"])+"</option>" for j in jobs)
        +"</select></label>"
        "<label>Qty<input name='quantity' type='number' min='.0001' step='.0001' required></label>"
+       "<label>Need by<input name='needed_by' type='date'></label>"
+       "<label>Supplier preference<input name='supplier_preference' maxlength='200'></label>"
        "<input type='hidden' name='request_key' value='"+uuid.uuid4().hex+"'>",
        "Draft requisition")
-    body+="<div style='overflow:auto'><table><thead><tr><th>PR</th><th>Item</th><th>Job</th><th>Qty</th><th>Unit</th><th>Status</th><th>PO</th><th>Action</th></tr></thead><tbody>"
+    body+="<div style='overflow:auto'><table><thead><tr><th>PR</th><th>Item</th><th>Job</th><th>Qty</th><th>Unit</th><th>Needed by</th><th>Source</th><th>Status</th><th>PO</th><th>Action</th></tr></thead><tbody>"
     for r in reqs:
         body+="<tr><td>PR-"+h(r["id"])+"</td><td>"+h(r["item_number"])+"</td><td>"+h(r["job_number"])+"</td>"
-        body+="<td>"+h(r["quantity"])+"</td><td>"+h(r["unit"])+"</td><td>"+h(r["status"])+"</td>"
+        body+="<td>"+h(r["quantity"])+"</td><td>"+h(r["unit"])+"</td>"
+        body+="<td>"+h(r['needed_by'])+"</td><td>"+h(r['source_request_id'] or 'Local')+"</td><td>"+h(r["status"])+"</td>"
         body+="<td>"+h(r["po_number"])+"</td><td>"
         if r["status"]=="draft":
             body+=form_for("approve","<input type='hidden' name='requisition_id' value='"+h(r["id"])+"'>","Approve for local planning")
@@ -187,6 +198,14 @@ def purchasing_workbench():
         body+="</td></tr>"
     body+="</tbody></table></div></div>"
 
+    body+="<details class='panel'><summary><b>Import EZstimate material requisition</b></summary>"
+    body+="<p class='sub'>Paste an EZstimate saved PR object or dispatch envelope with request ID, payload and SHA-256. "
+    body+="All lines must match Axiom inventory item codes, exact stocking units and known job numbers. "
+    body+="Atomic import creates local review-required drafts and never places supplier orders.</p>"
+    body+=form_for('import_ezstimate',
+       "<label style='min-width:100%'>EZstimate JSON<textarea name='payload_json' rows='6' required "
+       "placeholder='Paste source purchase request JSON'></textarea></label>","Import as local drafts")
+    body+="</details>"
     body+="<div class='panel'><h2>Purchase order receiving</h2>"
     body+="<p class='sub'>Receipts increment inventory once, reduce PO outstanding quantities and record "
     body+="transaction evidence. Fully received PO lines close their requisitions; a fully received PO closes only when all its linked lines are complete.</p>"
