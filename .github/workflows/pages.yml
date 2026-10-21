@@ -1,4 +1,4 @@
-name: Axiom Browser Lab Pages
+name: Axiom Browser Lab Verification
 on:
   push:
     branches: [main]
@@ -30,22 +30,3 @@ jobs:
           grep -q 'Interactive sample, not live ERP' web/index.html
           grep -q 'No production approval implied' web/index.html
 
-  publish:
-    if: github.event_name != 'pull_request'
-    needs: verify-demo
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: web
-      - id: deployment
-        uses: actions/deploy-pages@v4
