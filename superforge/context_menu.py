@@ -61,13 +61,34 @@ ENTITY_RELEVANCE={
  "corrective_action":{"quality","leadership","executive","bean","reports","audit"},
  "audit_event":{"audit"},
 }
+# Deterministic shortcuts by record type; not BEAN-generated inference.
+CONTEXT_SUGGESTIONS={
+ "job":("job_tracker","ez_methods","quality","inventory","clocking"),
+ "purchase_order":("purchase_orders","suppliers","inventory","quality"),
+ "quality_record":("quality","ezfair","job_tracker","vault","reports"),
+ "corrective_action":("quality","leadership","reports"),
+ "part":("vault","ezfair","ez_methods","quoting","inventory"),
+ "document":("vault","ezfair","ez_methods","quality"),
+ "fai":("ezfair","vault","quality","ppap"),
+ "method_plan":("ez_methods","job_tracker","vault","planning"),
+ "machine":("pm","quality","planning"),
+ "inventory_item":("inventory","purchase_orders","quoting","quality"),
+ "sheet_book":("sheets","accounting","payroll","reports"),
+ "quote_intake":("quoting","inventory","purchase_orders","planning"),
+ "payroll_run":("payroll","accounting","sheets"),
+ "workflow_action":("planning","leadership","reports"),
+}
+
 def menu_for(entity_type:str="",entity_id:str="",current_module:str="")->list[dict]:
     allowed=set(ENTITY_RELEVANCE.get(entity_type,{key for key,_,_ in MODULES}))
     allowed.add("reports")
     query=urlencode({"context_type":entity_type,"context_id":entity_id}) if entity_type and entity_id else ""
+    priority=CONTEXT_SUGGESTIONS.get(entity_type,())
+    rank={key:i for i,key in enumerate(priority)}
     rows=[]
     for key,label,path in MODULES:
         if key not in allowed:
             continue
-        rows.append({"key":key,"label":label,"href":path+(("?"+query) if query else ""),"current":key==current_module})
+        rows.append({"key":key,"label":label,"href":path+(("?"+query) if query else ""),"current":key==current_module,"suggested":key in rank})
+    rows.sort(key=lambda item:(0,rank[item["key"]]) if item["key"] in rank else (1,0))
     return rows
