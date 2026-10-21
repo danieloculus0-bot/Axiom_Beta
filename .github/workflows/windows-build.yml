@@ -12,6 +12,9 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
+    env:
+      AXIOM_SMOKE_USER: package-ci-admin
+      AXIOM_SMOKE_PASSWORD: isolated-ci-identity-only
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,7 +29,15 @@ jobs:
 
       - name: Test source
         shell: pwsh
+        env:
+          AXIOM_LEGACY_TEST_BYPASS: '1'
         run: python -m pytest -q
+
+      - name: Provision disposable packaging user
+        shell: pwsh
+        run: |
+          $entry = python -c 'import os,json; from werkzeug.security import generate_password_hash; print("AXIOM_USERS_JSON="+json.dumps({os.environ["AXIOM_SMOKE_USER"]:{"password_hash":generate_password_hash(os.environ["AXIOM_SMOKE_PASSWORD"]),"role":"admin"}},separators=(",",":")))'
+          Add-Content -Path $env:GITHUB_ENV -Value $entry
 
       - name: Build one-file Axiom
         shell: pwsh
@@ -45,16 +56,14 @@ jobs:
             foreach ($i in 1..45) {
               Start-Sleep -Seconds 1
               try {
-                $health = Invoke-RestMethod -Uri "http://127.0.0.1:5060/health" -TimeoutSec 2
-                if ($health.ok -eq $true -and $health.app -eq "Axiom") { $ok = $true; break }
+                $login = Invoke-WebRequest -Uri "http://127.0.0.1:5060/login" -UseBasicParsing -TimeoutSec 2
+                if ($login.StatusCode -eq 200 -and $login.Content -match "Axiom Sign In") { $ok = $true; break }
               } catch {}
               if ($proc.HasExited) { throw "Axiom.exe exited before health check passed" }
             }
             if (!$ok) { throw "Frozen Axiom health endpoint did not become ready" }
-            foreach ($route in @("payroll","accounting","sheets","quality","methods","reports")) {
-              $response = Invoke-WebRequest -Uri "http://127.0.0.1:5060/$route" -UseBasicParsing -TimeoutSec 5
-              if ($response.StatusCode -ne 200) { throw "Route /$route failed" }
-            }
+            python tools/packaging_auth_smoke.py http://127.0.0.1:5060
+            if ($LASTEXITCODE -ne 0) { throw "Authenticated frozen Axiom smoke failed" }
           } finally {
             if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force }
           }
@@ -90,14 +99,14 @@ jobs:
             foreach ($i in 1..45) {
               Start-Sleep -Seconds 1
               try {
-                $health = Invoke-RestMethod -Uri "http://127.0.0.1:5060/health" -TimeoutSec 2
-                if ($health.ok -eq $true -and $health.app -eq "Axiom") { $ok = $true; break }
+                $login = Invoke-WebRequest -Uri "http://127.0.0.1:5060/login" -UseBasicParsing -TimeoutSec 2
+                if ($login.StatusCode -eq 200 -and $login.Content -match "Axiom Sign In") { $ok = $true; break }
               } catch {}
               if ($proc.HasExited) { throw "Installed Axiom exited before health check passed" }
             }
             if (!$ok) { throw "Installed Axiom did not become healthy" }
-            $payroll = Invoke-WebRequest -Uri "http://127.0.0.1:5060/payroll" -UseBasicParsing -TimeoutSec 5
-            if ($payroll.StatusCode -ne 200) { throw "Installed payroll route failed" }
+            python tools/packaging_auth_smoke.py http://127.0.0.1:5060
+            if ($LASTEXITCODE -ne 0) { throw "Authenticated installed Axiom smoke failed" }
           } finally {
             if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force }
           }

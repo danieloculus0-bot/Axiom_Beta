@@ -101,3 +101,26 @@ the Axiom application. The separately hosted ChatGPT app cannot reach
 `localhost` on the user's workstation by itself.
 
 Tests: `python -m pytest tests/test_favorites_navigation.py -q`.
+
+
+## Axiom web authorization (draft audit remediation)
+
+Axiom requires server-side accounts through \`AXIOM_USERS_JSON\` using
+\`{"username":{"password_hash":"<Werkzeug password hash>","role":"editor"}}\`.
+Create salted hashes with
+\`python -c "from werkzeug.security import generate_password_hash; print(generate_password_hash(input('Password: ')))"\`.
+Supported roles: viewer (read-only workspaces), editor (ordinary module
+changes) and admin (also finance, accounting, payroll, sheets and ERP integration
+operations). All human mutation endpoints require a signed login session and
+CSRF token. Identity fields in request forms are not an authorization source:
+audit actors must be derived from the verified session. Deploy only on
+loopback or behind HTTPS termination; set \`AXIOM_TLS_TERMINATED=1\` to issue
+Secure session cookies.
+
+**Do not enable anonymous accounts.** Missing user provisioning causes
+HTTP 503 for protected routes. The pre-auth functional test suite is temporarily
+run with \`AXIOM_LEGACY_TEST_BYPASS=1\` **only** on Flask TESTING instances.
+\`tests/test_auth_security.py\` forces real security enforcement even in testing.
+This separation is a migration measure, not a replacement for authenticated
+end-to-end integration testing. Some JavaScript API interactions may need to
+supply the session CSRF header before browser workflows are ready.
