@@ -5,6 +5,7 @@ import json
 from flask import Flask, jsonify, redirect, request, url_for
 
 from .audit import tail_entries, verify_journal, record_event
+from .access_control import install_access_control, verified_actor
 from .context_menu import menu_for
 from .favorites import init_favorites, destinations, find_destinations, list_favorites, add_favorite, remove_favorite
 from .db import db, init_db
@@ -100,6 +101,7 @@ def create_app(test_config:dict|None=None)->Flask:
     app.register_blueprint(reporting_blueprint)
     app.register_blueprint(finance_blueprint)
     app.register_blueprint(executive_blueprint)
+    install_access_control(app)
 
     @app.get("/")
     def dashboard():
@@ -188,8 +190,8 @@ def create_app(test_config:dict|None=None)->Flask:
                     cur=con.execute("INSERT INTO jobs(job_number,sales_order,quantity,due_date,status,current_operation,priority,notes) VALUES(?,?,?,?,?,?,?,?)",
                         (job,request.form.get("sales_order"),request.form.get("quantity") or None,request.form.get("due_date") or None,request.form.get("status") or "open",request.form.get("current_operation"),request.form.get("priority") or "normal",request.form.get("notes")))
                     rid=cur.lastrowid
-                record_event(event_type="JOB_MUTATION",action="CREATE",module="job_tracker",entity_type="job",entity_id=rid,actor="local")
-                publish("job.changed",source_module="job_tracker",entity_type="job",entity_id=str(rid),actor="local",payload={"job_number":job})
+                record_event(event_type="JOB_MUTATION",action="CREATE",module="job_tracker",entity_type="job",entity_id=rid,actor=verified_actor("local"))
+                publish("job.changed",source_module="job_tracker",entity_type="job",entity_id=str(rid),actor=verified_actor("local"),payload={"job_number":job})
             return redirect("/jobs")
         ctype,cid=request.args.get("context_type"),request.args.get("context_id")
         sql="SELECT id,job_number,sales_order,quantity,due_date,status,current_operation,priority FROM jobs"; args=()
@@ -223,8 +225,8 @@ def create_app(test_config:dict|None=None)->Flask:
                     cur=con.execute("INSERT INTO purchase_orders(po_number,supplier_id,job_id,status,order_date,required_date,expected_date,total_value,notes) VALUES(?,?,?,?,?,?,?,?,?)",
                         (po,request.form.get("supplier_id") or None,request.form.get("job_id") or None,request.form.get("status") or "open",request.form.get("order_date") or None,request.form.get("required_date") or None,request.form.get("expected_date") or None,request.form.get("total_value") or None,request.form.get("notes")))
                     rid=cur.lastrowid
-                record_event(event_type="PO_MUTATION",action="CREATE",module="purchase_orders",entity_type="purchase_order",entity_id=rid,actor="local")
-                publish("po.created",source_module="purchase_orders",entity_type="purchase_order",entity_id=str(rid),actor="local",payload={"po_number":po,"supplier_id":request.form.get("supplier_id") or None,"job_id":request.form.get("job_id") or None,"required_date":request.form.get("required_date") or "","expected_date":request.form.get("expected_date") or "","status":request.form.get("status") or "open"})
+                record_event(event_type="PO_MUTATION",action="CREATE",module="purchase_orders",entity_type="purchase_order",entity_id=rid,actor=verified_actor("local"))
+                publish("po.created",source_module="purchase_orders",entity_type="purchase_order",entity_id=str(rid),actor=verified_actor("local"),payload={"po_number":po,"supplier_id":request.form.get("supplier_id") or None,"job_id":request.form.get("job_id") or None,"required_date":request.form.get("required_date") or "","expected_date":request.form.get("expected_date") or "","status":request.form.get("status") or "open"})
             return redirect("/purchase-orders")
         ctype,cid=request.args.get("context_type"),request.args.get("context_id")
         sql="""SELECT p.id,p.po_number,s.name supplier,j.job_number,p.status,p.order_date,p.required_date,p.expected_date,p.total_value
@@ -253,12 +255,12 @@ def create_app(test_config:dict|None=None)->Flask:
                     cur=con.execute("INSERT INTO inventory_items(item_number,description,material_spec,location,on_hand,allocated,reorder_point,supplier_id,notes) VALUES(?,?,?,?,?,?,?,?,?)",
                         (item,request.form.get("description"),request.form.get("material_spec"),request.form.get("location"),request.form.get("on_hand") or 0,request.form.get("allocated") or 0,request.form.get("reorder_point") or 0,request.form.get("supplier_id") or None,request.form.get("notes")))
                     rid=cur.lastrowid
-                record_event(event_type="INVENTORY_MUTATION",action="CREATE",module="inventory",entity_type="inventory_item",entity_id=rid,actor="local")
+                record_event(event_type="INVENTORY_MUTATION",action="CREATE",module="inventory",entity_type="inventory_item",entity_id=rid,actor=verified_actor("local"))
                 available=float(request.form.get("on_hand") or 0)-float(request.form.get("allocated") or 0)
                 reorder=float(request.form.get("reorder_point") or 0)
-                publish("inventory.item.created",source_module="inventory",entity_type="inventory_item",entity_id=str(rid),actor="local",payload={"item_number":item,"supplier_id":request.form.get("supplier_id") or None,"available":available,"reorder_point":reorder})
+                publish("inventory.item.created",source_module="inventory",entity_type="inventory_item",entity_id=str(rid),actor=verified_actor("local"),payload={"item_number":item,"supplier_id":request.form.get("supplier_id") or None,"available":available,"reorder_point":reorder})
                 if available<=reorder:
-                    publish("inventory.shortage",source_module="inventory",entity_type="inventory_item",entity_id=str(rid),actor="local",reason="Available quantity is at or below reorder point",payload={"item_number":item,"supplier_id":request.form.get("supplier_id") or None,"available":available,"reorder_point":reorder})
+                    publish("inventory.shortage",source_module="inventory",entity_type="inventory_item",entity_id=str(rid),actor=verified_actor("local"),reason="Available quantity is at or below reorder point",payload={"item_number":item,"supplier_id":request.form.get("supplier_id") or None,"available":available,"reorder_point":reorder})
             return redirect("/inventory")
         ctype,cid=request.args.get("context_type"),request.args.get("context_id")
         sql="SELECT id,item_number,description,material_spec,location,on_hand,allocated,(on_hand-allocated) available,reorder_point,status FROM inventory_items"; args=()
@@ -284,8 +286,8 @@ def create_app(test_config:dict|None=None)->Flask:
                     cur=con.execute("INSERT INTO clocking_errors(employee_ref,job_id,operation,error_type,reported_by,description) VALUES(?,?,?,?,?,?)",
                         (request.form.get("employee_ref"),request.form.get("job_id") or None,request.form.get("operation"),request.form.get("error_type") or "unknown",request.form.get("reported_by") or "local",desc))
                     rid=cur.lastrowid
-                record_event(event_type="CLOCKING_MUTATION",action="CREATE",module="clocking",entity_type="clocking_error",entity_id=rid,actor=request.form.get("reported_by") or "local")
-                publish("clocking.error",source_module="clocking",entity_type="clocking_error",entity_id=str(rid),actor=request.form.get("reported_by") or "local",payload={"job_id":request.form.get("job_id"),"error_type":request.form.get("error_type")})
+                record_event(event_type="CLOCKING_MUTATION",action="CREATE",module="clocking",entity_type="clocking_error",entity_id=rid,actor=verified_actor(request.form.get("reported_by") or "local"))
+                publish("clocking.error",source_module="clocking",entity_type="clocking_error",entity_id=str(rid),actor=verified_actor(request.form.get("reported_by") or "local"),payload={"job_id":request.form.get("job_id"),"error_type":request.form.get("error_type")})
             return redirect("/clocking-errors")
         ctype,cid=request.args.get("context_type"),request.args.get("context_id")
         sql="""SELECT c.id,c.employee_ref,j.job_number,c.operation,c.error_type,c.reported_by,c.status,c.description,c.created_at
@@ -324,7 +326,7 @@ def create_app(test_config:dict|None=None)->Flask:
             data={k:request.form.get(k) for k in request.form}
             for k in ("customer_id","supplier_id","part_id","job_id","po_id","machine_id"):
                 data[k]=int(data[k]) if data.get(k) else None
-            rid=create_quality_record(data,actor=request.form.get("actor") or "local")
+            rid=create_quality_record(data,actor=verified_actor(request.form.get("actor") or "local"))
             return redirect(url_for("quality_detail",record_id=rid))
         body="""<section class='page-head'><div><p class='eyebrow'>Controlled occurrence</p><h1>New Quality Record</h1></div></section>
 <div class='panel'><form method='post' class='form-grid'>
@@ -341,7 +343,7 @@ def create_app(test_config:dict|None=None)->Flask:
     def quality_detail(record_id:int):
         if request.method=="POST":
             action=request.form.get("action","update_record")
-            actor=request.form.get("actor") or "local"
+            actor=verified_actor(request.form.get("actor") or "local")
             if action=="update_record":
                 changes={k:request.form.get(k) for k in ("severity","status","owner","due_date","description","containment","disposition","root_cause","corrective_action","preventive_action","effectiveness")}
                 update_quality_record(record_id,changes,actor=actor,reason=request.form.get("change_reason") or "Case workspace update")
@@ -464,7 +466,7 @@ def create_app(test_config:dict|None=None)->Flask:
             data={k:request.form.get(k) for k in request.form}
             for k in ("job_id","part_id"):
                 data[k]=int(data[k]) if data.get(k) else None
-            create_method_plan(data,actor=request.form.get("actor") or "local")
+            create_method_plan(data,actor=verified_actor(request.form.get("actor") or "local"))
             return redirect("/methods")
         ctype,cid=request.args.get("context_type",""),request.args.get("context_id","")
         plans,deps=method_dashboard(ctype,cid)
@@ -486,8 +488,8 @@ def create_app(test_config:dict|None=None)->Flask:
                 cur=con.execute("INSERT INTO machines(machine_number,name,department,location,criticality,manufacturer,model,serial_number,notes) VALUES(?,?,?,?,?,?,?,?,?)",
                     tuple(request.form.get(k) for k in ("machine_number","name","department","location","criticality","manufacturer","model","serial_number","notes")))
                 rid=cur.lastrowid
-            record_event(event_type="PM_MUTATION",action="MACHINE_CREATE",module="pm",entity_type="machine",entity_id=rid,actor="local")
-            publish("pm.machine.created",source_module="pm",entity_type="machine",entity_id=str(rid),actor="local",payload={"machine_number":request.form.get("machine_number"),"department":request.form.get("department"),"criticality":request.form.get("criticality")})
+            record_event(event_type="PM_MUTATION",action="MACHINE_CREATE",module="pm",entity_type="machine",entity_id=rid,actor=verified_actor("local"))
+            publish("pm.machine.created",source_module="pm",entity_type="machine",entity_id=str(rid),actor=verified_actor("local"),payload={"machine_number":request.form.get("machine_number"),"department":request.form.get("department"),"criticality":request.form.get("criticality")})
             return redirect("/pm")
         rows=_list("SELECT id,machine_number,name,department,location,criticality,status,manufacturer,model FROM machines ORDER BY id DESC LIMIT 300")
         form="""<details class='panel'><summary><b>Add machine</b></summary><form method='post' class='form-grid' style='margin-top:12px'>
@@ -504,8 +506,8 @@ def create_app(test_config:dict|None=None)->Flask:
                 cur=con.execute("INSERT INTO documents(document_number,title,revision,document_type,status,part_id,job_id,storage_reference,notes) VALUES(?,?,?,?,?,?,?,?,?)",
                     (request.form.get("document_number"),request.form.get("title"),request.form.get("revision"),request.form.get("document_type") or "drawing",request.form.get("status") or "draft",request.form.get("part_id") or None,request.form.get("job_id") or None,request.form.get("storage_reference"),request.form.get("notes")))
                 rid=cur.lastrowid
-            record_event(event_type="VAULT_MUTATION",action="DOCUMENT_CREATE",module="vault",entity_type="document",entity_id=rid,actor="local")
-            publish("vault.document.created",source_module="vault",entity_type="document",entity_id=str(rid),actor="local",payload={"document_number":request.form.get("document_number"),"revision":request.form.get("revision"),"document_type":request.form.get("document_type") or "drawing","part_id":request.form.get("part_id") or None,"job_id":request.form.get("job_id") or None,"status":request.form.get("status") or "draft"})
+            record_event(event_type="VAULT_MUTATION",action="DOCUMENT_CREATE",module="vault",entity_type="document",entity_id=rid,actor=verified_actor("local"))
+            publish("vault.document.created",source_module="vault",entity_type="document",entity_id=str(rid),actor=verified_actor("local"),payload={"document_number":request.form.get("document_number"),"revision":request.form.get("revision"),"document_type":request.form.get("document_type") or "drawing","part_id":request.form.get("part_id") or None,"job_id":request.form.get("job_id") or None,"status":request.form.get("status") or "draft"})
             return redirect("/vault")
         ctype,cid=request.args.get("context_type"),request.args.get("context_id")
         sql="SELECT id,document_number,title,revision,document_type,status,part_id,job_id,storage_reference FROM documents"; args=()
@@ -558,8 +560,8 @@ def create_app(test_config:dict|None=None)->Flask:
             with db() as con:
                 cur=con.execute("INSERT INTO suppliers(name,code,contact,email,phone,notes) VALUES(?,?,?,?,?,?)",tuple(request.form.get(k) for k in ("name","code","contact","email","phone","notes")))
                 rid=cur.lastrowid
-            record_event(event_type="SUPPLIER_MUTATION",action="CREATE",module="suppliers",entity_type="supplier",entity_id=rid,actor="local")
-            publish("supplier.created",source_module="suppliers",entity_type="supplier",entity_id=str(rid),actor="local",payload={"name":request.form.get("name"),"code":request.form.get("code")})
+            record_event(event_type="SUPPLIER_MUTATION",action="CREATE",module="suppliers",entity_type="supplier",entity_id=rid,actor=verified_actor("local"))
+            publish("supplier.created",source_module="suppliers",entity_type="supplier",entity_id=str(rid),actor=verified_actor("local"),payload={"name":request.form.get("name"),"code":request.form.get("code")})
             return redirect("/suppliers")
         rows=_list("SELECT id,name,code,contact,email,phone,status,notes FROM suppliers ORDER BY name")
         form="""<details class='panel'><summary><b>Add supplier</b></summary><form method='post' class='form-grid' style='margin-top:12px'>
@@ -576,8 +578,8 @@ def create_app(test_config:dict|None=None)->Flask:
                 cur=con.execute("INSERT INTO erp_connections(name,erp_type,adapter_type,direction,config_json,credentials_ref) VALUES(?,?,?,?,?,?)",
                     (request.form.get("name"),request.form.get("erp_type") or "generic",request.form.get("adapter_type") or "flatfile",request.form.get("direction") or "bidirectional",json.dumps(config),request.form.get("credentials_ref")))
                 rid=cur.lastrowid
-            record_event(event_type="INTEGRATION_CONFIG",action="CREATE",module="integrations",entity_type="erp_connection",entity_id=rid,actor="local",data={"name":request.form.get("name"),"adapter":request.form.get("adapter_type")})
-            publish("erp.connection.created",source_module="integrations",entity_type="erp_connection",entity_id=str(rid),actor="local",payload={"name":request.form.get("name"),"erp_type":request.form.get("erp_type") or "generic","adapter_type":request.form.get("adapter_type") or "flatfile","direction":request.form.get("direction") or "bidirectional"})
+            record_event(event_type="INTEGRATION_CONFIG",action="CREATE",module="integrations",entity_type="erp_connection",entity_id=rid,actor=verified_actor("local"),data={"name":request.form.get("name"),"adapter":request.form.get("adapter_type")})
+            publish("erp.connection.created",source_module="integrations",entity_type="erp_connection",entity_id=str(rid),actor=verified_actor("local"),payload={"name":request.form.get("name"),"erp_type":request.form.get("erp_type") or "generic","adapter_type":request.form.get("adapter_type") or "flatfile","direction":request.form.get("direction") or "bidirectional"})
             return redirect("/integrations")
         rows=_list("SELECT id,name,erp_type,adapter_type,direction,enabled,credentials_ref,updated_at FROM erp_connections ORDER BY id DESC")
         runs=_list("SELECT id,run_id,direction,entity_type,status,read_count,applied_count,error_count,started_at,completed_at FROM integration_runs ORDER BY id DESC LIMIT 30")
@@ -621,7 +623,7 @@ def create_app(test_config:dict|None=None)->Flask:
             with db() as con:
                 con.execute("""INSERT INTO user_preferences(user_key,theme_mode,accent,compact_mode) VALUES('local',?,?,0)
                                ON CONFLICT(user_key) DO UPDATE SET theme_mode=excluded.theme_mode,accent=excluded.accent,updated_at=CURRENT_TIMESTAMP""",(mode,accent))
-            record_event(event_type="UI_PREFERENCE",action="UPDATE",module="shell",entity_type="user_preferences",entity_id="local",actor="local",data={"theme_mode":mode,"accent":accent})
+            record_event(event_type="UI_PREFERENCE",action="UPDATE",module="shell",entity_type="user_preferences",entity_id="local",actor=verified_actor("local"),data={"theme_mode":mode,"accent":accent})
             return redirect("/appearance")
         body="""<section class='page-head'><div><p class='eyebrow'>Keep it simple</p><h1>Appearance</h1><p class='sub'>Dark stays the default. Accent changes affect buttons, active navigation and subtle highlights. Light mode changes the neutral surfaces without spraying the accent across the whole UI.</p></div></section>
 <div class='panel'><form method='post' class='form-grid'><label>Mode<select name='theme_mode'><option value='dark'>Dark</option><option value='light'>Light</option></select></label>
