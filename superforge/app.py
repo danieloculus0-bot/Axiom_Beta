@@ -34,6 +34,8 @@ from .modules.finance_ui import finance_blueprint
 from .modules.executive import pareto_queue, register_executive_logic
 from .modules.executive_ui import executive_blueprint
 from .ui import page
+from .modules.purchasing import init_purchasing
+from .modules.purchasing_ui import purchasing_blueprint
 from .modules.job_passport import passport_blueprint
 
 def e(value)->str:
@@ -84,6 +86,7 @@ def _list(sql,args=()):
 def create_app(test_config:dict|None=None)->Flask:
     init_db()
     init_extensions()
+    init_purchasing()
     init_finance_schema()
     init_org_schema()
     init_favorites()
@@ -102,6 +105,7 @@ def create_app(test_config:dict|None=None)->Flask:
     app.register_blueprint(collaboration_blueprint)
     app.register_blueprint(reporting_blueprint)
     app.register_blueprint(passport_blueprint)
+    app.register_blueprint(purchasing_blueprint)
     app.register_blueprint(finance_blueprint)
     app.register_blueprint(executive_blueprint)
 
@@ -246,7 +250,7 @@ def create_app(test_config:dict|None=None)->Flask:
 <label>Expected Date<input name='expected_date' type='date'></label><label>Total Value<input name='total_value' type='number' step='.01'></label>
 <label class='wide'>Notes<textarea name='notes'></textarea></label><div><button>Save PO</button></div></form></details>"""
         body="<section class='page-head'><div><p class='eyebrow'>Purchasing</p><h1>Purchase Order Tracker</h1><p class='sub'>Due dates, supplier linkage and job impact live in the same context as quality and inventory.</p></div></section>"+context_banner()+form+"<div class='panel'>"+table_html(rows,[("po_number","PO"),("supplier","Supplier"),("job_number","Job"),("status","Status"),("required_date","Required"),("expected_date","Expected"),("total_value","Value")],"purchase_order","po_number")+"</div>"
-        return page("Purchase Order Tracker",body,module_key="purchase_orders")
+        return page("Purchase Order Tracker",body+"<p><a class='button secondary' href='/purchasing'>Open Purchasing Intelligence</a></p>",module_key="purchase_orders")
 
     @app.route("/inventory",methods=["GET","POST"])
     def inventory():
