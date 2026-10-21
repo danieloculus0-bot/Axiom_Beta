@@ -165,6 +165,9 @@ def set_policy(item_id, unit, minimum, maximum, lead_days=0, order_multiple=1, *
         _exists(con, "inventory_items", item_id)
         previous = con.execute("SELECT stocking_unit FROM inventory_policies WHERE item_id=?", (item_id,)).fetchone()
         if previous and previous["stocking_unit"] != unit:
+            balance=con.execute("SELECT on_hand,allocated FROM inventory_items WHERE id=?",(item_id,)).fetchone()
+            if abs(float(balance['on_hand']))>1e-7 or abs(float(balance['allocated']))>1e-7:
+                raise ValueError("Cannot reinterpret nonempty inventory in another stocking unit")
             n = con.execute("""SELECT
               (SELECT COUNT(*) FROM procurement_requisitions WHERE item_id=? AND status!='cancelled')
               +(SELECT COUNT(*) FROM purchase_order_lines WHERE item_id=?)
