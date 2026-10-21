@@ -101,3 +101,31 @@ the Axiom application. The separately hosted ChatGPT app cannot reach
 `localhost` on the user's workstation by itself.
 
 Tests: `python -m pytest tests/test_favorites_navigation.py -q`.
+
+## Job Passport and public manufacturing lab (feature branch)
+
+**Local application:** choose **Jobs**, then click a job number. The read-only
+Job Passport at `/jobs/<id>/passport` brings together directly linked
+drawing records, FAI runs and their controlled version/checksum metadata,
+quality records, routings, purchase orders and material movements. Records
+attached only to the same *part*, including quote proposals, are displayed
+in a separate **not job evidence** section. Empty links do not imply completed
+work. No approval or purchasing action is performed by this screen.
+
+**Public browser lab:** [`web/index.html`](web/index.html) is a responsive
+Gothic Lime interactive manufacturing scenario based on *fictional* job
+WO-2046. It includes an editable illustrative quote, measured-vs-tolerance
+FAI calculations and a SHA-256 chained session event ledger with verification
+and JSON export. The demo does not connect to the local ERP, BEAN agent, shop
+machines, live ForgeVault drawing bytes, or suppliers. It does not claim
+production-grade Decimal math or authenticated, immutable server receipts.
+
+After this feature is merged and the Pages deployment succeeds, the expected
+URL is **https://danieloculus0-bot.github.io/Axiom_Beta/**. The URL is not a
+deployment confirmation. See the GitHub Pages workflow result and verify the
+hosted page before publishing it on the portfolio hub.
+
+Test the local workbench with `python -m pytest -q`, and the public demo
+logic with `node --test web/engine.test.mjs` (Node 22). GitHub Actions runs
+both test suites. For a production shop network, authentication and roles
+remain required before Axiom can be exposed beyond its local trusted boundary.
