@@ -142,7 +142,7 @@ def create_app(test_config:dict|None=None)->Flask:
             for item in items:
                 out+=(f"<div class='statline' style='justify-content:space-between;margin:8px 0'>"
                       f"<a href='{e(item['href'])}'><b>{e(item['label'])}</b></a>"
-                      f"<button class='secondary' data-favorite-remove='{e(item['key'])}'>Remove</button></div>")
+                      f"<button class='secondary' data-remove-favorite='{e(item['key'])}'>Remove</button></div>")
             out+="</div>"
         return page("Favorites",out,module_key="")
 
