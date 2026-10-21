@@ -352,23 +352,36 @@ def attach_to_po(requisition_id, purchase_order_id, *, actor="local"):
                            (purchase_order_id,requisition_id,item_id,ordered_qty,unit)
                            VALUES(?,?,?,?,?)""",(pid,rid,req["item_id"],req["quantity"],req["unit"]))
         line_id=int(cur.lastrowid)
+        from .supplier_intelligence import _capture_origin
+        # A PO header's expected_date might be an internal goal, NOT a supplier
+        # promise. Only a separately sourced confirmation qualifies for KPI.
+        _capture_origin(con,line_id,po["supplier_id"],po["order_date"])
         con.execute("UPDATE procurement_requisitions SET status='ordered' WHERE id=?",(rid,))
     _event("REQUISITION_LINKED_TO_PO",req["item_id"],actor,{"po_id":pid,"line_id":line_id,"requisition_id":rid})
     return {"line_id":line_id,"duplicate":False}
 
 
-def receive(line_id, quantity, movement_key, *, actor="local"):
+def receive(line_id, quantity, movement_key, *, received_on=None, actor="local"):
     line_id,qty=_id(line_id,"PO line ID"),_qty(quantity)
     if not isinstance(movement_key,str) or not 1<=len(movement_key.strip())<=120:
         raise ValueError("A unique receiving reference is required")
     key=movement_key.strip()
+    from .supplier_intelligence import _day, _receipt_date
+    actual = _day(received_on or date.today().isoformat(), future_ok=False)
     with db() as con:
         con.execute("BEGIN IMMEDIATE")
-        line=con.execute("""SELECT l.*,p.job_id,p.status po_status FROM purchase_order_lines l
+        line=con.execute("""SELECT l.*,p.job_id,p.status po_status,p.order_date FROM purchase_order_lines l
                             JOIN purchase_orders p ON p.id=l.purchase_order_id WHERE l.id=?""",(line_id,)).fetchone()
         if not line:raise ValueError("PO line not found")
         old=_prior(con,key,"receipt",line["item_id"],qty,None,line_id)
-        if old:return old
+        if old:
+            if received_on is not None:
+                stamped=con.execute("SELECT received_on FROM supplier_receipt_dates WHERE movement_key=?",(key,)).fetchone()
+                if stamped and stamped["received_on"]!=actual:
+                    raise ValueError("Receipt key already has a different delivery date")
+            return old
+        if line["order_date"] and actual < _day(line["order_date"]):
+            raise ValueError("Receipt date cannot predate purchase order date")
         if str(line["po_status"]).lower()=="cancelled":
             raise ValueError("Cannot receive a cancelled purchase order")
         _policy(con,line["item_id"])
@@ -386,6 +399,7 @@ def receive(line_id, quantity, movement_key, *, actor="local"):
         con.execute("""INSERT INTO procurement_movements
                        (movement_key,kind,item_id,purchase_order_line_id,quantity,transaction_id)
                        VALUES(?,'receipt',?,?,?,?)""",(key,line["item_id"],line_id,qty,txn))
+        _receipt_date(con,key,actual)
         remaining=con.execute("""SELECT COUNT(*) AS n FROM purchase_order_lines
                           WHERE purchase_order_id=? AND received_qty<ordered_qty-0.0000001""",
                           (line["purchase_order_id"],)).fetchone()["n"]
@@ -396,8 +410,9 @@ def receive(line_id, quantity, movement_key, *, actor="local"):
             con.execute("UPDATE procurement_requisitions SET status='received' WHERE id=?",
                         (line["requisition_id"],))
     _event("STOCK_RECEIVED",line["item_id"],actor,{"po_id":line["purchase_order_id"],"line_id":line_id,
-                                                  "quantity":qty,"movement_key":key,"txn_id":txn})
-    return {"duplicate":False,"transaction_id":txn,"item_id":line["item_id"],"quantity":qty}
+                                                  "quantity":qty,"movement_key":key,"received_on":actual,"txn_id":txn})
+    return {"duplicate":False,"transaction_id":txn,"item_id":line["item_id"],"quantity":qty,
+            "received_on":actual}
 
 
 def link_method_demand(dependency_id, item_id, quantity, *, actor="local"):
@@ -461,9 +476,14 @@ def purchasing_snapshot():
           JOIN purchase_orders po ON po.id=l.purchase_order_id
           JOIN inventory_policies pol ON pol.item_id=l.item_id
           WHERE lower(po.status) NOT IN ('cancelled','closed','received')
-            AND po.expected_date IS NOT NULL
-            AND date(po.expected_date)>=date('now')
-            AND date(po.expected_date)<=date('now','+'||pol.lead_days||' days')
+            AND date(COALESCE(
+                 (SELECT x.promised_on FROM supplier_line_promises x
+                  WHERE x.po_line_id=l.id ORDER BY x.id DESC LIMIT 1),
+                 po.expected_date))>=date('now')
+            AND date(COALESCE(
+                 (SELECT x.promised_on FROM supplier_line_promises x
+                  WHERE x.po_line_id=l.id ORDER BY x.id DESC LIMIT 1),
+                 po.expected_date))<=date('now','+'||pol.lead_days||' days')
           GROUP BY l.item_id""")}
         consumed={x["item_id"]:float(x["q"]) for x in con.execute("""
           SELECT item_id,-SUM(quantity) q FROM inventory_transactions

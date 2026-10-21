@@ -4,6 +4,7 @@ from __future__ import annotations
 from html import escape
 import json
 import uuid
+from datetime import date
 
 from flask import Blueprint, redirect, request
 
@@ -57,7 +58,8 @@ def purchasing_workbench():
             elif action=="attach":
                 engine.attach_to_po(f.get("requisition_id"),f.get("purchase_order_id"),actor=actor)
             elif action=="receive":
-                engine.receive(f.get("line_id"),f.get("quantity"),f.get("movement_key"),actor=actor)
+                engine.receive(f.get("line_id"),f.get("quantity"),f.get("movement_key"),
+                               received_on=f.get('received_on') or None,actor=actor)
             elif action=='import_ezstimate':
                 try:
                     document=json.loads(f.get('payload_json') or '{}')
@@ -107,7 +109,8 @@ def purchasing_workbench():
     body+="<h1>Material & Purchasing Intelligence</h1><p class='sub'>On-hand, reserved, received, consumed, supplier-inbound and method demand. "
     body+="Only recorded PO lines count as inbound. Forecasts are suggestions, never supplier orders; "
     body+="stocking units are explicit and unit conversions are not guessed.</p></div>"
-    body+="<a class='button secondary' href='/purchase-orders'>Purchase Orders</a></section>"
+    body+="<a class='button secondary' href='/purchase-orders'>Purchase Orders</a>"
+    body+="<a class='button secondary' href='/purchasing/suppliers'>Supplier Pricing & Delivery</a></section>"
 
     ready=sum(1 for m in metrics if m["signal"]=="OK")
     alerts=sum(1 for m in metrics if m["signal"] in {'REORDER','EXPEDITE'})
@@ -219,6 +222,7 @@ def purchasing_workbench():
             body+=form_for("receive",
                "<input type='hidden' name='line_id' value='"+h(l["id"])+"'>"
                "<input name='quantity' type='number' min='.0001' max='"+h(remainder)+"' step='.0001' value='"+h(remainder)+"' required>"
+               "<label>Actual received on<input name='received_on' type='date' value='"+h(date.today().isoformat())+"' required></label>"
                "<input type='hidden' name='movement_key' value='"+uuid.uuid4().hex+"'>",
                "Receive")
         body+="</td></tr>"
