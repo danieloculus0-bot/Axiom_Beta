@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from datetime import date
 from html import escape
-from flask import Blueprint, redirect, request
+from flask import Blueprint, redirect, request, jsonify
 
 from ..db import db
 from ..ui import page
@@ -27,6 +27,11 @@ def table(rows, cols):
     th="".join("<th>"+h(label)+"</th>" for _,label in cols)
     body="".join("<tr>"+"".join("<td>"+h(row.get(k))+"</td>" for k,_ in cols)+"</tr>" for row in rows)
     return "<div style='overflow:auto'><table><thead><tr>"+th+"</tr></thead><tbody>"+body+"</tbody></table></div>"
+
+
+@cost_blueprint.get("/purchasing/costs/feedback.json")
+def cost_feedback_json():
+    return jsonify(costs.estimator_price_feedback())
 
 
 @cost_blueprint.route("/purchasing/costs",methods=["GET","POST"])
@@ -106,7 +111,8 @@ def actual_purchasing_costs():
     body+=" tax and other charges stay visible, not buried in a rewritten material price."
     body+=" No payment, AP posting, supplier purchase or GL transaction is triggered.</p></div>"
     body+="<a class='button secondary' href='/purchasing'>Material purchasing</a>"
-    body+="<a class='button secondary' href='/purchasing/suppliers'>Supplier quotes</a></section>"
+    body+="<a class='button secondary' href='/purchasing/suppliers'>Supplier quotes</a>"
+    body+="<a class='button secondary' href='/purchasing/costs/feedback.json'>EZstimate Actual Cost Feedback JSON</a></section>"
     body+="<div class='grid'>"
     for n,name in [(ready,"Reconciled invoice lines"),(variance,"Variance review"),
                    (hold,"Quantity or source holds"),(len(consumed),"Recent consumed movements")]:
