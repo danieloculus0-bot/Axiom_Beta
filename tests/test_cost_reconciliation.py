@@ -164,6 +164,13 @@ def test_job_consumption_cost_attribution_and_estimator_feedback(tmp_path,monkey
     restarted=create_app({"TESTING":True})
     assert restarted.test_client().get("/purchasing/costs").status_code==200
     assert c.job_material_costs(job)["documented_consumption_cost"]=="40.00"
+    # If a later invoice introduces overbilling, previously assigned costs
+    # cease to count as fully reconciled. Historical links are retained.
+    record_invoice(c,supplier,line,number="EXCESS-AFTER",qty="1",price="9",
+                   freight="0",other="0",tax="0")
+    assert c.reconcile_invoice(saved["invoice_id"])["status"]=="HOLD"
+    assert c.job_material_costs(job)["documented_consumption_cost"]=="0.00"
+    assert c.job_material_costs(job)["unreconciled_cost_links"]==1
 
 
 def test_missing_po_price_can_be_added_without_inventing_cost(tmp_path,monkeypatch):
