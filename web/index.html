@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0f1113">
+<title>Axiom | Manufacturing Systems Lab</title>
+<style>
+:root{color-scheme:dark;--bg:#0f1113;--surface:#191e20;--high:#222a2c;--line:#334043;--accent:#79de4b;--soft:#b2c1bf;--text:#eff7f2;--warn:#f5c979;--bad:#ff9e9f}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 system-ui,-apple-system,Segoe UI,sans-serif}
+button,input{font:inherit}button{cursor:pointer}a{color:var(--accent)}.shell{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}
+.side{background:#151a1b;border-right:1px solid var(--line);padding:27px 17px;position:sticky;top:0;height:100vh}
+.brand{font-weight:900;font-size:31px;letter-spacing:-1.5px;line-height:1}.brand b{color:var(--accent)}.brand small{display:block;font-size:10px;letter-spacing:2.2px;color:var(--soft);margin:10px 0 38px;text-transform:uppercase}
+.side button{display:block;background:transparent;color:var(--soft);border:0;text-align:left;width:100%;padding:12px 14px;border-radius:8px;font-weight:750;margin-bottom:5px}
+.side button.active,.side button:hover{background:#263529;color:var(--text);box-shadow:inset 3px 0 var(--accent)}
+.side .foot{position:absolute;bottom:22px;padding-right:15px;color:var(--soft);font-size:11px;line-height:1.6}
+.main{min-width:0;padding:30px clamp(18px,4.3vw,68px) 56px;max-width:1600px;width:100%;margin:auto}.eyebrow{text-transform:uppercase;letter-spacing:2.5px;color:var(--accent);font-weight:800;font-size:10px}
+h1{font-size:clamp(30px,4vw,56px);line-height:1.09;letter-spacing:-2px;margin:10px 0 15px}h2{font-size:21px;margin:0 0 13px}h3{font-size:14px;margin:0 0 9px}
+p{color:var(--soft)}.intro{font-size:16px;max-width:830px}.top{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:26px;border-bottom:1px solid var(--line);padding-bottom:20px}
+.chip{display:inline-block;padding:5px 9px;border:1px solid var(--line);background:var(--high);border-radius:22px;font-weight:800;font-size:11px}
+.chip.warning{color:var(--warn)}.chip.good{color:var(--accent)}.chip.off{color:var(--soft)}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:24px 0}
+.panel,.metric{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px}.metric span{color:var(--soft);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px}
+.metric strong{display:block;font-size:28px;letter-spacing:-1px;margin-top:6px}.metric small{display:block;color:var(--soft)}
+.panel{margin-bottom:15px}.section{display:none}.section.active{display:block}.two{display:grid;grid-template-columns:1.3fr 1fr;gap:15px}
+.tablewrap{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:520px;text-align:left}
+th{color:var(--soft);font-size:10px;text-transform:uppercase;letter-spacing:1px}th,td{padding:11px 10px;border-bottom:1px solid var(--line)}td{font-variant-numeric:tabular-nums}
+.button{background:var(--accent);color:#0f1710;border:0;border-radius:8px;padding:10px 16px;font-weight:850}
+.button.secondary{background:var(--high);color:var(--text);border:1px solid var(--line)}.buttons{display:flex;gap:9px;flex-wrap:wrap;margin:20px 0}
+.notice{padding:15px 17px;border-left:3px solid var(--accent);background:#203025;border-radius:0 9px 9px 0;color:#d4e9d9;margin:17px 0}
+.notice.warn{border-color:var(--warn);background:#332b22;color:#f2dbb5}
+label{display:block;font-weight:750;font-size:12px;color:var(--soft)}input{display:block;background:#101617;border:1px solid #465557;border-radius:8px;width:100%;padding:10px;color:var(--text);margin:5px 0 10px;max-width:180px}
+input:focus{outline:2px solid var(--accent);outline-offset:1px}.fields{display:grid;grid-template-columns:repeat(3,minmax(125px,1fr));gap:12px}
+.result{font-weight:850}.result.pass{color:var(--accent)}.result.fail,.result.invalid{color:var(--bad)}.result.pending{color:var(--warn)}
+.log{display:grid;gap:9px}.logitem{background:#111819;border:1px solid var(--line);border-radius:9px;padding:13px;overflow-wrap:anywhere}
+.logitem strong{color:var(--accent)}code{color:#d0e7d3;font-size:12px}.muted{color:var(--soft)}.line{border-top:1px solid var(--line);margin:15px 0}
+.runtime{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.runtime .panel{margin:0}.fine{font-size:12px;color:var(--soft)}
+@media(max-width:1050px){.shell{grid-template-columns:195px 1fr}.grid{grid-template-columns:repeat(2,1fr)}.two,.runtime{grid-template-columns:1fr}}
+@media(max-width:700px){.shell{display:block}.side{position:static;height:auto;padding:18px}.side .brand small{margin:7px 0 13px}.side .foot{position:static;margin-top:12px}.side nav{display:flex;overflow:auto;gap:7px}.side button{width:auto;white-space:nowrap;padding:9px 11px}.main{padding:21px 17px 45px}.top{align-items:flex-start}.grid{gap:8px}.metric{padding:12px}.metric strong{font-size:23px}.fields{grid-template-columns:repeat(2,1fr)}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<div class="shell">
+<aside class="side">
+  <div class="brand">AXIOM<b>.</b><small>Engineering systems lab</small></div>
+  <nav aria-label="Demo navigation">
+    <button class="active" data-view="overview">Command Center</button>
+    <button data-view="passport">Job Passport</button>
+    <button data-view="estimate">Cost / Estimate</button>
+    <button data-view="inspection">Inspection / FAI</button>
+    <button data-view="ledger">Evidence Ledger</button>
+  </nav>
+  <div class="foot">PUBLIC BROWSER LAB · SYNTHETIC DATA<br>Local calculations. No server, actual ERP write, connected BEAN agent or hardware control.</div>
+</aside>
+<main class="main">
+  <div class="top"><span class="eyebrow">Manufacturing intelligence / Axiom Beta</span><span class="chip warning">Interactive sample, not live ERP</span></div>
+  <section class="section active" id="view-overview">
+    <span class="eyebrow">One job. Shared context. Verifiable evidence.</span>
+    <h1>Manufacturing,<br>with the receipts.</h1>
+    <p class="intro">Explore a connected job from controlled drawing identity to estimating and first article inspection. Change the numbers, observe state changes, and inspect the cryptographically chained event log. This public lab illustrates Axiom's workflow rules using a fictional part.</p>
+    <div class="grid">
+      <div class="metric"><span>Active sample job</span><strong>WO-2046</strong><small>Bracket / Rev C</small></div>
+      <div class="metric"><span>Quote total</span><strong id="home-quote">$1,025.00</strong><small>Draft / review required</small></div>
+      <div class="metric"><span>FAI measured</span><strong id="home-fai">0 / 3</strong><small>No approval inferred</small></div>
+      <div class="metric"><span>Ledger receipts</span><strong id="home-ledger">0</strong><small>SHA-256 chain</small></div>
+    </div>
+    <div class="two">
+      <div class="panel"><h2>One traceable work order</h2>
+        <p>The integrated local Axiom application already stores jobs, FAI records, quality cases, purchasing, drawings and methods. Its new Job Passport shows only records actually linked to the selected job.</p>
+        <div class="notice">This public exercise uses a fictional job because no private shop data or external authorization should be exposed on GitHub Pages.</div>
+        <div class="buttons"><button class="button" data-go="passport">Explore Job Passport</button><button class="button secondary" data-go="inspection">Run an inspection</button></div>
+      </div>
+      <div class="panel"><h2>Connection truth</h2>
+        <table><tbody>
+          <tr><td>Local Axiom workbench</td><td><span class="chip good">Repository code</span></td></tr>
+          <tr><td>Released PDF / FAI handoff</td><td><span class="chip good">CI-tested contract</span></td></tr>
+          <tr><td>Quote review intake</td><td><span class="chip good">CI-tested contract</span></td></tr>
+          <tr><td>BEAN live reasoning</td><td><span class="chip off">Not connected here</span></td></tr>
+          <tr><td>Live ERP / purchases</td><td><span class="chip off">Not connected here</span></td></tr>
+        </tbody></table>
+      </div>
+    </div>
+    <div class="buttons"><a class="button secondary" href="https://github.com/danieloculus0-bot/Axiom_Beta">Axiom source</a><a class="button secondary" href="https://github.com/danieloculus0-bot/Axiom_Beta/actions">Test and build evidence</a></div>
+  </section>
+
+  <section class="section" id="view-passport">
+    <span class="eyebrow">Job Passport / synthetic record</span><h1>WO-2046</h1>
+    <p class="intro">One coherent manufacturing story. References have distinct trust levels so a review-pending FAI can never masquerade as a completed approval.</p>
+    <div class="grid">
+      <div class="metric"><span>Customer</span><strong>Northstar</strong><small>Fictional company</small></div>
+      <div class="metric"><span>Part</span><strong>BRK-204</strong><small>Revision C</small></div>
+      <div class="metric"><span>Quantity</span><strong>10</strong><small>Pieces</small></div>
+      <div class="metric"><span>Release stage</span><strong>Review</strong><small>Not approved</small></div>
+    </div>
+    <div class="panel"><h2>Evidence chain</h2><div class="tablewrap"><table>
+      <thead><tr><th>Module</th><th>Reference</th><th>State</th><th>What it proves</th></tr></thead>
+      <tbody>
+      <tr><td>ForgeVault</td><td>VV-SAMPLE-C</td><td class="result pending">Synthetic reference</td><td>Sample revision metadata, not verified PDF bytes</td></tr>
+      <tr><td>EZ-FAIR</td><td>FAI-SAMPLE-01</td><td class="result pending">Review required</td><td>Three candidate dimensional characteristics</td></tr>
+      <tr><td>EZstimate</td><td>Q-SAMPLE-01</td><td class="result pending">Draft</td><td>Editable browser cost calculation, not a released quote</td></tr>
+      <tr><td>Axiom</td><td>WO-2046</td><td class="result pending">Sample only</td><td>Job context without purchasing or machine dispatch</td></tr>
+      <tr><td>BEAN</td><td>None</td><td class="result pending">Offline</td><td>No AI analysis or autonomous execution claimed</td></tr>
+      </tbody></table></div></div>
+    <div class="notice warn">The real Axiom Passport reads your local SQLite system. This web page is an independent, non-connected sample, not a mirror of customer or factory data.</div>
+    <div class="buttons"><button class="button" data-go="estimate">Edit the estimate</button><button class="button secondary" data-go="inspection">Check FAI limits</button></div>
+  </section>
+
+  <section class="section" id="view-estimate">
+    <span class="eyebrow">EZstimate-style math / sample job</span><h1>Make the numbers answer.</h1>
+    <p class="intro">Change quantity, material, labor, scrap or margin. The browser calculates a proposed total. Axiom's real quote intake separately uses Python Decimal to verify imported quote totals.</p>
+    <div class="panel">
+      <h2>Quote proposal · BRK-204 Rev C</h2>
+      <div class="fields">
+        <label>Quantity<input id="q-qty" type="number" min="1" step="1" value="10"></label>
+        <label>Material cost each ($)<input id="q-material" type="number" min="0" step=".01" value="20"></label>
+        <label>Labor hours each<input id="q-hours" type="number" min="0" step=".01" value="1"></label>
+        <label>Shop rate per hour ($)<input id="q-rate" type="number" min="0" step=".01" value="50"></label>
+        <label>Setup cost total ($)<input id="q-setup" type="number" min="0" step=".01" value="100"></label>
+        <label>Outside process each ($)<input id="q-outside" type="number" min="0" step=".01" value="0"></label>
+        <label>Material scrap (%)<input id="q-scrap" type="number" min="0" max="100" step=".1" value="10"></label>
+        <label>Gross margin (%)<input id="q-margin" type="number" min="0" max="99.9" step=".1" value="20"></label>
+      </div>
+      <div class="line"></div>
+      <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+        <div class="metric"><span>Calculated sample quote</span><strong id="quote-total">$1,025.00</strong><small>Not a customer-approved offer</small></div>
+        <div class="metric"><span>Release status</span><strong>Draft</strong><small>Review required, no purchasing dispatch</small></div>
+      </div>
+      <p id="quote-error" role="status" class="result invalid"></p>
+      <button class="button" id="record-quote">Recalculate and record evidence</button>
+      <p class="fine">The browser engine demonstrates calculation and constraints. Source verification, quote acceptance and all real ERP transactions require the separate local back end.</p>
+    </div>
+  </section>
+
+  <section class="section" id="view-inspection">
+    <span class="eyebrow">EZ-FAIR / sampled dimensional characteristics</span><h1>Measure. Don't assume.</h1>
+    <p class="intro">Input measured dimensions. Axiom checks inclusive lower and upper limits. Blank values remain pending and out-of-tolerance measurements are failures, never silently accepted.</p>
+    <div class="panel"><h2>First Article Inspection · FAI-SAMPLE-01</h2>
+      <div class="tablewrap"><table><thead><tr><th>Balloon</th><th>Nominal</th><th>Lower</th><th>Upper</th><th>Actual measured</th><th>Result</th></tr></thead>
+      <tbody id="char-rows"></tbody></table></div>
+      <div class="grid">
+        <div class="metric"><span>Measured pass</span><strong id="fai-pass">0</strong></div>
+        <div class="metric"><span>Measured fail</span><strong id="fai-fail">0</strong></div>
+        <div class="metric"><span>Still pending</span><strong id="fai-pending">3</strong></div>
+        <div class="metric"><span>Invalid values</span><strong id="fai-invalid">0</strong></div>
+      </div>
+      <div class="notice" id="fai-status" role="status">REVIEW REQUIRED · No inspection approved</div>
+      <button class="button" id="record-fai">Record measurement snapshot</button>
+      <button class="button secondary" id="reset-fai">Clear measurements</button>
+      <p class="fine">Measurements here are fictional browser inputs and are not written to your local Axiom database. Even all passing measurements do not approve or release a production FAI.</p>
+    </div>
+  </section>
+
+  <section class="section" id="view-ledger">
+    <span class="eyebrow">Evidence / browser-session ledger</span><h1>Keep the receipts.</h1>
+    <p class="intro">Every recorded action is appended as a canonical JSON event with the previous event digest. Verify the hash chain, inspect outcomes, or export the session JSON. It resets when the page reloads.</p>
+    <div class="panel">
+      <div class="buttons"><button id="verify-ledger" class="button">Verify hash chain</button><button id="export-ledger" class="button secondary">Export JSON</button></div>
+      <div id="ledger-status" class="notice">No records yet</div><div id="ledger-items" class="log"></div>
+    </div>
+    <div class="notice warn">A client-side hash chain can detect accidental or local edits to exported event records. It does NOT provide a trusted timestamp, tamper-proof remote storage, cryptographic identity, or an immutable server-side audit trail.</div>
+  </section>
+  <footer class="fine">AXIOM Beta · Public lab / fictional sample. <a href="https://github.com/danieloculus0-bot/Axiom_Beta">Source and engineering evidence</a>.</footer>
+</main>
+</div>
+<script type="module">
+import { quoteTotal, inspectionSummary, measurementResult, appendEvent, verifyLedger } from "./engine.mjs";
+
+const $ = id => document.getElementById(id);
+const chars = [
+  { id: "1", nominal: 10, lsl: 9.95, usl: 10.05 },
+  { id: "2", nominal: 5, lsl: 4.9, usl: 5.1 },
+  { id: "3", nominal: 25, lsl: 24.8, usl: 25.2 }
+];
+let values = {}, ledger = [], quote = 1025;
+const money = amount => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
+
+function navigate(view) {
+  document.querySelectorAll(".section").forEach(el => el.classList.toggle("active", el.id === "view-" + view));
+  document.querySelectorAll("[data-view]").forEach(el => el.classList.toggle("active", el.dataset.view === view));
+  window.scrollTo({ top: 0, behavior: "instant" });
+}
+document.querySelectorAll("[data-view]").forEach(btn => btn.addEventListener("click", () => navigate(btn.dataset.view)));
+document.querySelectorAll("[data-go]").forEach(btn => btn.addEventListener("click", () => navigate(btn.dataset.go)));
+
+function renderQuote() {
+  const get = id => {
+    const field = $(id);
+    if (field.value.trim() === "") throw Error("All pricing inputs are required");
+    return Number(field.value);
+  };
+  const input = {
+    quantity: get("q-qty"), materialEach: get("q-material"), hoursEach: get("q-hours"),
+    shopRate: get("q-rate"), setup: get("q-setup"), outsideEach: get("q-outside"),
+    scrapPct: get("q-scrap"), marginPct: get("q-margin")
+  };
+  quote = quoteTotal(input);
+  $("quote-total").textContent = money(quote);
+  $("home-quote").textContent = money(quote);
+  $("quote-error").textContent = "";
+  return input;
+}
+$("record-quote").addEventListener("click", async () => {
+  try {
+    const input = renderQuote();
+    await record("quote.recalculated", { input, total: quote, status: "review_required" });
+  } catch (err) {
+    $("quote-error").textContent = err.message;
+  }
+});
+const charBody = $("char-rows");
+for (const ch of chars) {
+  const row = document.createElement("tr");
+  row.innerHTML = "<td>" + ch.id + "</td><td>" + ch.nominal.toFixed(3) + "</td><td>" +
+    ch.lsl.toFixed(3) + "</td><td>" + ch.usl.toFixed(3) + "</td><td></td><td></td>";
+  const input = document.createElement("input");
+  input.type = "number"; input.step = "any"; input.placeholder = "Pending"; input.setAttribute("aria-label", "Actual value for balloon " + ch.id);
+  const result = document.createElement("span"); result.className = "result pending"; result.textContent = "PENDING";
+  row.children[4].append(input); row.children[5].append(result);
+  input.addEventListener("input", () => { values[ch.id] = input.value; renderInspection(); });
+  charBody.append(row);
+}
+function renderInspection() {
+  const s = inspectionSummary(chars, values);
+  const inputs = charBody.querySelectorAll("input");
+  inputs.forEach((input, i) => {
+    const r = measurementResult(chars[i], input.value);
+    const cell = charBody.rows[i].cells[5].firstElementChild;
+    cell.textContent = r; cell.className = "result " + r.toLowerCase();
+  });
+  $("fai-pass").textContent = s.pass; $("fai-fail").textContent = s.fail;
+  $("fai-pending").textContent = s.pending; $("fai-invalid").textContent = s.invalid;
+  $("home-fai").textContent = (s.pass + s.fail) + " / " + chars.length;
+  $("fai-status").textContent = s.status + " · No production approval implied";
+  $("fai-status").className = s.status === "BLOCKED" ? "notice warn" : "notice";
+  return s;
+}
+$("record-fai").addEventListener("click", async () => {
+  const summary = renderInspection();
+  await record("fai.measurement_snapshot", { values: { ...values }, summary, source: "synthetic" });
+});
+$("reset-fai").addEventListener("click", () => {
+  values = {};
+  charBody.querySelectorAll("input").forEach(el => el.value = "");
+  renderInspection();
+});
+async function record(type, payload) {
+  ledger = await appendEvent(ledger, { type, payload });
+  $("home-ledger").textContent = ledger.length;
+  renderLedger();
+}
+function renderLedger() {
+  const parent = $("ledger-items"); parent.replaceChildren();
+  [...ledger].reverse().forEach(event => {
+    const item = document.createElement("div");
+    item.className = "logitem";
+    const title = document.createElement("strong"); title.textContent = "#" + event.seq + " · " + event.type;
+    const details = document.createElement("div"); details.className = "fine"; details.textContent = "sha256: " + event.digest;
+    const body = document.createElement("code"); body.textContent = JSON.stringify(event.payload);
+    item.append(title, details, body); parent.append(item);
+  });
+  $("ledger-status").textContent = ledger.length + " session events · verification available";
+}
+$("verify-ledger").addEventListener("click", async () => {
+  $("ledger-status").textContent = (await verifyLedger(ledger)) ? "VALID · Every event hash and predecessor verified within this session" : "INVALID · Event record or chain mismatch";
+});
+$("export-ledger").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify({ demo: true, schema: "axiom.browser_lab.v1", events: ledger }, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = "axiom-browser-lab-ledger.json"; a.click();
+  URL.revokeObjectURL(url);
+});
+renderInspection();
+await record("scenario.opened", { job: "WO-2046", source: "synthetic", purpose: "browser demonstration" });
+</script>
+</body>
+</html>
