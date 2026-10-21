@@ -47,8 +47,10 @@ def test_job_passport_scopes_records_and_preserves_review_status(tmp_path, monke
             ("D-PART", "Reference only", part, "Released"),
         )
         con.execute(
-            """INSERT INTO ezm_method_plans(job_id,job_number,part_number,status)
-               VALUES (?,?,?,?)""", (first, "WO-ALPHA", "PL-100", "DRAFT"),
+            """INSERT INTO ezm_method_plans(job_id,job_number,part_number,revision,
+                       quantity,required_date,status,created_at,updated_at)
+               VALUES (?,?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)""",
+            (first, "WO-ALPHA", "PL-100", "B", 20, "2026-11-01", "DRAFT"),
         )
         fai = con.execute(
             """INSERT INTO fai_runs(fai_number,job_id,part_id,status,
