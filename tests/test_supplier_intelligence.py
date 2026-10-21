@@ -109,6 +109,13 @@ def test_dated_partial_receipts_original_promise_and_revisions(tmp_path,monkeypa
     assert perf["median_actual_lead_days"]==10
     assert perf["revised_promise_lines"]==1
     assert perf["reliability"]=="insufficient samples"
+    with db() as con:
+        # Legacy PO headers are editable, but historical supplier/lead scoring
+        # must not be silently reassigned to a new supplier or order date.
+        con.execute("UPDATE purchase_orders SET supplier_id=?,order_date=? WHERE id=?",
+                    (b,(today-timedelta(days=1)).isoformat(),po))
+    assert supplier_performance(a)[0]["median_actual_lead_days"]==10
+    assert supplier_performance(b)[0]["complete_lines"]==0
     with pytest.raises(ValueError,match="after full receipt"):
         record_supplier_promise(line,(today+timedelta(days=9)).isoformat(),
                                 source_ref="too late")
