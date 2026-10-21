@@ -62,10 +62,8 @@ jobs:
               if ($proc.HasExited) { throw "Axiom.exe exited before health check passed" }
             }
             if (!$ok) { throw "Frozen Axiom health endpoint did not become ready" }
-            foreach ($route in @("payroll","accounting","sheets","quality","methods","reports")) {
-              $response = Invoke-WebRequest -Uri "http://127.0.0.1:5060/$route" -UseBasicParsing -TimeoutSec 5
-              if ($response.StatusCode -ne 200) { throw "Route /$route failed" }
-            }
+            python tools/packaging_auth_smoke.py http://127.0.0.1:5060
+            if ($LASTEXITCODE -ne 0) { throw "Authenticated frozen Axiom smoke failed" }
           } finally {
             if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force }
           }
