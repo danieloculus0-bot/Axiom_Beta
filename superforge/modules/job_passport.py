@@ -63,6 +63,12 @@ def get_job_passport(job_id: int) -> dict | None:
                 con, """SELECT id,document_number,title,revision,status,sha256
                         FROM documents WHERE job_id=? ORDER BY id""", (job_id,)
             ),
+            "requisitions": _rows(con, """SELECT r.id,r.status,r.quantity,r.unit,i.item_number
+                    FROM procurement_requisitions r JOIN inventory_items i ON i.id=r.item_id
+                    WHERE r.job_id=? ORDER BY r.id""",(job_id,)),
+            "reservations": _rows(con, """SELECT r.quantity,i.item_number
+                    FROM inventory_reservations r JOIN inventory_items i ON i.id=r.item_id
+                    WHERE r.job_id=? ORDER BY i.item_number""",(job_id,)),
             "inventory_movements": _rows(
                 con, """SELECT t.id,i.item_number,t.txn_type,t.quantity,t.reference
                         FROM inventory_transactions t
@@ -157,6 +163,11 @@ def job_passport_page(job_id: int):
         ("Quality / corrective action", linked["quality"],
          [("record_number", "Record"), ("record_type", "Type"),
           ("status", "Status"), ("severity", "Severity"), ("due_date", "Due")]),
+        ("Purchasing requisitions",linked["requisitions"],
+         [("id","PR ID"),("item_number","Stock item"),("quantity","Qty"),
+          ("unit","Unit"),("status","Status")]),
+        ("Reserved stock",linked["reservations"],
+         [("item_number","Stock item"),("quantity","Reserved Qty")]),
         ("Material movements", linked["inventory_movements"],
          [("item_number", "Item"), ("txn_type", "Movement"),
           ("quantity", "Quantity"), ("reference", "Reference")]),
