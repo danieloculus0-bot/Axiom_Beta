@@ -33,7 +33,7 @@ Currency is fixed USD and quantities are in the shared inventory stocking unit. 
 - Review-required actual cost observations for EZstimate: `/purchasing/costs/feedback.json` using schema `axiom.actual_material_cost_feedback.v1`.
 - Job Passport: `/jobs/<job ID>/passport` displays job-linked evidence-backed **partial** material consumption cost. It never converts an unrelated part-linked estimate into job cost.
 
-Price feedback includes supplier, stocking unit, invoice references, original agreed PO price, actual material unit price and landed unit cost; **EZstimate does not automatically adopt or overwrite any price memory**. A review/import adapter is needed for that subsequent step.
+Price feedback includes supplier, stocking unit, invoice references, original agreed PO price, actual material unit price and landed unit cost. **EZstimate does not automatically adopt or overwrite any price memory**. Its cost inbox now supports an explicit local review step: save Axiom's feedback JSON, run `python -m ezstimate.axiom_cost_feedback stage <saved-feedback.json>`, inspect with `python -m ezstimate.axiom_cost_feedback inbox`, then approve a selected observation using `python -m ezstimate.axiom_cost_feedback adopt AXIOM-INVOICE-LINE-123 --reviewer "Local reviewer"`. EZstimate preserves invoiced material price separately from landed cost notes.
 
 ## Constraints and exceptions
 
