@@ -148,6 +148,7 @@ def test_real_ezstimate_pr_to_axiom_local_draft(tmp_path,monkeypatch):
 def test_real_axiom_invoice_cost_to_ezstimate_price_memory(tmp_path,monkeypatch):
     """End-to-end cross-repo price evidence: receipt, three-way match, stage, adopt."""
     from datetime import date
+    from decimal import Decimal
     from superforge.app import create_app
     from superforge.db import db
     from superforge.modules.purchasing import (
@@ -193,7 +194,7 @@ def test_real_axiom_invoice_cost_to_ezstimate_price_memory(tmp_path,monkeypatch)
     feed=estimator_price_feedback()
     assert feed["schema"]=="axiom.actual_material_cost_feedback.v1"
     assert len(feed["observations"])==1
-    assert feed["observations"][0]["invoiced_qty"]=="5"
+    assert Decimal(feed["observations"][0]["invoiced_qty"])==Decimal("5")
     ez_db=tmp_path/"ez_actual_prices.db"
     assert stage_axiom_cost_feedback(feed,path=ez_db)["staged"]==1
     assert stage_axiom_cost_feedback(feed,path=ez_db)["staged"]==0
@@ -206,6 +207,6 @@ def test_real_axiom_invoice_cost_to_ezstimate_price_memory(tmp_path,monkeypatch)
                         as_of=date.today().isoformat(),path=ez_db)["candidate"]
     assert price["source_type"]=="invoice"
     assert price["unit_price"]=="23.50"
-    assert price["quantity"]=="5"
+    assert Decimal(price["quantity"])==Decimal("5")
     assert "24.5" in price["notes"]  # all-in USD 122.50 for five sheets
     assert price["source_ref"]=="AXIOM-INVOICE-LINE-"+str(invoice_line_id)
