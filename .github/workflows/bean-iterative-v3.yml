@@ -1,0 +1,64 @@
+name: BEAN v3 combinatorial invention and verified Q refinement
+on:
+  push:
+    branches: ['experiment/bean-iterative-scheduling-mutations-*']
+    paths:
+      - 'experiments/bean_iterative_search/engine_v3.py'
+      - 'experiments/bean_iterative_search/run_v3.py'
+      - 'tests/test_bean_iterative_v3.py'
+      - '.github/workflows/bean-iterative-v3.yml'
+  pull_request:
+    paths:
+      - 'experiments/bean_iterative_search/engine_v3.py'
+      - 'experiments/bean_iterative_search/run_v3.py'
+      - 'tests/test_bean_iterative_v3.py'
+      - '.github/workflows/bean-iterative-v3.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  cross-platform:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.11', '3.12']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: danieloculus0-bot/BEAN
+          ref: 2f29b30a92e064c11c57c67d46eb4fdb2dcf4e71
+          path: bean-core
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Verify 18 structured candidates + 10 learned moves and evidence integrity
+        env:
+          PYTHONPATH: bean-core
+        run: python -m unittest discover -s tests -p test_bean_iterative_v3.py -v
+  full-three-seeds:
+    needs: cross-platform
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: danieloculus0-bot/BEAN
+          ref: 2f29b30a92e064c11c57c67d46eb4fdb2dcf4e71
+          path: bean-core
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Train 9000 Q decisions then 1200 frozen scheduling cases with equal 32-call budget
+        env:
+          PYTHONPATH: bean-core
+        run: python experiments/bean_iterative_search/run_v3.py --episodes 3000 --holdout 400 --out v3-new-holdout
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bean-v3-9000-logic-q-ledger-replay
+          path: v3-new-holdout/
+          if-no-files-found: warn
