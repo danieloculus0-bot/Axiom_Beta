@@ -405,8 +405,8 @@ def link_method_demand(dependency_id, item_id, quantity, *, actor="local"):
         _policy(con,iid)
         row=con.execute("SELECT kind FROM ezm_dependencies WHERE id=?",(did,)).fetchone()
         if not row:raise ValueError("Method dependency not found")
-        if str(row["kind"]).upper() not in {"MATERIAL","PURCHASED_PART","OUTSIDE_PROCESS"}:
-            raise ValueError("Only material or purchased requirements can map to stock items")
+        if str(row["kind"]).upper() not in {"MATERIAL","PURCHASED_PART"}:
+            raise ValueError("Only physical material and purchased-part requirements can map to stock inventory")
         con.execute("""INSERT INTO procurement_method_links(dependency_id,item_id,required_qty)
                        VALUES(?,?,?) ON CONFLICT(dependency_id) DO UPDATE
                        SET fulfilled_qty=CASE WHEN item_id=excluded.item_id
@@ -452,6 +452,16 @@ def purchasing_snapshot():
           FROM purchase_order_lines l JOIN purchase_orders p ON p.id=l.purchase_order_id
           WHERE lower(p.status) NOT IN ('cancelled','closed','received')
           GROUP BY l.item_id""")}
+        inbound_due={x['item_id']:float(x['q']) for x in con.execute("""
+          SELECT l.item_id,SUM(l.ordered_qty-l.received_qty) q
+          FROM purchase_order_lines l
+          JOIN purchase_orders po ON po.id=l.purchase_order_id
+          JOIN inventory_policies pol ON pol.item_id=l.item_id
+          WHERE lower(po.status) NOT IN ('cancelled','closed','received')
+            AND po.expected_date IS NOT NULL
+            AND date(po.expected_date)>=date('now')
+            AND date(po.expected_date)<=date('now','+'||pol.lead_days||' days')
+          GROUP BY l.item_id""")}
         consumed={x["item_id"]:float(x["q"]) for x in con.execute("""
           SELECT item_id,-SUM(quantity) q FROM inventory_transactions
           WHERE txn_type='consumption' AND created_at>=datetime('now','-30 days')
@@ -478,24 +488,29 @@ def purchasing_snapshot():
         allocated=float(item["allocated"])
         available=round(on-allocated,4)
         inbound=incoming.get(item_id,0)
+        due_inbound=inbound_due.get(item_id,0)
         demand=round(demands.get(item_id,0),4)
         last30=round(consumed.get(item_id,0),4)
         lead=int(item["lead_days"] or 0)
         during_lead=round(last30/30*lead,4)
         position=round(available+inbound-demand,4)
-        projected=round(position-during_lead,4)
+        projected=round(available+due_inbound-demand-during_lead,4)
         min_qty=item["min_qty"]
         suggested=0.0
         if min_qty is not None and projected<=float(min_qty)+1e-7:
-            target=max(0,Decimal(str(item["max_qty"]))-Decimal(str(projected)))
+            # An existing PO arriving after the lead window is an expedite risk,
+            # not an excuse to generate duplicate purchasing commitments.
+            target=max(0,Decimal(str(item["max_qty"]))-Decimal(str(position-during_lead)))
             multiple=Decimal(str(item["order_multiple"]))
             suggested=float((target/multiple).to_integral_value(rounding=ROUND_CEILING)*multiple)
         result.append({**item,"available":available,"inbound":round(inbound,4),
+                       "inbound_due_in_lead":round(due_inbound,4),
                        "method_unreserved_demand":demand,"consumed_30d":last30,
                        "lead_demand":during_lead,"stock_position":position,
                        "projected":projected,"suggested_qty":round(suggested,4),
                        "signal":("UNCONFIGURED" if min_qty is None else
-                                "REORDER" if suggested>0 else "OK")})
+                                "REORDER" if suggested>0 else
+                                "EXPEDITE" if projected<=float(min_qty)+1e-7 else "OK")})
     return result
 
 
