@@ -86,11 +86,11 @@ def configure_security(app):
             return redirect(url_for("axiom_login")) if request.method in {"GET", "HEAD"} else ("Authentication required", 401)
         g.user = username
         g.role = record["role"]
+        if request.path.startswith(("/payroll", "/accounting", "/sheets", "/integrations")) and g.role != "admin":
+            return "Admin permission required", 403
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
             if g.role == "viewer":
                 return "Editor permission required", 403
-            if request.path.startswith(("/payroll", "/accounting", "/sheets", "/integrations")) and g.role != "admin":
-                return "Admin permission required", 403
             if request.form.get("actor") not in (None, "", "local", username):
                 return "Caller-supplied identity does not match authenticated user", 403
             token = str(request.form.get("_csrf") or request.headers.get("X-CSRF-Token") or "")
