@@ -110,7 +110,8 @@ def purchasing_workbench():
     body+="Only recorded PO lines count as inbound. Forecasts are suggestions, never supplier orders; "
     body+="stocking units are explicit and unit conversions are not guessed.</p></div>"
     body+="<a class='button secondary' href='/purchase-orders'>Purchase Orders</a>"
-    body+="<a class='button secondary' href='/purchasing/suppliers'>Supplier Pricing & Delivery</a></section>"
+    body+="<a class='button secondary' href='/purchasing/suppliers'>Supplier Pricing & Delivery</a>"
+    body+="<a class='button secondary' href='/purchasing/costs'>Actual Costs & Invoice Match</a></section>"
 
     ready=sum(1 for m in metrics if m["signal"]=="OK")
     alerts=sum(1 for m in metrics if m["signal"] in {'REORDER','EXPEDITE'})
