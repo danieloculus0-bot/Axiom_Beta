@@ -103,11 +103,17 @@ def method_dashboard(context_type: str = "", context_id: str = "") -> tuple[list
                ORDER BY d.need_by,d.id"""
         ).fetchall()
 
+    from .purchasing import method_stock_signals
+    signals = method_stock_signals()
     readiness: list[dict[str, Any]] = []
     for row in deps:
         d = dict(row)
         check = dependency_readiness(d)
         d["readiness"] = check["status"]
         d["readiness_reason"] = check["reason"]
+        signal = signals.get(d['id'])
+        d['procurement_item'] = signal['item'] if signal else ''
+        d['procurement_signal'] = signal['status'] if signal else 'UNMAPPED'
+        d['procurement_short'] = signal['short'] if signal else None
         readiness.append(d)
     return plans, readiness
