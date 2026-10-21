@@ -1,0 +1,63 @@
+name: BEAN vs model-free diagnostic optimizer - actual paired holdout
+on:
+  push:
+    branches: ['experiment/bean-gepa-openhands-compare-*']
+    paths:
+      - 'experiments/bean_model_free_comparison/**'
+      - 'tests/test_bean_model_free_comparison.py'
+      - 'tests/test_bean_optimization_lab.py'
+      - '.github/workflows/bean-model-free-comparison.yml'
+  pull_request:
+    paths:
+      - 'experiments/bean_model_free_comparison/**'
+      - 'tests/test_bean_model_free_comparison.py'
+      - '.github/workflows/bean-model-free-comparison.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  independent-checks:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.11', '3.12']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: danieloculus0-bot/BEAN
+          ref: 2f29b30a92e064c11c57c67d46eb4fdb2dcf4e71
+          path: bean-core
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Test model-free reproducibility, independent replay and ledger integrity
+        env:
+          PYTHONPATH: bean-core
+        run: python -m unittest discover -s tests -p test_bean_model_free_comparison.py -v
+  three-seed-challenge:
+    needs: independent-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: danieloculus0-bot/BEAN
+          ref: 2f29b30a92e064c11c57c67d46eb4fdb2dcf4e71
+          path: bean-core
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Train each model-free learner on 3000 identical cases across 3 seeds
+        env:
+          PYTHONPATH: bean-core
+        run: python experiments/bean_model_free_comparison/run.py --episodes 3000 --holdout 400 --out-dir head-to-head-evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bean-vs-model-free-feedback-9000-signed-ledger-evidence
+          path: head-to-head-evidence/
+          if-no-files-found: warn
