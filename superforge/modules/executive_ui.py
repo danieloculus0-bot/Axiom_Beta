@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 
 from flask import Blueprint, redirect, request
+from superforge.security import verified_user
 
 from ..db import db
 from ..ui import page
@@ -166,7 +167,7 @@ def executive_person_post():
         request.form.get("person_key", ""),
         request.form.get("display_name", ""),
         email=request.form.get("email") or "",
-        actor=request.form.get("actor") or "local",
+        actor=verified_user(),
     )
     return redirect("/executive")
 
@@ -177,20 +178,20 @@ def executive_assignment_post():
         request.form.get("person_key", ""),
         request.form.get("role_key", ""),
         primary=bool(request.form.get("primary")),
-        actor=request.form.get("actor") or "local",
+        actor=verified_user(),
     )
     return redirect("/executive")
 
 
 @executive_blueprint.post("/executive/protocol")
 def executive_protocol_post():
-    create_decision_protocol(dict(request.form), actor=request.form.get("actor") or "local")
+    create_decision_protocol(dict(request.form), actor=verified_user())
     return redirect("/executive")
 
 
 @executive_blueprint.post("/executive/suggestion/<int:suggestion_id>/accept")
 def executive_accept_post(suggestion_id: int):
-    accept_executive_suggestion(suggestion_id, actor=request.form.get("actor") or "local")
+    accept_executive_suggestion(suggestion_id, actor=verified_user())
     return redirect("/executive")
 
 
@@ -201,6 +202,6 @@ def executive_outcome_post(suggestion_id: int):
         suggestion_id,
         outcome=request.form.get("outcome") or "",
         human_rating=None if rating in (None, "") else float(rating),
-        actor=request.form.get("actor") or "local",
+        actor=verified_user(),
     )
     return redirect("/executive")
