@@ -167,3 +167,21 @@ against the first promise even if revised later.
 Recommendations are suggestions, not orders, and quote values are not
 invoice-matched actual spend. See the linked documentation for evidence
 limitations, sample sizes, and the remaining supplier/ERP integration work.
+
+## Actual purchase costs and invoice reconciliation
+
+The local [Cost Reconciliation](docs/PURCHASE_COST_RECONCILIATION.md)
+workbench at `/purchasing/costs` matches **actual invoice lines** against
+documented PO-agreed unit prices and posted physical receipts. It tracks
+immutable invoice evidence, landed charges, price variances, blocked
+overbilling and required local variance reviews. Invoice entry never changes
+on-hand stock or posts accounts payable or payment transactions.
+
+Invoice-backed cost can be explicitly associated with actual job material
+consumption, with item and quantity caps. The Job Passport displays these
+**partial, source-backed material costs**, not assumed full job profitability.
+
+Review-required real unit-price feedback for EZstimate is available at
+`/purchasing/costs/feedback.json`. It does not silently change estimator
+price memory or replace source quotations. See
+[reconciliation rules](docs/PURCHASE_COST_RECONCILIATION.md).
