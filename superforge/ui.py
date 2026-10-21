@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import render_template_string
 from .context_menu import MODULES
+from .favorites import list_favorites
 from .db import db
 
 def preference():
@@ -21,6 +22,16 @@ def page(title:str,body:str,*,module_key:str="",context_type:str="",context_id:s
         f"<a class='nav-item {'active' if key==module_key else ''}' href='{path}'>{label}</a>"
         for key,label,path in MODULES if key not in {"audit"}
     )
+    favorites=list_favorites()
+    favorites_nav="".join(
+        f"<a class='nav-item' href='{item['href']}'>★ {item['label']}</a>"
+        for item in favorites
+    )
+    pinned={x["key"] for x in favorites}
+    pin_button=(
+        f"<button class='secondary' id='favorite-pin' data-module-key='{module_key}'>" +
+        ("★ Saved" if module_key in pinned else "☆ Favorite") + "</button>"
+    ) if any(x[0]==module_key for x in MODULES) else ""
     css=r"""
 :root{--accent:ACCENT;--bg:#0F1113;--panel:#1A1D20;--panel2:#22282A;--line:#303A3B;--text:#E6EAE7;--muted:#9FAEB0;--shadow:0 16px 45px rgba(0,0,0,.24)}
 html[data-mode="light"]{--bg:#F4F6F8;--panel:#FFFFFF;--panel2:#F8FAFC;--line:#D8DEE7;--text:#121820;--muted:#5C6978;--shadow:0 14px 36px rgba(30,40,55,.10)}
@@ -28,6 +39,7 @@ html[data-mode="light"]{--bg:#F4F6F8;--panel:#FFFFFF;--panel2:#F8FAFC;--line:#D8
 a{color:inherit}.app{min-height:100vh;display:grid;grid-template-columns:245px 1fr}.sidebar{background:var(--panel);border-right:1px solid var(--line);position:sticky;top:0;height:100vh;overflow:auto;padding:18px 12px}
 .brand{font-weight:900;font-size:22px;letter-spacing:-.5px;padding:6px 10px 16px}.brand small{display:block;color:var(--muted);font-size:10px;letter-spacing:1.7px;text-transform:uppercase;margin-top:4px}
 .nav-item{display:block;text-decoration:none;padding:9px 11px;border-radius:9px;color:var(--muted);margin:2px 0;font-weight:650}.nav-item:hover,.nav-item.active{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--text)}.nav-item.active{box-shadow:inset 3px 0 0 var(--accent)}
+.favorite-heading{margin:13px 11px 4px;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1.4px;font-weight:900}
 .main{min-width:0}.topbar{height:58px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 22px;background:color-mix(in srgb,var(--panel) 94%,transparent);position:sticky;top:0;z-index:20;backdrop-filter:blur(12px)}
 .topbar .grow{flex:1}.crumb{font-weight:800}.hint{color:var(--muted);font-size:12px}.content{padding:22px;max-width:1600px;margin:auto}.page-head{display:flex;align-items:flex-start;gap:18px;margin-bottom:18px}.page-head .grow{flex:1}.eyebrow{font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);font-weight:800;margin:0 0 6px}h1,h2,h3{margin-top:0}h1{font-size:29px;letter-spacing:-.7px;margin-bottom:6px}h2{font-size:19px}.sub{color:var(--muted);max-width:900px;line-height:1.55}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.card,.panel{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:16px;box-shadow:var(--shadow)}.card strong.big{font-size:28px;display:block;margin-bottom:4px}.card .label{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.7px}
@@ -69,6 +81,27 @@ document.addEventListener('contextmenu',async e=>{
   }catch(err){console.error(err)}
 });
 function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+document.getElementById('favorite-pin')?.addEventListener('click',async event=>{
+  const key=event.currentTarget.dataset.moduleKey;
+  try{
+    const response=await fetch('/api/favorites',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({module_key:key})});
+    const saved=await response.json();
+    if(!response.ok||!saved.saved)throw Error(saved.error||'Save failed');
+    window.location.reload();
+  }catch(error){window.alert(error.message)}
+});
+document.querySelectorAll('[data-remove-favorite]').forEach(button=>{
+  button.addEventListener('click',async()=>{
+    try{
+      const response=await fetch('/api/favorites/'+
+        encodeURIComponent(button.dataset.removeFavorite),{method:'DELETE'});
+      const removed=await response.json();
+      if(!response.ok||!removed.ok)throw Error(removed.error||'Remove failed');
+      window.location.reload();
+    }catch(error){window.alert(error.message)}
+  });
+});
 """
     return render_template_string("""<!doctype html>
 <html data-mode="{{ mode }}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -76,7 +109,10 @@ function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;',
 <body data-module="{{ module_key }}" class="sf-context" data-entity-type="{{ context_type }}" data-entity-id="{{ context_id }}" data-entity-label="{{ title }}">
 <div class="app"><aside class="sidebar"><div class="brand">Axiom<small>Unified Operations Intelligence</small></div>{{ nav|safe }}
 <hr style="border:0;border-top:1px solid var(--line);margin:12px 7px">
+<div class="favorite-heading">Favorites</div>{{ favorites_nav|safe }}
+<a class="nav-item" href="/favorites">Manage favorites</a>
+<hr style="border:0;border-top:1px solid var(--line);margin:12px 7px">
 <a class="nav-item" href="/logic">Logic Map</a><a class="nav-item" href="/audit">Audit Trail</a><a class="nav-item" href="/appearance">Appearance</a>
-</aside><main class="main"><div class="topbar"><div class="crumb">{{ title }}</div><div class="grow"></div><div class="hint">Right-click anything</div></div>
+</aside><main class="main"><div class="topbar"><div class="crumb">{{ title }}</div><div class="grow"></div><a class="button secondary" href="/favorites">★ Favorites</a>{{ pin_button|safe }}<div class="hint">Right-click anything</div></div>
 <div class="content">{{ body|safe }}</div></main></div><div id="sf-context-menu" class="ctx"></div><script>{{ js|safe }}</script></body></html>""",
-        title=title,body=body,css=css,js=js,nav=nav,mode=pref["theme_mode"],module_key=module_key,context_type=context_type,context_id=context_id)
+        title=title,body=body,css=css,js=js,nav=nav,favorites_nav=favorites_nav,pin_button=pin_button,mode=pref["theme_mode"],module_key=module_key,context_type=context_type,context_id=context_id)

@@ -57,3 +57,30 @@ Historical experiments, dated reports and superseded architectural claims have b
 ## EZstimate quote proposals
 
 The Axiom quoting workspace now shows the original ForgeVault drawing/version, release package and PDF hash for quote proposals imported by the local ezstimate_quote integration. Quote math is independently recalculated; differing totals and conflicting quote numbers are rejected. Every imported proposal remains review_required and is never a customer-approved quote or PO. The cross-platform integration test uses actual EZstimate, ForgeVault and BEAN source checkouts. An authenticated shared-network write API is NOT implemented.
+
+## BEAN navigation and favorites (experimental)
+
+Axiom now exposes a real persistent **Favorites** menu in its Gothic Lime sidebar.
+Click `☆ Favorite` inside an existing workspace to pin it, or use the
+`/favorites` page to inspect and remove saved destinations. Favorites survive
+application restarts in the local Axiom SQLite database. Only registered Axiom
+workspaces are supported; BEAN must not invent paths or confirm a pin without a
+successful database write.
+
+For local tools and a future authenticated ChatGPT/BEAN connector:
+
+| Route | Method | Purpose |
+| --- | --- | --- |
+| `/api/navigation?q=quality` | GET | Search registered workspaces, return key, label and relative path |
+| `/api/favorites` | GET | List saved workspaces |
+| `/api/favorites` | POST JSON `{"module_key":"quality"}` | Idempotently pin existing module |
+| `/api/favorites/{module_key}` | DELETE | Remove existing pin |
+
+This is a **local single-user** feature. These routes are not public
+authenticated account APIs. Do not expose the Axiom Flask service directly
+to the internet; production ChatGPT integration still requires authenticated
+user identity, a secured HTTPS boundary, and a connector that can reach
+the Axiom application. The separately hosted ChatGPT app cannot reach
+`localhost` on the user's workstation by itself.
+
+Tests: `python -m pytest tests/test_favorites_navigation.py -q`.
