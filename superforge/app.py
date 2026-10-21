@@ -35,6 +35,7 @@ from .modules.executive import pareto_queue, register_executive_logic
 from .modules.executive_ui import executive_blueprint
 from .ui import page
 from .modules.purchasing import init_purchasing
+from .modules.supplier_intelligence import init_supplier_intelligence
 from .modules.purchasing_ui import purchasing_blueprint
 from .modules.job_passport import passport_blueprint
 
@@ -87,6 +88,7 @@ def create_app(test_config:dict|None=None)->Flask:
     init_db()
     init_extensions()
     init_purchasing()
+    init_supplier_intelligence()
     init_finance_schema()
     init_org_schema()
     init_favorites()
