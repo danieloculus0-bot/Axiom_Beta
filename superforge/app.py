@@ -34,6 +34,7 @@ from .modules.finance_ui import finance_blueprint
 from .modules.executive import pareto_queue, register_executive_logic
 from .modules.executive_ui import executive_blueprint
 from .ui import page
+from .modules.job_passport import passport_blueprint
 
 def e(value)->str:
     return html.escape("" if value is None else str(value))
@@ -54,7 +55,9 @@ def table_html(rows,columns,entity_type,label_field=None):
                 state = "pending" if str(value).lower() in {"draft","open","queued","in_progress","review","review_required","pending"} else "good" if str(value).lower() in {"complete","completed","approved","released","pass","success","closed"} else "danger" if str(value).lower() in {"failed","error","rejected","blocked"} else ""
                 out.append(f"<td><span class='badge {state}'>{e(value)}</span></td>")
             elif key==(label_field or columns[0][0]):
-                detail=f"/quality/{d.get('id')}" if entity_type=="quality_record" else f"/context/{entity_type}/{d.get('id')}"
+                detail=(f"/quality/{d.get('id')}" if entity_type=="quality_record" else
+                        f"/jobs/{d.get('id')}/passport" if entity_type=="job" else
+                        f"/context/{entity_type}/{d.get('id')}")
                 out.append(f"<td><a href='{detail}' style='font-weight:850;text-decoration:none'>{e(value)}</a></td>")
             else:
                 out.append(f"<td>{e(value)}</td>")
@@ -98,6 +101,7 @@ def create_app(test_config:dict|None=None)->Flask:
     app.register_blueprint(automation_blueprint)
     app.register_blueprint(collaboration_blueprint)
     app.register_blueprint(reporting_blueprint)
+    app.register_blueprint(passport_blueprint)
     app.register_blueprint(finance_blueprint)
     app.register_blueprint(executive_blueprint)
 
@@ -211,7 +215,7 @@ def create_app(test_config:dict|None=None)->Flask:
 <label>Job Number<input name='job_number' required></label><label>Sales Order<input name='sales_order'></label><label>Quantity<input name='quantity' type='number'></label>
 <label>Due Date<input name='due_date' type='date'></label><label>Status<input name='status' value='open'></label><label>Current Operation<input name='current_operation'></label>
 <label>Priority<input name='priority' value='normal'></label><label class='wide'>Notes<textarea name='notes'></textarea></label><div><button>Save Job</button></div></form></details>"""
-        body="<section class='page-head'><div><p class='eyebrow'>ERP / Production</p><h1>Job Tracker</h1><p class='sub'>Jobs are the common spine for quality, purchasing, inventory, clocking, FAI, documents and planning.</p></div></section>"+context_banner()+form+"<div class='panel'>"+table_html(rows,[("job_number","Job"),("sales_order","SO"),("quantity","Qty"),("due_date","Due"),("status","Status"),("current_operation","Operation"),("priority","Priority")],"job","job_number")+"</div>"
+        body="<section class='page-head'><div><p class='eyebrow'>ERP / Production</p><h1>Job Tracker</h1><p class='sub'>Jobs are the common spine for quality, purchasing, inventory, clocking, FAI, documents and planning. Click a job number to view its read-only evidence passport.</p></div></section>"+context_banner()+form+"<div class='panel'>"+table_html(rows,[("job_number","Job"),("sales_order","SO"),("quantity","Qty"),("due_date","Due"),("status","Status"),("current_operation","Operation"),("priority","Priority")],"job","job_number")+"</div>"
         return page("Job Tracker",body,module_key="job_tracker")
 
     @app.route("/purchase-orders",methods=["GET","POST"])
