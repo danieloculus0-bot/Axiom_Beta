@@ -167,6 +167,7 @@ def run_training(db_path, *, episodes=TRAIN_EPISODES, train_seed=1093,
     checkpoints=[]
     start_verify=ledger.verify()
     if start_verify["events"]:
+        ledger.close()  # Windows cannot remove a still-open SQLite file.
         raise ValueError("experiment needs an empty isolated SQLite ledger")
     before=evaluate(ledger,validate_seed,test_cases)
     try:
