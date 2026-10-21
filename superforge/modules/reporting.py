@@ -5,6 +5,7 @@ import html
 import io
 import json
 from flask import Blueprint, Response, request
+from superforge.security import verified_user
 
 from ..audit import record_event
 from ..db import db
@@ -178,7 +179,7 @@ def export_report(report_key: str):
         module="reporting",
         entity_type="report",
         entity_id=report_key,
-        actor="local",
+        actor=verified_user(),
         data={"format":fmt,"row_count":len(rows)},
     )
     if fmt=="json":
