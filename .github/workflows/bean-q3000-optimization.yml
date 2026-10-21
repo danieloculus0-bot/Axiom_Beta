@@ -1,0 +1,64 @@
+name: Axiom BEAN 3000 measured Q-learning episodes
+on:
+  push:
+    branches: ['experiment/axiom-bean-3000-q-optimization-*']
+    paths:
+      - 'superforge/integrations/bean_optimization_lab.py'
+      - 'tests/test_bean_optimization_lab.py'
+      - 'experiments/axiom_bean_q3000/**'
+      - '.github/workflows/bean-q3000-optimization.yml'
+  pull_request:
+    paths:
+      - 'superforge/integrations/bean_optimization_lab.py'
+      - 'tests/test_bean_optimization_lab.py'
+      - 'experiments/axiom_bean_q3000/**'
+      - '.github/workflows/bean-q3000-optimization.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-learner:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.11', '3.12']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: danieloculus0-bot/BEAN
+          ref: 1d7ff1a1459233a1396104eda2af2c522e915df1
+          path: bean-core
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Validate Q-learning, holdout isolation and exact receipts
+        env:
+          PYTHONPATH: bean-core
+        run: python -m unittest discover -s tests -p test_bean_optimization_lab.py -v
+
+  full-3000-episodes:
+    needs: verify-learner
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: danieloculus0-bot/BEAN
+          ref: 1d7ff1a1459233a1396104eda2af2c522e915df1
+          path: bean-core
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Execute 3000 real synthetic scheduling episodes
+        env:
+          PYTHONPATH: bean-core
+        run: python experiments/axiom_bean_q3000/run.py --episodes 3000 --holdout-cases 400 --out-dir axiom-bean-evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: axiom-bean-q3000-ledger-validated-evidence
+          path: axiom-bean-evidence/
+          if-no-files-found: ignore
