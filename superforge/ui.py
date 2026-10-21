@@ -49,6 +49,12 @@ table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}th{col
 input,select,textarea{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px 10px;min-height:38px;width:100%}textarea{min-height:96px}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.wide{grid-column:1/-1}label{font-weight:750;font-size:12px;color:var(--muted)}label input,label select,label textarea{display:block;margin-top:5px}
 .empty{padding:35px;text-align:center;color:var(--muted)}.statline{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--muted)}code{background:var(--panel2);padding:2px 5px;border-radius:5px}
 .ctx{position:fixed;z-index:9999;min-width:270px;background:var(--panel);border:1px solid var(--line);box-shadow:0 18px 60px rgba(0,0,0,.42);border-radius:11px;padding:7px;display:none}.ctx.open{display:block}.ctx-head{padding:7px 9px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.8px}.ctx a{display:flex;justify-content:space-between;text-decoration:none;padding:9px 10px;border-radius:7px}.ctx a:hover{background:color-mix(in srgb,var(--accent) 16%,transparent)}.ctx hr{border:0;border-top:1px solid var(--line);margin:5px 0}.ctx .group{padding:5px 9px;font-weight:900}.ctx .small{font-size:11px;color:var(--muted)}
+.ctx{max-height:min(75vh,670px);overflow-y:auto}
+.ctx-more{border-top:1px solid var(--line);margin-top:5px;padding:5px 0}
+.ctx-more summary{cursor:pointer;padding:9px;color:var(--text);font-size:12px}
+.ctx-more a{display:flex}
+.ctx-action{display:block;width:100%;text-align:left;background:var(--panel2);color:var(--text);padding:10px;border-radius:8px}
+.ctx-action:disabled{opacity:.6;cursor:wait}
 @media(max-width:900px){.app{grid-template-columns:1fr}.sidebar{display:none}.content{padding:14px}.form-grid{grid-template-columns:1fr}.topbar{padding:0 14px}}
 """.replace("ACCENT",pref["accent"])
     js=r"""
@@ -57,28 +63,64 @@ function closeMenu(){menu.classList.remove('open')}
 document.addEventListener('click',closeMenu);
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu()});
 document.addEventListener('contextmenu',async e=>{
+  // Preserve the browser's copy/paste, link, form and spreadsheet editing menu.
+  // Only actual typed Axiom record surfaces have an Axiom context menu.
+  if(e.shiftKey || e.target.closest('a,button,input,textarea,select,[contenteditable],[role="textbox"]'))return;
+  const target=e.target.closest('.sf-context[data-entity-type][data-entity-id]');
+  if(!target || !target.dataset.entityType || !target.dataset.entityId)return;
   e.preventDefault(); closeMenu();
-  const target=e.target.closest('.sf-context');
-  const type=target?.dataset.entityType||'';
-  const id=target?.dataset.entityId||'';
-  const label=target?.dataset.entityLabel||'Axiom';
+  const type=target.dataset.entityType;
+  const id=target.dataset.entityId;
+  const label=target.dataset.entityLabel||type+' #'+id;
   const current=document.body.dataset.module||'';
   const q=new URLSearchParams({entity_type:type,entity_id:id,current_module:current});
   try{
     const res=await fetch('/api/context-menu?'+q.toString());
+    if(!res.ok)throw new Error('Navigation unavailable');
     const data=await res.json();
+    if(!Array.isArray(data.items))throw new Error('Missing navigation options');
     let html='<div class="ctx-head">'+escapeHtml(label)+'</div>';
-    if(type&&id){
-      html+='<a href="/context/'+encodeURIComponent(type)+'/'+encodeURIComponent(id)+'"><b>Open record</b><span>↵</span></a><hr>';
+    html+='<a href="/context/'+encodeURIComponent(type)+'/'+encodeURIComponent(id)+'"><b>Open record</b><span>↵</span></a><hr>';
+    const suggested=data.items.filter(x=>x.suggested);
+    const other=data.items.filter(x=>!x.suggested);
+    const toLinks=items=>items.map(x=>'<a href="'+escapeHtml(x.href)+'"><span>'+escapeHtml(x.label)+'</span><span class="small">'+(x.current?'current':'')+'</span></a>').join('');
+    if(suggested.length){
+      html+='<div class="group">Suggested destinations</div>'+toLinks(suggested);
     }
-    html+='<div class="group">Open with</div>';
-    html+=data.items.map(x=>'<a href="'+x.href+'"><span>'+escapeHtml(x.label)+'</span><span class="small">'+(x.current?'current':'')+'</span></a>').join('');
+    if(other.length){
+      const otherLinks=toLinks(other);
+      html+=suggested.length
+        ? '<details class="ctx-more"><summary>More workspaces ('+other.length+')</summary>'+otherLinks+'</details>'
+        : '<div class="group">Open with</div>'+otherLinks;
+    }
+    // Favorites is a real Axiom write, never claim success before confirmation.
+    if(current && /^[a-z0-9_-]+$/.test(current)){
+      html+='<hr><button type="button" class="ctx-action" data-pin-current-module="'+current+'">☆ Add workspace to Favorites</button>';
+    }
     menu.innerHTML=html;
-    const w=290,h=Math.min(620,60+data.items.length*38);
-    menu.style.left=Math.min(e.clientX,window.innerWidth-w-8)+'px';
-    menu.style.top=Math.min(e.clientY,window.innerHeight-h-8)+'px';
+    const rect=target.getBoundingClientRect();
+    const px=e.clientX||rect.left,py=e.clientY||rect.bottom;
+    menu.style.left=Math.max(8,Math.min(px,window.innerWidth-300))+'px';
+    menu.style.top=Math.max(8,Math.min(py,window.innerHeight-440))+'px';
     menu.classList.add('open');
   }catch(err){console.error(err)}
+});
+menu.addEventListener('click',async e=>{
+  const button=e.target.closest('[data-pin-current-module]');
+  if(!button)return;
+  e.preventDefault();
+  button.disabled=true;
+  try{
+    const res=await fetch('/api/favorites',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({module_key:button.dataset.pinCurrentModule})});
+    const result=await res.json();
+    if(!res.ok||result.saved!==true)throw new Error(result.error||'Favorite was not saved');
+    window.location.reload();
+  }catch(err){
+    button.disabled=false;
+    window.alert(err.message);
+  }
 });
 function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 document.getElementById('favorite-pin')?.addEventListener('click',async event=>{
@@ -113,6 +155,6 @@ document.querySelectorAll('[data-remove-favorite]').forEach(button=>{
 <a class="nav-item" href="/favorites">Manage favorites</a>
 <hr style="border:0;border-top:1px solid var(--line);margin:12px 7px">
 <a class="nav-item" href="/logic">Logic Map</a><a class="nav-item" href="/audit">Audit Trail</a><a class="nav-item" href="/appearance">Appearance</a>
-</aside><main class="main"><div class="topbar"><div class="crumb">{{ title }}</div><div class="grow"></div><a class="button secondary" href="/favorites">★ Favorites</a>{{ pin_button|safe }}<div class="hint">Right-click anything</div></div>
+</aside><main class="main"><div class="topbar"><div class="crumb">{{ title }}</div><div class="grow"></div><a class="button secondary" href="/favorites">★ Favorites</a>{{ pin_button|safe }}<div class="hint">Right-click records</div></div>
 <div class="content">{{ body|safe }}</div></main></div><div id="sf-context-menu" class="ctx"></div><script>{{ js|safe }}</script></body></html>""",
         title=title,body=body,css=css,js=js,nav=nav,favorites_nav=favorites_nav,pin_button=pin_button,mode=pref["theme_mode"],module_key=module_key,context_type=context_type,context_id=context_id)
