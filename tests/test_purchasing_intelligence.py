@@ -23,8 +23,8 @@ def initialized(tmp_path,monkeypatch):
           VALUES(?,?,?, ?,?,?,?)""",
           (job,"WO-PUR-1","BRACKET-42","C",10,"2026-11-01","DRAFT")).lastrowid
         op=con.execute("""INSERT INTO ezm_operations
-          (plan_id,sequence,work_center,operation,scheduled_date)
-          VALUES(?,10,'Mill','Rough machine','2026-10-27')""",(plan,)).lastrowid
+          (plan_id,sequence,work_center,operation,scheduled_date,instruction)
+          VALUES(?,10,'Mill','Rough machine','2026-10-27','Setup and mill')""",(plan,)).lastrowid
         dependency=con.execute("""INSERT INTO ezm_dependencies
           (operation_id,dependency_key,kind,description,required_qty,need_by)
           VALUES(?,'D-MAT','MATERIAL','6061 aluminum',16,'2026-10-26')""",(op,)).lastrowid
