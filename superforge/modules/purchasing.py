@@ -497,3 +497,106 @@ def purchasing_snapshot():
                        "signal":("UNCONFIGURED" if min_qty is None else
                                 "REORDER" if suggested>0 else "OK")})
     return result
+
+
+def import_ezstimate_request(document, *, actor="local"):
+    """Stage an EZstimate PR as local Axiom drafts, never an approved order.
+
+    Accepts the EZstimate request record (with request_id + payload) or its
+    dispatch envelope. Requires exact matching item code, stocking unit and
+    named job. Atomic for all lines, version checked and idempotent.
+    """
+    if not isinstance(document,dict):
+        raise ValueError("EZstimate request must be a JSON object")
+    wrapper=document.get("request",document)
+    if not isinstance(wrapper,dict):
+        raise ValueError("EZstimate request wrapper is invalid")
+    rid=wrapper.get("request_id")
+    if not isinstance(rid,str) or not re.fullmatch(r"PR-[A-Za-z0-9]{8,32}",rid):
+        raise ValueError("Valid EZstimate request_id required")
+    payload=wrapper.get("payload")
+    if not isinstance(payload,dict) or payload.get("schema")!="axiom.purchase_request.v1":
+        raise ValueError("Unsupported EZstimate PR payload")
+    if payload.get("source_system")!="EZstimate":
+        raise ValueError("Unexpected purchase request source")
+    rows=payload.get("lines")
+    if not isinstance(rows,list) or not 1<=len(rows)<=100:
+        raise ValueError("Expected 1 to 100 material lines")
+    who=payload.get("requested_by")
+    if not isinstance(who,str) or not 1<=len(who.strip())<=120:
+        raise ValueError("Missing EZstimate requested_by")
+    encoded=json.dumps(payload,sort_keys=True,separators=(",",":"))
+    if len(encoded)>100000:
+        raise ValueError("EZstimate request exceeds maximum source size")
+    digest=hashlib.sha256(encoded.encode()).hexdigest()
+    if wrapper.get("payload_sha256")!=digest:
+        raise ValueError("EZstimate source digest differs from payload")
+    normalized=[]
+    for n,line in enumerate(rows,1):
+        if not isinstance(line,dict):
+            raise ValueError(f"Line {n} must be an object")
+        code=line.get("material_key")
+        if not isinstance(code,str) or not code.strip() or len(code)>200:
+            raise ValueError(f"Line {n} missing material key")
+        unit=line.get("unit")
+        if unit not in {"ea","sheet","lb","kg","ft","m"}:
+            raise ValueError(f"Line {n} unit invalid")
+        qty=_qty(line.get("quantity"),f"line {n} quantity")
+        need=line.get("needed_by") or None
+        if need is not None:
+            try:
+                if date.fromisoformat(need).isoformat()!=need: raise ValueError()
+            except (ValueError,TypeError) as exc:
+                raise ValueError(f"Line {n} needed-by date invalid") from exc
+        job=line.get("job") or None
+        source_ref=line.get("source_ref") or ""
+        supplier=line.get("supplier_preference") or ""
+        description=line.get("description") or ""
+        if not all(isinstance(x,str) and len(x)<=400 for x in (source_ref,supplier,description)):
+            raise ValueError(f"Line {n} source text invalid")
+        if job is not None and (not isinstance(job,str) or len(job)>100):
+            raise ValueError(f"Line {n} job reference invalid")
+        normalized.append((code.strip(),unit,qty,need,job,supplier,source_ref,description))
+    with db() as con:
+        con.execute("BEGIN IMMEDIATE")
+        prior=con.execute("SELECT * FROM procurement_source_imports WHERE source_request_id=?",(rid,)).fetchone()
+        if prior:
+            if prior["payload_sha256"]!=digest:
+                raise ValueError("EZstimate request ID reused with different content")
+            ids=[r[0] for r in con.execute(
+                 "SELECT id FROM procurement_requisitions WHERE source_request_id=? ORDER BY source_line_index",(rid,))]
+            if len(ids)!=len(rows):
+                raise ValueError("Previously imported requisition lines are inconsistent")
+            return {"request_id":rid,"duplicate":True,"requisitions":ids}
+        resolved=[]
+        for n,(code,unit,qty,need,job,supplier,source_ref,description) in enumerate(normalized,1):
+            row=con.execute("SELECT id FROM inventory_items WHERE item_number=?",(code,)).fetchone()
+            if not row:
+                raise ValueError(f"Line {n} unknown Axiom inventory item {code}")
+            item_id=row["id"]
+            policy=_policy(con,item_id)
+            if unit!=policy["stocking_unit"]:
+                raise ValueError(f"Line {n} unit mismatch: {unit} vs Axiom {policy['stocking_unit']}")
+            job_id=None
+            if job:
+                found=con.execute("SELECT id FROM jobs WHERE job_number=?",(job,)).fetchone()
+                if not found:
+                    raise ValueError(f"Line {n} unknown Axiom job {job}")
+                job_id=found["id"]
+            resolved.append((n,item_id,unit,qty,need,job_id,supplier,source_ref,description))
+        con.execute("""INSERT INTO procurement_source_imports
+                       (source_request_id,source_system,payload_sha256,payload_json,line_count)
+                       VALUES(?,'EZstimate',?,?,?)""",(rid,digest,encoded,len(rows)))
+        ids=[]
+        for n,item_id,unit,qty,need,job_id,supplier,source_ref,description in resolved:
+            cur=con.execute("""INSERT INTO procurement_requisitions
+                (request_key,item_id,job_id,quantity,unit,requested_by,status,needed_by,
+                 supplier_preference,source_ref,description,source_request_id,source_line_index)
+                VALUES(?,?,?,?,?,?,'draft',?,?,?,?,?,?)""",
+                (f"EZ:{rid}:{n}",item_id,job_id,qty,unit,who.strip(),need,
+                 supplier,source_ref,description,rid,n))
+            ids.append(int(cur.lastrowid))
+    _event("EZSTIMATE_PR_IMPORTED",resolved[0][1],actor,
+           {"source_request_id":rid,"sha256":digest,"lines":len(ids),
+            "status":"draft; review required; no ERP or supplier dispatch"})
+    return {"request_id":rid,"duplicate":False,"requisitions":ids}
