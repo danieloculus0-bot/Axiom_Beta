@@ -131,3 +131,21 @@ Test the local workbench with `python -m pytest -q`, and the public demo
 logic with `node --test web/engine.test.mjs` (Node 22). GitHub Actions runs
 both test suites. For a production shop network, authentication and roles
 remain required before Axiom can be exposed beyond its local trusted boundary.
+
+## Purchasing intelligence (review branch)
+
+The native [Purchasing Intelligence workbench](docs/PURCHASING_INTELLIGENCE.md)
+uses the same Axiom job, inventory, PO, method-dependency and event records
+as the rest of the application. Configure explicit stocking units, min/max,
+lead days and multiples; review shortage and late-inbound signals; record
+job reservations and consumption; stage reviewed purchase requisitions;
+link them to PO lines; and receive actual stock in idempotent transactions.
+
+The workbench can also intake a canonical **EZstimate** persisted purchase
+request into local **draft** Axiom PR records, preserving source/digest and
+requiring exact inventory material-code, job and stocking-unit matches.
+Neither a procurement forecast nor an EZstimate source approval constitutes
+a supplier order or an external ERP acceptance. The new module performs no
+automatic external purchasing delivery.
+
+Read the [purchasing rules and known boundaries](docs/PURCHASING_INTELLIGENCE.md).
