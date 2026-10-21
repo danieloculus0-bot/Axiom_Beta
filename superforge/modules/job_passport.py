@@ -63,7 +63,7 @@ def get_job_passport(job_id: int) -> dict | None:
                 con, """SELECT id,document_number,title,revision,status,sha256
                         FROM documents WHERE job_id=? ORDER BY id""", (job_id,)
             ),
-            "requisitions": _rows(con, """SELECT r.id,r.status,r.quantity,r.unit,i.item_number
+            "requisitions": _rows(con, """SELECT r.id,r.status,r.quantity,r.unit,r.needed_by,r.source_request_id,i.item_number
                     FROM procurement_requisitions r JOIN inventory_items i ON i.id=r.item_id
                     WHERE r.job_id=? ORDER BY r.id""",(job_id,)),
             "reservations": _rows(con, """SELECT r.quantity,i.item_number
@@ -165,7 +165,7 @@ def job_passport_page(job_id: int):
           ("status", "Status"), ("severity", "Severity"), ("due_date", "Due")]),
         ("Purchasing requisitions",linked["requisitions"],
          [("id","PR ID"),("item_number","Stock item"),("quantity","Qty"),
-          ("unit","Unit"),("status","Status")]),
+          ("unit","Unit"),("needed_by","Need by"),("source_request_id","Source PR"),("status","Status")]),
         ("Reserved stock",linked["reservations"],
          [("item_number","Stock item"),("quantity","Reserved Qty")]),
         ("Material movements", linked["inventory_movements"],
