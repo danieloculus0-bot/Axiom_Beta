@@ -105,8 +105,8 @@ jobs:
               if ($proc.HasExited) { throw "Installed Axiom exited before health check passed" }
             }
             if (!$ok) { throw "Installed Axiom did not become healthy" }
-            $payroll = Invoke-WebRequest -Uri "http://127.0.0.1:5060/payroll" -UseBasicParsing -TimeoutSec 5
-            if ($payroll.StatusCode -ne 200) { throw "Installed payroll route failed" }
+            python tools/packaging_auth_smoke.py http://127.0.0.1:5060
+            if ($LASTEXITCODE -ne 0) { throw "Authenticated installed Axiom smoke failed" }
           } finally {
             if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force }
           }
