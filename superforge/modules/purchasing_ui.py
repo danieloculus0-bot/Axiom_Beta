@@ -94,7 +94,7 @@ def purchasing_workbench():
                      o.operation,m.job_number
                      FROM ezm_dependencies d JOIN ezm_operations o ON o.id=d.operation_id
                      JOIN ezm_method_plans m ON m.id=o.plan_id
-                     WHERE upper(d.kind) IN ('MATERIAL','PURCHASED_PART','OUTSIDE_PROCESS')
+                     WHERE upper(d.kind) IN ('MATERIAL','PURCHASED_PART')
                      ORDER BY d.id DESC LIMIT 100""")]
         link_rows=[dict(r) for r in con.execute("""SELECT d.dependency_id,d.item_id,d.required_qty,
                      i.item_number,e.description
@@ -110,22 +110,23 @@ def purchasing_workbench():
     body+="<a class='button secondary' href='/purchase-orders'>Purchase Orders</a></section>"
 
     ready=sum(1 for m in metrics if m["signal"]=="OK")
-    alerts=sum(1 for m in metrics if m["signal"]=="REORDER")
+    alerts=sum(1 for m in metrics if m["signal"] in {'REORDER','EXPEDITE'})
     unknown=sum(1 for m in metrics if m["signal"]=="UNCONFIGURED")
     body+=("<div class='grid'>"
-           f"<div class='card'><strong class='big'>{alerts}</strong><span class='label'>Reorder candidates</span></div>"
+           f"<div class='card'><strong class='big'>{alerts}</strong><span class='label'>Reorder or expedite</span></div>"
            f"<div class='card'><strong class='big'>{ready}</strong><span class='label'>Within policy</span></div>"
            f"<div class='card'><strong class='big'>{unknown}</strong><span class='label'>Missing stocking policy</span></div>"
            f"<div class='card'><strong class='big'>{len(reqs)}</strong><span class='label'>Recorded requisitions</span></div></div>")
     body+="<div class='panel'><h2>Min/max and consumption forecast</h2>"
     body+="<p class='sub'>Position = on-hand minus allocated plus recorded unreceived PO lines minus unreserved method demand. "
-    body+="Projected stock subtracts trailing 30-day average daily consumption multiplied by supplier lead days. "
-    body+="Below min, suggest replenishment towards max in whole purchasing multiples. A suggestion is not a commitment.</p>"
+    body+="Projected stock counts only POs expected within lead time, then subtracts trailing 30-day consumption rate times lead days. "
+    body+="Late or undated inbound is visible but not assumed on time; EXPEDITE signals existing supply that should be reconciled before reordering. "
+    body+="Below min, suggest replenishment towards max in purchasing multiples. A suggestion is not a commitment.</p>"
     body+="<div style='overflow:auto'><table><thead><tr><th>Item</th><th>Unit</th><th>On hand</th><th>Reserved</th>"
-    body+="<th>Inbound</th><th>Method need</th><th>Consumed 30d</th><th>Projected</th><th>Min / Max</th><th>Suggest</th><th>Signal</th><th>Action</th></tr></thead><tbody>"
+    body+="<th>Inbound total</th><th>Due in lead</th><th>Method need</th><th>Consumed 30d</th><th>Projected</th><th>Min / Max</th><th>Suggest</th><th>Signal</th><th>Action</th></tr></thead><tbody>"
     for x in metrics:
         body+="<tr><td>"+h(x["item_number"])+"</td><td>"+h(x["stocking_unit"] or "UNSET")+"</td>"
-        for field in ("on_hand","allocated","inbound","method_unreserved_demand","consumed_30d","projected"):
+        for field in ("on_hand","allocated","inbound","inbound_due_in_lead","method_unreserved_demand","consumed_30d","projected"):
             body+="<td>"+h(round(x[field],4))+"</td>"
         body+="<td>"+h(x["min_qty"])+ " / "+h(x["max_qty"])+"</td><td>"+h(x["suggested_qty"])+"</td>"
         body+="<td>"+h(x["signal"])+"</td><td>"
