@@ -8,7 +8,14 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 
-from superforge.integrations.bean_portfolio import BeanPortfolioClient
+# The isolated adapter is stdlib-only; importing all of superforge would also
+# load Flask and the native ERP runtime, irrelevant to this executable contract.
+import importlib.util
+_ADAPTER=Path(__file__).resolve().parents[1]/"superforge/integrations/bean_portfolio.py"
+_spec=importlib.util.spec_from_file_location("bean_portfolio_isolated",_ADAPTER)
+_mod=importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_mod)
+BeanPortfolioClient=_mod.BeanPortfolioClient
 
 
 class BeanPortfolioIntegration(unittest.TestCase):
