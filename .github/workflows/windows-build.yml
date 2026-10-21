@@ -56,8 +56,8 @@ jobs:
             foreach ($i in 1..45) {
               Start-Sleep -Seconds 1
               try {
-                $health = Invoke-RestMethod -Uri "http://127.0.0.1:5060/health" -TimeoutSec 2
-                if ($health.ok -eq $true -and $health.app -eq "Axiom") { $ok = $true; break }
+                $login = Invoke-WebRequest -Uri "http://127.0.0.1:5060/login" -UseBasicParsing -TimeoutSec 2
+                if ($login.StatusCode -eq 200 -and $login.Content -match "Axiom Sign In") { $ok = $true; break }
               } catch {}
               if ($proc.HasExited) { throw "Axiom.exe exited before health check passed" }
             }
@@ -101,8 +101,8 @@ jobs:
             foreach ($i in 1..45) {
               Start-Sleep -Seconds 1
               try {
-                $health = Invoke-RestMethod -Uri "http://127.0.0.1:5060/health" -TimeoutSec 2
-                if ($health.ok -eq $true -and $health.app -eq "Axiom") { $ok = $true; break }
+                $login = Invoke-WebRequest -Uri "http://127.0.0.1:5060/login" -UseBasicParsing -TimeoutSec 2
+                if ($login.StatusCode -eq 200 -and $login.Content -match "Axiom Sign In") { $ok = $true; break }
               } catch {}
               if ($proc.HasExited) { throw "Installed Axiom exited before health check passed" }
             }
