@@ -158,8 +158,9 @@ lead times, minimum quantities, pack multiples, and expiry evidence. It ranks
 available quotes for replenishment or existing purchase requests against
 documented material need dates and observed completed-PO delivery history.
 
-Original supplier promises and supplier identity are retained at PO-line
-creation. Receiving records actual physical delivery dates without changing
+Original supplier identity and the PO placement date are snapshotted at
+PO-line creation; only a source-confirmed supplier promise is scored as a
+commitment. Receiving records actual physical delivery dates without changing
 the stock-consumption accounting, and full-line punctuality is measured
 against the first promise even if revised later.
 
