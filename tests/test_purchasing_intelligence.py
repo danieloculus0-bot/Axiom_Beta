@@ -240,7 +240,10 @@ def test_po_late_delivery_expediting_without_duplicate_reorder(tmp_path,monkeypa
     set_policy(stock,"sheet",10,40,7,1)
     req=create_requisition(stock,100,"late-1")
     approve_requisition(req["id"])
-    attach_to_po(req["id"],po)
+    line=attach_to_po(req["id"],po)["line_id"]
+    from superforge.modules.supplier_intelligence import record_supplier_promise
+    record_supplier_promise(line,(date.today()+timedelta(days=30)).isoformat(),
+                            source_ref="Initial supplier date confirmation")
     snap=purchasing_snapshot()[0]
     assert snap["inbound"]==100
     assert snap["inbound_due_in_lead"]==0
@@ -250,6 +253,10 @@ def test_po_late_delivery_expediting_without_duplicate_reorder(tmp_path,monkeypa
     with db() as con:
         con.execute("UPDATE purchase_orders SET expected_date=? WHERE id=?",
                     ((date.today()+timedelta(days=2)).isoformat(),po))
+    # Header edits cannot silently erase the supplier's original line promise.
+    assert purchasing_snapshot()[0]["inbound_due_in_lead"]==0
+    record_supplier_promise(line,(date.today()+timedelta(days=2)).isoformat(),
+                            source_ref="Supplier revised confirmation")
     early=purchasing_snapshot()[0]
     assert early["inbound_due_in_lead"]==100
     assert early["signal"]=="OK"

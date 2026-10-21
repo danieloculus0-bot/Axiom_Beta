@@ -149,3 +149,21 @@ a supplier order or an external ERP acceptance. The new module performs no
 automatic external purchasing delivery.
 
 Read the [purchasing rules and known boundaries](docs/PURCHASING_INTELLIGENCE.md).
+
+## Supplier quote and delivery intelligence
+
+Axiom's [Supplier Prices & Delivery Intelligence](docs/SUPPLIER_INTELLIGENCE.md)
+page at `/purchasing/suppliers` records append-only supplier offers, quoted
+lead times, minimum quantities, pack multiples, and expiry evidence. It ranks
+available quotes for replenishment or existing purchase requests against
+documented material need dates and observed completed-PO delivery history.
+
+Original supplier identity and the PO placement date are snapshotted at
+PO-line creation; only a source-confirmed supplier promise is scored as a
+commitment. Receiving records actual physical delivery dates without changing
+the stock-consumption accounting, and full-line punctuality is measured
+against the first promise even if revised later.
+
+Recommendations are suggestions, not orders, and quote values are not
+invoice-matched actual spend. See the linked documentation for evidence
+limitations, sample sizes, and the remaining supplier/ERP integration work.
