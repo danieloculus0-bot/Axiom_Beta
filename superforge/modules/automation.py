@@ -5,6 +5,7 @@ import json
 from datetime import date, timedelta
 
 from flask import Blueprint, redirect, request
+from superforge.security import verified_user
 
 from ..audit import record_event
 from ..db import db
@@ -174,7 +175,7 @@ def create_automation_rule(data: dict, *, actor: str = "local") -> int:
 @automation_blueprint.route("/automation", methods=["GET", "POST"])
 def automation_dashboard():
     if request.method == "POST":
-        create_automation_rule(dict(request.form), actor=request.form.get("actor") or "local")
+        create_automation_rule(dict(request.form), actor=verified_user())
         return redirect("/automation")
     with db() as con:
         rules = [dict(r) for r in con.execute(
