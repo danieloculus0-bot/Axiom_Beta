@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from ..access_control import verified_actor
 from flask import Blueprint, jsonify, request
 
 from ..audit import record_event
@@ -179,12 +180,12 @@ def suggestions_api():
 @collaboration_blueprint.post("/api/collaboration/suggestions/<int:suggestion_id>/accept")
 def suggestion_accept_api(suggestion_id:int):
     data=request.get_json(silent=True) or request.form
-    action_id=accept_suggestion(suggestion_id,actor=data.get("actor") or "local",assigned_to=data.get("assigned_to") or "")
+    action_id=accept_suggestion(suggestion_id,actor=verified_actor(data.get("actor") or "local"),assigned_to=data.get("assigned_to") or "")
     return jsonify({"ok":True,"suggestion_id":suggestion_id,"workflow_action_id":action_id})
 
 
 @collaboration_blueprint.post("/api/collaboration/suggestions/<int:suggestion_id>/dismiss")
 def suggestion_dismiss_api(suggestion_id:int):
     data=request.get_json(silent=True) or request.form
-    dismiss_suggestion(suggestion_id,actor=data.get("actor") or "local",reason=data.get("reason") or "")
+    dismiss_suggestion(suggestion_id,actor=verified_actor(data.get("actor") or "local"),reason=data.get("reason") or "")
     return jsonify({"ok":True,"suggestion_id":suggestion_id})
