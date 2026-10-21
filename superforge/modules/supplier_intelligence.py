@@ -32,6 +32,12 @@ CREATE TABLE IF NOT EXISTS supplier_price_history (
 );
 CREATE INDEX IF NOT EXISTS ix_supplier_quotes
   ON supplier_price_history(item_id,supplier_id,quoted_on DESC,id DESC);
+CREATE TABLE IF NOT EXISTS supplier_line_origins (
+  po_line_id INTEGER PRIMARY KEY REFERENCES purchase_order_lines(id),
+  supplier_id INTEGER REFERENCES suppliers(id),
+  order_placed_on TEXT,
+  captured_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS supplier_line_promises (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   po_line_id INTEGER NOT NULL REFERENCES purchase_order_lines(id),
@@ -136,6 +142,17 @@ def record_supplier_price(supplier_id, item_id, unit_price, unit, *,
             "unit": unit, "price_usd": amount}
 
 
+def _capture_origin(con, line_id, supplier_id, order_placed_on):
+    """Freeze supplier and PO placement date at the time the line is created.
+
+    A later edit to the legacy PO header cannot rewrite historical supplier
+    attribution or order-to-delivery lead time.
+    """
+    ordered = _day(order_placed_on,required=False)
+    con.execute("""INSERT INTO supplier_line_origins(po_line_id,supplier_id,order_placed_on)
+                   VALUES(?,?,?)""",(line_id,supplier_id,ordered))
+
+
 def _capture_promise(con, line_id, when, source_ref):
     # Called in the same transaction as PO-line insertion or explicit update.
     day = _day(when)
@@ -188,12 +205,12 @@ def _receipt_date(con, movement_key, actual_on):
 
 def _completed_lines(con, supplier_id=None):
     """Only fully received, completely date-evidenced lines qualify for actual KPI."""
-    sql = """SELECT l.id,line_po.id AS po_id,line_po.supplier_id,l.item_id,
-             l.ordered_qty,l.received_qty,line_po.order_date
-             FROM purchase_order_lines l JOIN purchase_orders line_po
-                  ON line_po.id=l.purchase_order_id
+    sql = """SELECT l.id,origin.supplier_id,l.item_id,
+             l.ordered_qty,l.received_qty,origin.order_placed_on AS order_date
+             FROM purchase_order_lines l
+             JOIN supplier_line_origins origin ON origin.po_line_id=l.id
              WHERE l.received_qty >= l.ordered_qty-0.0000001
-               AND line_po.supplier_id IS NOT NULL"""
+               AND origin.supplier_id IS NOT NULL"""
     args = ()
     if supplier_id is not None:
         sql += " AND line_po.supplier_id=?"
