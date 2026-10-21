@@ -26,7 +26,7 @@ The suite is a functional set of experimental systems, **not a single fully inst
 - **EZstimate:** cost input, historical price evidence, demand preview and draft PR submission; published indicators are not supplier purchase prices.
 - **Axiom:** proposed released estimate/job/quality/ERP system of record; currently only some local intake contracts verified.
 - **BEAN Core / Bridge:** observations, provenance, experiment evaluation; a journal event is not autonomous learning or authorization.
-- **AIscend, FUN, 64Δ, venvWin:** unrelated or research deployments, not mandatory Axiom runtime dependencies.
+- **AIscend, 64Δ, venvWin:** separate projects or research deployments, not mandatory Axiom runtime dependencies. **FUN** remains the independent Emperor Gauntlet source project; its playable offline HTML edition is now included in **venvWin Portable** as the **only bundled game**. Game bundling does not connect FUN into Axiom's ERP runtime.
 
 ## Demo integrity sweep
 
@@ -37,7 +37,7 @@ The suite is a functional set of experimental systems, **not a single fully inst
 | [EZ-FEA Browser Lab](https://danieloculus0-bot.github.io/EZ-FEA/) | Educational beam solver, CAD *preview* and separately verified archived 3D frame evidence | Arbitrary uploaded CAD is not being solved in browser | [Native solver smoke](https://github.com/danieloculus0-bot/EZ-FEA/actions/runs/39510843388), [Pages workflow](https://github.com/danieloculus0-bot/EZ-FEA/blob/main/.github/workflows/pages.yml) |
 | [EZ-FEA Joint Matrix](https://danieloculus0-bot.github.io/EZ-FEA/joint-matrix.html) | Editable sample/imported geometry candidates with source faces and no default joint physics | Choosing Welded does not impose verified weld stiffness/connection physics | [Source](https://github.com/danieloculus0-bot/EZ-FEA/blob/main/web/joint-matrix.html) |
 | [EZstimate demo](https://danieloculus0-bot.github.io/EZstimate/) | Synthetic RFQ, selectable-text PDF/CSV/TXT extraction and browser-only quote calculation | Not local SQLite pricing, BLS/EIA refresh, BEAN Core, purchasing dispatch or native ERP | [Pages deploy](https://github.com/danieloculus0-bot/EZstimate/actions/runs/39513290745), [source](https://github.com/danieloculus0-bot/EZstimate/blob/main/web/demo.html) |
-| [Emperor Gauntlet](https://danieloculus0-bot.github.io/FUN/) | Standalone browser arcade game | Not suite-native manufacturing intelligence; mobile touch still needs device validation | [Pages deploy](https://github.com/danieloculus0-bot/FUN/actions/runs/39504075787) |
+| [Emperor Gauntlet](https://danieloculus0-bot.github.io/FUN/) | Standalone browser arcade game; **its offline HTML file is now vendored into venvWin Portable as the sole game** | Not Axiom-native intelligence; Puppy ISO boot/gameplay and mobile controls still need device validation | [Pages deploy](https://github.com/danieloculus0-bot/FUN/actions/runs/39504075787) |
 
 **Demo audit limit:** Direct hosted GitHub Pages fetches were unavailable from this audit environment. Descriptions are based on inspected published site source and GitHub Pages job receipts, *not* a fresh visual/mobile interaction pass. No fabricated "demo fully tested on a phone" claims.
 
