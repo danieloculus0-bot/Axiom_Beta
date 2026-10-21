@@ -6,6 +6,7 @@ from flask import Flask, jsonify, redirect, request, url_for
 
 from .audit import tail_entries, verify_journal, record_event
 from .context_menu import menu_for
+from .favorites import init_favorites, destinations, find_destinations, list_favorites, add_favorite, remove_favorite
 from .db import db, init_db
 from .schema_extensions import init_extensions
 from .finance_schema import init_finance_schema
@@ -82,6 +83,7 @@ def create_app(test_config:dict|None=None)->Flask:
     init_extensions()
     init_finance_schema()
     init_org_schema()
+    init_favorites()
     seed_finance_defaults()
     register_default_logic()
     register_automation_logic()
@@ -128,6 +130,54 @@ def create_app(test_config:dict|None=None)->Flask:
         body+="<div class='grid'>"+"".join(f"<a class='card sf-context' style='text-decoration:none' href='{href}'><strong class='big'>{val}</strong><span class='label'>{e(label)}</span></a>" for label,val,href in cards)+"</div>"
         body+=f"<div class='panel' style='margin-top:14px'><h2>Quality pulse</h2><div class='statline'><span>Overdue: <b>{pulse['overdue']}</b></span><span>Open CARs: <b>{pulse['open_cars']}</b></span><span>Failed FAI: <b>{pulse['failed_fai']}</b></span><span>30-day PPM: <b>{'n/a' if pulse['ppm']['ppm'] is None else round(pulse['ppm']['ppm'],1)}</b></span></div></div>"
         return page("Command Center",body,module_key="")
+
+    @app.get("/favorites")
+    def favorites_page():
+        items=list_favorites()
+        out="<section class='page-head'><div><p class='eyebrow'>Personal shortcuts</p><h1>Favorites</h1><p class='sub'>Pinned Axiom workspaces stay here between sessions. BEAN can propose and save the same registered destinations through a connected tool.</p></div></section>"
+        if not items:
+            out+="<div class='panel'><p>No favorites yet. Open a workspace and select ☆ Favorite.</p></div>"
+        else:
+            out+="<div class='panel'><h2>Saved workspaces</h2>"
+            for item in items:
+                out+=(f"<div class='statline' style='justify-content:space-between;margin:8px 0'>"
+                      f"<a href='{e(item['href'])}'><b>{e(item['label'])}</b></a>"
+                      f"<button class='secondary' data-favorite-remove='{e(item['key'])}'>Remove</button></div>")
+            out+="</div>"
+        return page("Favorites",out,module_key="")
+
+    @app.get("/api/navigation")
+    def api_navigation():
+        try:
+            matches=find_destinations(request.args.get("q",""))
+        except ValueError as exc:
+            return jsonify({"ok":False,"error":str(exc)}),400
+        return jsonify({"ok":True,"items":matches})
+
+    @app.get("/api/favorites")
+    def api_favorites():
+        return jsonify({"ok":True,"items":list_favorites()})
+
+    @app.post("/api/favorites")
+    def api_add_favorite():
+        if not request.is_json:
+            return jsonify({"ok":False,"error":"JSON body required"}),415
+        payload=request.get_json(silent=True)
+        if not isinstance(payload,dict):
+            return jsonify({"ok":False,"error":"JSON object required"}),400
+        try:
+            result=add_favorite(payload.get("module_key"))
+        except (ValueError,TypeError) as exc:
+            return jsonify({"ok":False,"error":str(exc)}),400
+        return jsonify(result)
+
+    @app.delete("/api/favorites/<module_key>")
+    def api_remove_favorite(module_key):
+        try:
+            result=remove_favorite(module_key)
+        except (ValueError,TypeError) as exc:
+            return jsonify({"ok":False,"error":str(exc)}),400
+        return jsonify(result)
 
     @app.route("/jobs",methods=["GET","POST"])
     def jobs():
