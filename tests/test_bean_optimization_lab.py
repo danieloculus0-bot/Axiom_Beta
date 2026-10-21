@@ -8,6 +8,14 @@ import sqlite3
 import tempfile
 import unittest
 
+# This research integration depends on a separately checked-out BEAN Core.
+# The ordinary Axiom product test suite must not fail during collection merely
+# because that optional experimental dependency is not installed.
+try:
+    from bean.optimization.portfolio_ledger import PortfolioLedger as _BeanLedger
+except ModuleNotFoundError as exc:
+    raise unittest.SkipTest("Optional BEAN research checkout not provided: " + str(exc))
+
 LAB=Path(__file__).resolve().parents[1]/"superforge/integrations/bean_optimization_lab.py"
 _spec=importlib.util.spec_from_file_location("axiom_bean_optimization_lab",LAB)
 _mod=importlib.util.module_from_spec(_spec)
