@@ -384,7 +384,48 @@ def job_material_costs(job_id):
             links.append({**r,"landed_unit_cost":state["landed_unit_cost"],
                           "assigned_landed_cost":_money(cost),
                           "reconciliation_status":state["status"]})
+    confirmed=[x for x in links if x["reconciliation_status"]=="RECONCILED"]
     return {"job_id":jid,"links":links,
             "documented_consumption_cost":_money(sum(
-                (Decimal(x["assigned_landed_cost"]) for x in links),Decimal(0))),
+                (Decimal(x["assigned_landed_cost"]) for x in confirmed),Decimal(0))),
+            "unreconciled_cost_links":len(links)-len(confirmed),
             "limitations":"Manual material cost association, not physical lot provenance or complete job profitability"}
+
+
+
+def estimator_price_feedback():
+    """Reconciled observed cost feed for explicit EZstimate price-memory review.
+
+    Supplier quotes remain a separate evidence family. Invoiced cost is NOT
+    imported silently into an estimate and is not necessarily job-consumed.
+    """
+    lines=reconciliation_snapshot()
+    with db() as con:
+        result=[]
+        for entry in lines:
+            if entry["status"]!="RECONCILED":
+                continue
+            invoice=con.execute("""SELECT v.invoice_number,v.invoice_date,v.source_ref,v.document_sha256,
+                                    s.name AS supplier,i.item_number
+                         FROM vendor_invoice_lines l
+                         JOIN vendor_invoices v ON v.id=l.invoice_id
+                         JOIN suppliers s ON s.id=v.supplier_id
+                         JOIN inventory_items i ON i.id=?
+                         WHERE l.id=?""",(entry["item_id"],entry["id"])).fetchone()
+            result.append({
+                "source":"Axiom.vendor_invoice_reconciliation",
+                "price_memory_status":"review_required",
+                "material_key":invoice["item_number"],"supplier":invoice["supplier"],
+                "unit":entry["unit"],"currency":"USD",
+                "invoiced_unit_price":entry["billed_unit_price"],
+                "landed_unit_cost":entry["landed_unit_cost"],
+                "purchase_order_unit_price":entry["po_unit_price"],
+                "material_variance_total":entry["material_price_variance"],
+                "invoice_number":invoice["invoice_number"],
+                "invoice_date":invoice["invoice_date"],
+                "source_ref":invoice["source_ref"],
+                "document_sha256":invoice["document_sha256"],
+                "po_line_id":entry["po_line_id"],"invoice_line_id":entry["id"]})
+    return {"schema":"axiom.actual_material_cost_feedback.v1",
+            "note":"Review before EZstimate pricing adoption. Not physical-lot costing or posted AP.",
+            "observations":result}
