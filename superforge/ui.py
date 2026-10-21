@@ -113,6 +113,6 @@ document.querySelectorAll('[data-remove-favorite]').forEach(button=>{
 <a class="nav-item" href="/favorites">Manage favorites</a>
 <hr style="border:0;border-top:1px solid var(--line);margin:12px 7px">
 <a class="nav-item" href="/logic">Logic Map</a><a class="nav-item" href="/audit">Audit Trail</a><a class="nav-item" href="/appearance">Appearance</a>
-</aside><main class="main"><div class="topbar"><div class="crumb">{{ title }}</div><div class="grow"></div>{{ pin_button|safe }}<div class="hint">Right-click anything</div></div>
+</aside><main class="main"><div class="topbar"><div class="crumb">{{ title }}</div><div class="grow"></div><a class="button secondary" href="/favorites">★ Favorites</a>{{ pin_button|safe }}<div class="hint">Right-click anything</div></div>
 <div class="content">{{ body|safe }}</div></main></div><div id="sf-context-menu" class="ctx"></div><script>{{ js|safe }}</script></body></html>""",
         title=title,body=body,css=css,js=js,nav=nav,favorites_nav=favorites_nav,pin_button=pin_button,mode=pref["theme_mode"],module_key=module_key,context_type=context_type,context_id=context_id)
