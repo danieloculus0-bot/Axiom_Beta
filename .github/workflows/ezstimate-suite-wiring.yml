@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: danieloculus0-bot/EZstimate
-          ref: bf7502c321cab7f96a101b2b5ccbefd95fd256be
+          ref: 645347727d5567a882dd0398f28980c6bb856e2f
           path: ezstimate-src
           persist-credentials: false
       - uses: actions/checkout@v4
