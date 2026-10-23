@@ -4,6 +4,7 @@ import html
 import io
 import json
 
+from ..access_control import verified_actor
 from flask import Blueprint, Response, redirect, request, send_file
 
 from ..db import db
@@ -124,7 +125,7 @@ def payroll_employee_post():
         pay_periods_per_year=int(request.form.get("pay_periods_per_year") or 52),
         overtime_multiplier=request.form.get("overtime_multiplier") or 1.5,
         default_payment_method=request.form.get("default_payment_method") or "check",
-        actor=request.form.get("actor") or "local",
+        actor=verified_actor(request.form.get("actor") or "local"),
     )
     return redirect("/payroll")
 
@@ -137,7 +138,7 @@ def payroll_run_post():
         request.form.get("check_date", ""),
         pay_group=request.form.get("pay_group") or "WEEKLY",
         run_key=request.form.get("run_key") or "",
-        actor=request.form.get("actor") or "local",
+        actor=verified_actor(request.form.get("actor") or "local"),
     )
     return redirect(f"/payroll/run/{run_id}")
 
@@ -213,7 +214,7 @@ def payroll_item_post(run_id: int):
         other_deductions=request.form.get("other_deductions") or 0,
         payment_method=request.form.get("payment_method") or "",
         notes=request.form.get("notes") or "",
-        actor=request.form.get("actor") or "local",
+        actor=verified_actor(request.form.get("actor") or "local"),
     )
     return redirect(f"/payroll/run/{run_id}")
 
@@ -222,7 +223,7 @@ def payroll_item_post(run_id: int):
 def payroll_import_recognition_post(run_id: int):
     result = apply_approved_iso_hungry_earnings(
         run_id,
-        actor=request.form.get("actor") or "local",
+        actor=verified_actor(request.form.get("actor") or "local"),
     )
     return redirect(
         f"/payroll/run/{run_id}?recognition_imported={len(result['imported'])}"
@@ -232,7 +233,7 @@ def payroll_import_recognition_post(run_id: int):
 
 @finance_blueprint.post("/payroll/run/<int:run_id>/approve")
 def payroll_approve_post(run_id: int):
-    approve_pay_run(run_id, actor=request.form.get("actor") or "local")
+    approve_pay_run(run_id, actor=verified_actor(request.form.get("actor") or "local"))
     return redirect(f"/payroll/run/{run_id}")
 
 
@@ -241,7 +242,7 @@ def payroll_paid_post(run_id: int):
     mark_pay_run_paid(
         run_id,
         payment_reference=request.form.get("payment_reference") or "",
-        actor=request.form.get("actor") or "local",
+        actor=verified_actor(request.form.get("actor") or "local"),
         payment_method=request.form.get("payment_method") or "mixed",
     )
     return redirect(f"/payroll/run/{run_id}")
@@ -287,7 +288,7 @@ def accounting_account_post():
         request.form.get("code", ""),
         request.form.get("name", ""),
         request.form.get("account_type", ""),
-        actor=request.form.get("actor") or "local",
+        actor=verified_actor(request.form.get("actor") or "local"),
     )
     return redirect("/accounting")
 
@@ -298,7 +299,7 @@ def sheets_dashboard():
         sheet_id = template_sheet(
             request.form.get("template_type") or "blank",
             name=request.form.get("name") or "",
-            actor=request.form.get("actor") or "local",
+            actor=verified_actor(request.form.get("actor") or "local"),
         )
         return redirect(f"/sheets/{sheet_id}")
     with db() as con:
@@ -386,7 +387,7 @@ def sheet_save(sheet_id: int):
     if columns:
         with db() as con:
             con.execute("UPDATE sheet_books SET columns_json=? WHERE id=?", (json.dumps(columns), sheet_id))
-    save_sheet_rows(sheet_id, rows, actor=request.form.get("actor") or "local")
+    save_sheet_rows(sheet_id, rows, actor=verified_actor(request.form.get("actor") or "local"))
     return redirect(f"/sheets/{sheet_id}")
 
 
@@ -395,7 +396,7 @@ def sheet_import(sheet_id: int):
     upload = request.files.get("file")
     if upload is None:
         return redirect(f"/sheets/{sheet_id}")
-    import_sheet_bytes(sheet_id, upload.filename or "import.csv", upload.read(), actor="local")
+    import_sheet_bytes(sheet_id, upload.filename or "import.csv", upload.read(), actor=verified_actor("local"))
     return redirect(f"/sheets/{sheet_id}")
 
 
@@ -421,11 +422,11 @@ def sheet_export_xlsx(sheet_id: int):
 @finance_blueprint.post("/sheets/<int:sheet_id>/post-payroll")
 def sheet_post_payroll(sheet_id: int):
     run_id = int(request.form.get("run_id") or 0)
-    post_payroll_sheet(sheet_id, run_id, actor=request.form.get("actor") or "local")
+    post_payroll_sheet(sheet_id, run_id, actor=verified_actor(request.form.get("actor") or "local"))
     return redirect(f"/payroll/run/{run_id}")
 
 
 @finance_blueprint.post("/sheets/<int:sheet_id>/post-journal")
 def sheet_post_journal(sheet_id: int):
-    post_journal_sheet(sheet_id, actor=request.form.get("actor") or "local", memo=request.form.get("memo") or "Sheet journal")
+    post_journal_sheet(sheet_id, actor=verified_actor(request.form.get("actor") or "local"), memo=request.form.get("memo") or "Sheet journal")
     return redirect("/accounting")

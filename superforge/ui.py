@@ -53,6 +53,7 @@ input,select,textarea{background:var(--panel2);color:var(--text);border:1px soli
 """.replace("ACCENT",pref["accent"])
     js=r"""
 const menu=document.getElementById('sf-context-menu');
+const axiomCsrf=document.querySelector('meta[name="axiom-csrf-token"]')?.content || '';
 function closeMenu(){menu.classList.remove('open')}
 document.addEventListener('click',closeMenu);
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu()});
@@ -85,7 +86,7 @@ document.getElementById('favorite-pin')?.addEventListener('click',async event=>{
   const key=event.currentTarget.dataset.moduleKey;
   try{
     const response=await fetch('/api/favorites',{method:'POST',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({module_key:key})});
+      headers:{'Content-Type':'application/json','X-CSRF-Token':axiomCsrf},body:JSON.stringify({module_key:key})});
     const saved=await response.json();
     if(!response.ok||!saved.saved)throw Error(saved.error||'Save failed');
     window.location.reload();
@@ -95,7 +96,7 @@ document.querySelectorAll('[data-remove-favorite]').forEach(button=>{
   button.addEventListener('click',async()=>{
     try{
       const response=await fetch('/api/favorites/'+
-        encodeURIComponent(button.dataset.removeFavorite),{method:'DELETE'});
+        encodeURIComponent(button.dataset.removeFavorite),{method:'DELETE',headers:{'X-CSRF-Token':axiomCsrf}});
       const removed=await response.json();
       if(!response.ok||!removed.ok)throw Error(removed.error||'Remove failed');
       window.location.reload();

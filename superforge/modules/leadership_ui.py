@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 
+from ..access_control import verified_actor
 from flask import Blueprint, redirect, request
 
 from ..db import db
@@ -172,7 +173,7 @@ def leadership_dashboard():
 
 @leadership_blueprint.post("/leadership/morale")
 def morale_post():
-    record_morale_pulse(dict(request.form),actor=request.form.get("actor") or "local")
+    record_morale_pulse(dict(request.form),actor=verified_actor(request.form.get("actor") or "local"))
     return redirect("/leadership")
 
 
@@ -183,7 +184,7 @@ def reward_account_post():
         display_name=request.form.get("display_name",""),
         department=request.form.get("department",""),
         vendor_ref=request.form.get("vendor_ref",""),
-        actor=request.form.get("actor") or "local",
+        actor=verified_actor(request.form.get("actor") or "local"),
     )
     return redirect("/leadership")
 
@@ -194,7 +195,7 @@ def reward_credit_post():
         int(request.form.get("account_id")),_f(request.form.get("points")),
         category=request.form.get("category") or "recognition",
         reason=request.form.get("reason") or "Recognition",
-        approved_by=request.form.get("approved_by") or "local",
+        approved_by=verified_actor(request.form.get("approved_by") or "local"),
     )
     return redirect("/leadership")
 
@@ -205,38 +206,38 @@ def reward_redeem_post():
         int(request.form.get("account_id")),_f(request.form.get("points")),
         vendor_reference=request.form.get("vendor_reference") or "",
         reason=request.form.get("reason") or "Reward redemption",
-        actor=request.form.get("actor") or "local",
+        actor=verified_actor(request.form.get("actor") or "local"),
     )
     return redirect("/leadership")
 
 
 @leadership_blueprint.post("/leadership/training-requirement")
 def training_requirement_post():
-    create_training_requirement(dict(request.form),actor=request.form.get("actor") or "local")
+    create_training_requirement(dict(request.form),actor=verified_actor(request.form.get("actor") or "local"))
     return redirect("/leadership")
 
 
 @leadership_blueprint.post("/leadership/action/<int:action_id>/complete")
 def workflow_action_complete_post(action_id: int):
     complete_workflow_action(
-        action_id,actor=request.form.get("actor") or "local",output=request.form.get("output") or ""
+        action_id,actor=verified_actor(request.form.get("actor") or "local"),output=request.form.get("output") or ""
     )
     return redirect("/leadership")
 
 
 @leadership_blueprint.post("/leadership/reward-rule")
 def reward_rule_post():
-    create_reward_rule(dict(request.form),actor=request.form.get("actor") or "local")
+    create_reward_rule(dict(request.form),actor=verified_actor(request.form.get("actor") or "local"))
     return redirect("/leadership")
 
 
 @leadership_blueprint.post("/leadership/reward-nomination/<int:nomination_id>/approve")
 def reward_nomination_approve_post(nomination_id: int):
-    approve_nomination(nomination_id,actor=request.form.get("actor") or "local")
+    approve_nomination(nomination_id,actor=verified_actor(request.form.get("actor") or "local"))
     return redirect("/leadership")
 
 
 @leadership_blueprint.post("/leadership/reward-nomination/<int:nomination_id>/reject")
 def reward_nomination_reject_post(nomination_id: int):
-    reject_nomination(nomination_id,actor=request.form.get("actor") or "local")
+    reject_nomination(nomination_id,actor=verified_actor(request.form.get("actor") or "local"))
     return redirect("/leadership")

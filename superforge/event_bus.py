@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from .audit import record_event
+from .access_control import verified_actor
 from .db import db
 
 @dataclass(frozen=True)
@@ -62,7 +63,7 @@ def _record_delivery(event:DomainEvent,handler:Handler,status:str,error_text:str
 def publish(event_type:str,*,source_module:str,entity_type:str,entity_id:str,actor:str="",reason:str="",payload:dict[str,Any]|None=None,parent_event_id:str="",correlation_id:str="")->DomainEvent:
     event=DomainEvent(
         event_id=f"evt_{uuid.uuid4().hex}",event_type=event_type,source_module=source_module,entity_type=entity_type,
-        entity_id=str(entity_id),actor=actor,reason=reason,payload=payload or {},correlation_id=correlation_id or f"corr_{uuid.uuid4().hex}",
+        entity_id=str(entity_id),actor=verified_actor(actor),reason=reason,payload=payload or {},correlation_id=correlation_id or f"corr_{uuid.uuid4().hex}",
         parent_event_id=parent_event_id,
     )
     _insert_event(event)
