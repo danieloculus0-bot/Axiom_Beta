@@ -4,6 +4,7 @@ import html
 import json
 from datetime import date, timedelta
 
+from ..access_control import verified_actor
 from flask import Blueprint, redirect, request
 
 from ..audit import record_event
@@ -174,7 +175,7 @@ def create_automation_rule(data: dict, *, actor: str = "local") -> int:
 @automation_blueprint.route("/automation", methods=["GET", "POST"])
 def automation_dashboard():
     if request.method == "POST":
-        create_automation_rule(dict(request.form), actor=request.form.get("actor") or "local")
+        create_automation_rule(dict(request.form), actor=verified_actor(request.form.get("actor") or "local"))
         return redirect("/automation")
     with db() as con:
         rules = [dict(r) for r in con.execute(
