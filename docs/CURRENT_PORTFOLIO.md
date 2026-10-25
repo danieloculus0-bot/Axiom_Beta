@@ -1,4 +1,6 @@
-# Repository portfolio snapshot — October 20, 2026 (updated inventory October 25)
+# Independent GitHub portfolio inventory (historical October 20 snapshot)
+
+**This is an independent GitHub account inventory, NOT an Axiom module list, bundling plan, or evidence that any of these repositories is installed in Axiom.** Games, trading, automotive research, operating-system experiments, and other independent products must remain outside Axiom unless a separately specified integration is explicitly authorized.
 
 **Historical October 20 operational snapshot covered 16 owned repositories.** As of October 25, GitHub lists **19** public owned repositories; the three additions in this index are BEAN-Rider, EZ-Office and JET-ERP. The CI receipts below still represent their **dated October 20 inspection**, not current HEAD checks. Use [BEAN's automated portfolio health workflow](https://github.com/danieloculus0-bot/BEAN/actions/workflows/portfolio-health.yml) and its timestamped artifacts for current per-commit status. Archived earlier READMEs remain available, and the [technical portfolio audit](PORTFOLIO_AUDIT_2026-10-20.md) remains historical.
 
@@ -42,6 +44,8 @@
 See [build-readiness audit and connector matrix](BUILD_READINESS_SWEEP_2026-10-20.md).
 
 ## Architecture ownership
+
+**Scope boundary:** Axiom is the manufacturing/ERP product only. BEAN may provide optional intelligence through defined interfaces. AIscend, FUN/games, BEAN-Rider, venvWin and unrelated experiments are not Axiom components. Portfolio links are navigation, not functional integration evidence.
 
 - **ForgeVault** owns released drawing bytes and version/revision identity. **EZ-FAIR** owns dimension proposals. **Axiom** stores an imported, review-required FAI. The Windows/Linux CI validates this local data path and source SHA; it is **not yet a shared-server authenticated data connector**.
 - **BEAN Core** maintains persistent evidence research; **BEAN AI Bridge** provides evidence adapters; **EZ-FEA** owns the physics engine. The tested handoffs do not imply Core is performing autonomous numerical analysis or self-repair.
