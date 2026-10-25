@@ -2,10 +2,12 @@
 from __future__ import annotations
 import hashlib
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
-for n in ("forgevault-src","ezstimate-src","bean-core"):
+for n in ("forgevault-src","ezstimate-src","ezfair-src","bean-core"):
     if not (ROOT/n).is_dir():raise RuntimeError("missing real repo "+n)
     sys.path.insert(0,str(ROOT/n))
 sys.path.insert(0,str(ROOT/"forgevault-src"/"backend"))
@@ -21,6 +23,7 @@ from forgevault.services.lifecycle import transition_record
 from forgevault.services.fai_handoff import released_pdf_handoff
 from ezstimate.engine import inspect_document, price_quote
 from ezstimate.bean import local_review,journal
+from controlled_handoff import inspect_released_pdf
 
 def test_real_estimate_and_erp(tmp_path,monkeypatch):
     monkeypatch.setattr(settings,"local_vault_root",str(tmp_path/"vault_objects"))
@@ -28,6 +31,7 @@ def test_real_estimate_and_erp(tmp_path,monkeypatch):
     Base.metadata.create_all(engine)
     drawing=fitz.open()
     page=drawing.new_page(width=600,height=800)
+    page.insert_text((80,95),"WIDTH 20.00")
     page.insert_text((340,615),"MATERIAL: ASTM A36")
     page.insert_text((340,640),"PART NO: EZ-500")
     page.insert_text((340,665),"REV: C")
@@ -78,6 +82,71 @@ def test_real_estimate_and_erp(tmp_path,monkeypatch):
         assert item["estimated_value"]==255
         assert link["source_version_id"]==manifest["file_version_id"]
         assert link["drawing_sha256"]==manifest["sha256"]
+    # Join FAI and estimating from the identical released PDF bytes and identity.
+    from superforge.integrations.controlled_fai import import_controlled_fai
+    fai_proposal = inspect_released_pdf(manifest, content)
+    assert fai_proposal["status"] == "review_required"
+    assert fai_proposal["characteristic_count"] > 0
+    fai_receipt = import_controlled_fai(
+        fai_proposal, content, fai_number="FAI-EZ-500", actor="fixture"
+    )
+    assert fai_receipt["status"] == "review_required"
+    assert import_controlled_fai(
+        fai_proposal, content, fai_number="FAI-EZ-500", actor="fixture"
+    )["idempotent"]
+    with db() as con:
+        fai = con.execute(
+            "SELECT * FROM fai_runs WHERE id=?", (fai_receipt["id"],)
+        ).fetchone()
+        fai_link = con.execute(
+            "SELECT * FROM fai_source_links WHERE fai_run_id=?", (fai_receipt["id"],)
+        ).fetchone()
+        quote_link = con.execute(
+            "SELECT * FROM ezstimate_quote_evidence WHERE quote_intake_id=?", (receipt["quote_id"],)
+        ).fetchone()
+        assert fai["status"] == "review_required"
+        assert fai["pass_count"] == 0 and fai["fail_count"] == 0
+        assert fai_link["pdf_sha256"] == quote_link["drawing_sha256"] == manifest["sha256"]
+        assert quote_link["source_version_id"] == manifest["file_version_id"]
+        assert fai["drawing_revision"] == manifest["customer_revision"]
+
+    receipt_dir = os.environ.get("AXIOM_JOINED_RECEIPT_DIR")
+    if receipt_dir:
+        evidence_path = Path(receipt_dir)
+        evidence_path.mkdir(parents=True, exist_ok=True)
+        def git_head(folder):
+            return subprocess.check_output(
+                ["git", "-C", str(ROOT / folder), "rev-parse", "HEAD"],
+                text=True,
+            ).strip()
+        joined = {
+            "evidence_kind": "synthetic_cross_repository_contract_test",
+            "production_deployment": False,
+            "source_pdf_sha256": manifest["sha256"],
+            "source_file_version_id": manifest["file_version_id"],
+            "source_revision": manifest["customer_revision"],
+            "quote_id": receipt["quote_id"],
+            "quote_status": receipt["status"],
+            "quote_value": quote["total"],
+            "fai_id": fai_receipt["id"],
+            "fai_status": fai_receipt["status"],
+            "fai_characteristic_count": fai_proposal["characteristic_count"],
+            "fai_measured_passes": fai["pass_count"],
+            "component_commits": {
+                "ForgeVault": git_head("forgevault-src"),
+                "EZstimate": git_head("ezstimate-src"),
+                "EZ-FAIR": git_head("ezfair-src"),
+                "BEAN": git_head("bean-core"),
+                "Axiom": subprocess.check_output(
+                    ["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True
+                ).strip(),
+            },
+        }
+        assert joined["quote_status"] == joined["fai_status"] == "review_required"
+        (evidence_path / "receipt.json").write_text(
+            json.dumps(joined, sort_keys=True, indent=2), encoding="utf-8"
+        )
+
     html=app.test_client().get("/quoting")
     assert html.status_code==200
     assert b"EZ-Q-500" in html.data
