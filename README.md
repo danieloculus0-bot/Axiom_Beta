@@ -2,7 +2,7 @@
 
 Current ERP consolidation target: a local-first manufacturing operations and quality application with a shared database/event/audit structure. Do not confuse bundled source snapshots with continuously synchronized standalone apps.
 
-[**Current 16-repository portfolio, CI status, and ownership map**](docs/CURRENT_PORTFOLIO.md)
+[**19-repository portfolio and ownership map**](docs/CURRENT_PORTFOLIO.md) · [Current per-commit portfolio checks](https://github.com/danieloculus0-bot/BEAN/actions/workflows/portfolio-health.yml)
 
 ## Axiom × BEAN — the operating model
 
