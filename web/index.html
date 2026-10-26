@@ -6,13 +6,13 @@
 <meta name="theme-color" content="#0f1113">
 <title>Axiom | Manufacturing Systems Lab</title>
 <style>
-:root{color-scheme:dark;--bg:#0f1113;--surface:#191e20;--high:#222a2c;--line:#334043;--accent:#79de4b;--soft:#b2c1bf;--text:#eff7f2;--warn:#f5c979;--bad:#ff9e9f}
+:root{color-scheme:dark;--bg:#0f1113;--surface:#111315;--high:#17191b;--line:#232527;--accent:#79de4b;--soft:#b2c1bf;--text:#eff7f2;--warn:#f5c979;--bad:#ff9e9f}
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 system-ui,-apple-system,Segoe UI,sans-serif}
 button,input{font:inherit}button{cursor:pointer}a{color:var(--accent)}.shell{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}
 .side{background:#151a1b;border-right:1px solid var(--line);padding:27px 17px;position:sticky;top:0;height:100vh}
 .brand{font-weight:900;font-size:31px;letter-spacing:-1.5px;line-height:1}.brand b{color:var(--accent)}.brand small{display:block;font-size:10px;letter-spacing:2.2px;color:var(--soft);margin:10px 0 38px;text-transform:uppercase}
 .side button{display:block;background:transparent;color:var(--soft);border:0;text-align:left;width:100%;padding:12px 14px;border-radius:8px;font-weight:750;margin-bottom:5px}
-.side button.active,.side button:hover{background:#263529;color:var(--text);box-shadow:inset 3px 0 var(--accent)}
+.side button.active,.side button:hover{background:#191b1d;color:var(--text);box-shadow:inset 3px 0 var(--accent)}
 .side .foot{position:absolute;bottom:22px;padding-right:15px;color:var(--soft);font-size:11px;line-height:1.6}
 .main{min-width:0;padding:30px clamp(18px,4.3vw,68px) 56px;max-width:1600px;width:100%;margin:auto}.eyebrow{text-transform:uppercase;letter-spacing:2.5px;color:var(--accent);font-weight:800;font-size:10px}
 h1{font-size:clamp(30px,4vw,56px);line-height:1.09;letter-spacing:-2px;margin:10px 0 15px}h2{font-size:21px;margin:0 0 13px}h3{font-size:14px;margin:0 0 9px}
@@ -26,12 +26,12 @@ p{color:var(--soft)}.intro{font-size:16px;max-width:830px}.top{display:flex;alig
 th{color:var(--soft);font-size:10px;text-transform:uppercase;letter-spacing:1px}th,td{padding:11px 10px;border-bottom:1px solid var(--line)}td{font-variant-numeric:tabular-nums}
 .button{background:var(--accent);color:#0f1710;border:0;border-radius:8px;padding:10px 16px;font-weight:850}
 .button.secondary{background:var(--high);color:var(--text);border:1px solid var(--line)}.buttons{display:flex;gap:9px;flex-wrap:wrap;margin:20px 0}
-.notice{padding:15px 17px;border-left:3px solid var(--accent);background:#203025;border-radius:0 9px 9px 0;color:#d4e9d9;margin:17px 0}
-.notice.warn{border-color:var(--warn);background:#332b22;color:#f2dbb5}
-label{display:block;font-weight:750;font-size:12px;color:var(--soft)}input{display:block;background:#101617;border:1px solid #465557;border-radius:8px;width:100%;padding:10px;color:var(--text);margin:5px 0 10px;max-width:180px}
+.notice{padding:15px 17px;border-left:3px solid var(--accent);background:#17191b;border-radius:0 9px 9px 0;color:#d4e9d9;margin:17px 0}
+.notice.warn{border-color:var(--warn);background:#191b1d;color:#f2dbb5}
+label{display:block;font-weight:750;font-size:12px;color:var(--soft)}input{display:block;background:#0c0e10;border:1px solid #465557;border-radius:8px;width:100%;padding:10px;color:var(--text);margin:5px 0 10px;max-width:180px}
 input:focus{outline:2px solid var(--accent);outline-offset:1px}.fields{display:grid;grid-template-columns:repeat(3,minmax(125px,1fr));gap:12px}
 .result{font-weight:850}.result.pass{color:var(--accent)}.result.fail,.result.invalid{color:var(--bad)}.result.pending{color:var(--warn)}
-.log{display:grid;gap:9px}.logitem{background:#111819;border:1px solid var(--line);border-radius:9px;padding:13px;overflow-wrap:anywhere}
+.log{display:grid;gap:9px}.logitem{background:#0d0f11;border:1px solid var(--line);border-radius:9px;padding:13px;overflow-wrap:anywhere}
 .logitem strong{color:var(--accent)}code{color:#d0e7d3;font-size:12px}.muted{color:var(--soft)}.line{border-top:1px solid var(--line);margin:15px 0}
 .runtime{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.runtime .panel{margin:0}.fine{font-size:12px;color:var(--soft)}
 @media(max-width:1050px){.shell{grid-template-columns:195px 1fr}.grid{grid-template-columns:repeat(2,1fr)}.two,.runtime{grid-template-columns:1fr}}
@@ -39,7 +39,11 @@ input:focus{outline:2px solid var(--accent);outline-offset:1px}.fields{display:g
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 
 /* Black canvas portfolio standard · neutral surfaces; project accents preserved */
-:root{--bg:#050607;--surface:#111417;--high:#181c1f;--line:#343a3d}body{background:#050607}.side{background:#090b0d}.side button.active,.side button:hover{background:#1a1e20}
+:root{--bg:#050607;--surface:#111417;--high:#101214;--line:#212325}body{background:#050607}.side{background:#090b0d}.side button.active,.side button:hover{background:#1a1e20}
+
+/* Dark-first public pages: black canvas, neutral surfaces, original accent controls. */
+html{background:#050607}
+body{background:#050607}
 </style>
 </head>
 <body>
