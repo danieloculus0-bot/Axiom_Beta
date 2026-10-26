@@ -1,189 +1,147 @@
-# Axiom Beta
+# Axiom
 
-Current ERP consolidation target: a local-first manufacturing operations and quality application with a shared database/event/audit structure. Do not confuse bundled source snapshots with continuously synchronized standalone apps.
+**One connected workspace for running a manufacturing business.**
 
-[**Axiom manufacturing integration and ownership**](docs/AXIOM_SCOPE.md)
+Axiom is a **local-first manufacturing operations and ERP application**. It is being built to connect the everyday work of a fabrication or machining shop: jobs, drawings, estimating, production planning, quality, inventory, purchasing, maintenance, and reporting.
 
-The [independent GitHub portfolio inventory](https://github.com/danieloculus0-bot/BEAN/actions/workflows/portfolio-health.yml) tracks separate products; it is not an Axiom module list.
+Instead of working from disconnected spreadsheets and separate systems that all know a different piece of the same job, Axiom brings the relevant records together in one application.
 
-## Axiom × BEAN — the operating model
+**In plain English: Axiom is where a shop can see what needs to be made, what it takes to make it, what has happened to it, and what needs attention next.**
 
-**[Public project overview](https://danieloculus0-bot.github.io/BEAN/axiom.html)** ·
-**[Managed workbook architecture](docs/MANAGED_WORKBOOKS_ARCHITECTURE.md)**
+> **Project status: Active beta.** There is a working local application and tested integrations, but this is not yet a fully deployed, production-ready ERP. The public browser lab is a small demonstration, not the entire product.
 
-Keep the Excel-compatible editor and the existing workbook. Axiom should
-retain the controlled original, interpret tables as **proposals**, and move
-**approved** data into proper linked manufacturing and business records.
-The goal is to retire disconnected private shadow-ERP spreadsheets, **not**
-replace Excel with another new spreadsheet engine.
+## Why Axiom exists
 
-The present Sheet Workbench is a useful simplified grid, **not** a full-fidelity
-native XLSX editor and not yet a document-revision ingestion service. That
-capability is scoped in the architecture document with explicit acceptance
-tests. The persistent Axiom Favorites UI and local BEAN navigation connector
-are already implemented and separately verified.
+Manufacturing information tends to get scattered. A quote lives in one file. The drawing lives somewhere else. Inspection results, material orders, maintenance records, and job updates end up in different programs or personal spreadsheets.
 
-## Current build state
+That makes routine questions harder than they should be:
 
-**Reviewed:** 2026-10-20 · **Inspected main:** `bd86e7a2227c` · **Type:** working experimental/beta code; not automatically production-certified.
+- What is the current drawing revision for this job?
+- Has the required inspection been completed?
+- Do we have the material, or does purchasing need to act?
+- What has already been ordered, received, or consumed?
+- Which problems are holding up production?
+- Where is the evidence behind a job's status or cost?
 
-- [Axiom Beta CI](https://github.com/danieloculus0-bot/Axiom_Beta/actions/runs/39503062748) — **Passed** at inspected `main`.
-- [Axiom Windows Installer](https://github.com/danieloculus0-bot/Axiom_Beta/actions/runs/39503062676) — **Passed** at inspected `main`.
-- [Axiom Linux Package](https://github.com/danieloculus0-bot/Axiom_Beta/actions/runs/39503062597) — **Passed** at inspected `main`.
-- [Controlled FAI wiring across Windows and Linux](https://github.com/danieloculus0-bot/Axiom_Beta/actions/runs/39503062544) — **Passed** at inspected `main`.
+**Axiom's goal is to answer those questions from connected, understandable records, without making the user become a software engineer.**
 
-[See live Actions](https://github.com/danieloculus0-bot/Axiom_Beta/actions) for newer results; this is a dated evidence snapshot, not a continuously updated indicator.
+## What Axiom covers
 
-## Implemented today
+| Area | What it means for the person using it |
+| --- | --- |
+| **Jobs and manufacturing** | Keep job information and associated production records together. |
+| **Drawings and documents** | Associate a job with the correct controlled drawing, version, and supporting documents. |
+| **Estimating and quoting** | Bring source-backed estimate proposals into a reviewable quoting workflow. |
+| **Quality and inspection** | Track quality cases, inspection information, and first article inspection (FAI) evidence. |
+| **Methods and planning** | Link manufacturing methods and requirements to relevant jobs and source documents. |
+| **Inventory and purchasing** | Track stock, job reservations, material use, purchasing requests, orders, and receiving. |
+| **Suppliers and actual costs** | Review supplier quotes, delivery performance, purchase costs, and invoice differences. |
+| **Preventive maintenance** | Keep equipment maintenance work in the same operations environment. |
+| **Reporting and oversight** | Make connected operational and quality information easier to find and review. |
+| **Spreadsheets and familiar tools** | Work toward bringing existing Excel data into controlled records rather than forcing every shop to rebuild its files. |
 
-- Native Flask/SQLite workspaces for manufacturing, quality, methods, documents, preventive maintenance, reporting and other modules.
-- Verified cross-repository **ForgeVault → EZ-FAIR → Axiom** controlled drawing workflow: released PDF checksum, exact version/package/revision, extracted **review-required** characteristics and idempotent FAI import.
-- Existing EZ Methods plans can link to the exact ForgeVault version **only after** a matching controlled FAI import and released document record; mismatched part/revisions are rejected. This is source traceability, not automatic routing approval.
-- Gothic Lime workbench; source provenance visible in the FAI list. Actual Linux and Windows CI/packaging workflows.
+Some of these areas are more complete than others. The table describes the product's scope, **not a claim that every workflow is finished or production-approved**.
 
-## Run and verify
+## A simple example: follow one job
 
-See the [archived complete setup instructions](docs/archive/README_2026-10-20_before_refresh.md) for Windows/Linux install details. The source application exports `create_app` in `superforge/app.py` and exposes `/health`. Run project tests with `python -m pytest -q` after installing development dependencies.
+Imagine a shop receives a request to manufacture a bracket.
 
-## Known boundaries
+1. **Estimate it.** The quote is prepared using the relevant part and drawing information.
+2. **Plan it.** The job is associated with the correct drawing revision, methods, and material requirements.
+3. **Get the material.** Inventory and purchasing can show what is available, reserved, ordered, or received.
+4. **Inspect it.** Quality and FAI information can be connected to the job, with measurements and approvals handled separately.
+5. **Review the full picture.** The **Job Passport** shows records actually linked to that job, instead of forcing someone to hunt through several systems.
 
-- Public shared-network deployment still needs real authentication, permissions and trustworthy identity attribution; an actor string is not authentication.
-- Integration tests prove local versioned contracts on synthetic data, not an authorized live shop ERP connection or a completed human inspection.
-- [MFGForge](https://github.com/danieloculus0-bot/MFGForge) is the earlier source line; [SuperForge Unofficial](https://github.com/danieloculus0-bot/SuperForge_Unofficial) is artifact/planning, not another live ERP.
+That connected job view is the idea behind Axiom. It is not a promise that all five steps currently run automatically or that a proposal is an approved transaction.
 
-## Next engineering work
+## What works in the current beta
 
-Strengthen authentication and durable API boundaries; expose controlled import via a properly authenticated workflow, then validate installation with actual shop data.
+The local Python application has a Flask-based interface and a SQLite data store. Its implemented pieces include:
 
-## Documentation
+- Workspaces for jobs, quality, methods, documents, maintenance, purchasing, and reporting.
+- A **Job Passport** that gathers directly linked job, drawing, FAI, quality, routing, purchase, and material records in one read-only view.
+- Tested controlled-document workflows involving **ForgeVault**, **EZ-FAIR**, and **EZstimate**. Imported inspection characteristics and quote proposals remain subject to review.
+- Local purchasing tools for stock settings, reservations, consumption, requisition drafts, purchase-order links, and receiving.
+- Supplier offer/delivery analysis and invoice-backed purchase-cost reconciliation.
+- A saved Favorites menu and registered-workspace navigation endpoints.
+- A simplified Sheet Workbench for spreadsheet import, editing, and export. It is **not** yet a full-fidelity replacement for Excel.
+- Windows/Linux build and test workflows, with their actual results visible in [GitHub Actions](https://github.com/danieloculus0-bot/Axiom_Beta/actions).
 
-- [Suite design standard](docs/BEAN_GOTHIC_LIME_DESIGN.md)
-- [Verified engineering suite implementation ledger](docs/ENGINEERING_SUITE_PROGRESS_2026-10-20.md)
-- [Controlled FAI wiring workflow](.github/workflows/controlled-fai-wiring.yml)
-- [Portfolio audit (historical snapshot)](docs/PORTFOLIO_AUDIT_2026-10-20.md)
-- [**Complete prior README, including history and detailed instructions**](docs/archive/README_2026-10-20_before_refresh.md)
+For precise implementation details and current limitations, see the [engineering documents](#documentation-and-technical-details).
 
-Historical experiments, dated reports and superseded architectural claims have been moved out of this landing page, **not deleted**.
+## Where BEAN fits
 
-## Suite-wide pre-build audit and live connector boundaries
+**Axiom is the manufacturing application. [BEAN](https://github.com/danieloculus0-bot/BEAN) is a separate intelligence and learning system.**
 
-[**October 20 README, connector and demo readiness audit**](docs/BUILD_READINESS_SWEEP_2026-10-20.md) documents all 16 portfolio repositories, branch-aware CI receipts, public-demo limitations, missing native ERP adapter mappings and the recommended single-job end-to-end acceptance test.
+The intended relationship is straightforward: Axiom manages operational records and workflows; BEAN can assist with understanding information, navigating the system, evaluating alternatives, and proposing useful next actions.
 
-**Latest connector checkpoint:** The local EZstimate/ForgeVault/Axiom/BEAN quote-import integration workflow has been updated to consume the tested current EZstimate source instead of the previous pinned alpha. The refreshed [Windows/Linux wiring job](https://github.com/danieloculus0-bot/Axiom_Beta/actions/runs/39516325217) passed. Its coverage is **controlled source → estimating draft → Axiom review-required quote**, not supplier purchasing or native ERP request acceptance.
+BEAN does **not** automatically authorize inspections, release quotes, approve purchases, or rewrite business records. The public demonstration does **not** contain a live BEAN agent.
 
-**New, separate EZstimate purchasing component:** The independent local EZstimate runtime supports material request drafts, recorded approval and CSV/JSON or configured HTTPS PR delivery. This capability is **not yet consumed by an Axiom native requisition connector** and does not create supplier purchase orders. See [the original adapter contract](https://github.com/danieloculus0-bot/EZstimate/blob/main/docs/ERP_PURCHASE_REQUESTS.md) and the [reconciliation matrix](docs/BUILD_READINESS_SWEEP_2026-10-20.md).
+Related tools such as [EZ-FAIR](https://github.com/danieloculus0-bot/EZ-FAIR), EZstimate, ForgeVault, and EZ-FEA have their own code and responsibilities. Tested, explicit integrations can let them cooperate with Axiom without pretending they are one automatically synchronized program. AIscend and the games are independent projects, **not Axiom modules**.
 
-## EZstimate quote proposals
+Read the [product boundaries and integration rules](docs/AXIOM_SCOPE.md).
 
-The Axiom quoting workspace now shows the original ForgeVault drawing/version, release package and PDF hash for quote proposals imported by the local ezstimate_quote integration. Quote math is independently recalculated; differing totals and conflicting quote numbers are rejected. Every imported proposal remains review_required and is never a customer-approved quote or PO. The cross-platform integration test uses actual EZstimate, ForgeVault and BEAN source checkouts. An authenticated shared-network write API is NOT implemented.
+## See it or run it
 
-## BEAN navigation and favorites (experimental)
+### Try the browser demonstration
 
-Axiom now exposes a real persistent **Favorites** menu in its Gothic Lime sidebar.
-Click `☆ Favorite` inside an existing workspace to pin it, or use the
-`/favorites` page to inspect and remove saved destinations. Favorites survive
-application restarts in the local Axiom SQLite database. Only registered Axiom
-workspaces are supported; BEAN must not invent paths or confirm a pin without a
-successful database write.
+Open the [Axiom manufacturing browser lab](web/index.html).
 
-For local tools and a future authenticated ChatGPT/BEAN connector:
+It follows a **fictional work order**, with example estimating, inspection calculations, a Job Passport, and an event ledger. It is interactive, but deliberately uses sample data and does **not** connect to a real ERP, a shop's records, a supplier, or a live BEAN agent.
 
-| Route | Method | Purpose |
-| --- | --- | --- |
-| `/api/navigation?q=quality` | GET | Search registered workspaces, return key, label and relative path |
-| `/api/favorites` | GET | List saved workspaces |
-| `/api/favorites` | POST JSON `{"module_key":"quality"}` | Idempotently pin existing module |
-| `/api/favorites/{module_key}` | DELETE | Remove existing pin |
+**The browser lab is a demonstration of a few ideas, not the full local Axiom application.**
 
-This is a **local single-user** feature. These routes are not public
-authenticated account APIs. Do not expose the Axiom Flask service directly
-to the internet; production ChatGPT integration still requires authenticated
-user identity, a secured HTTPS boundary, and a connector that can reach
-the Axiom application. The separately hosted ChatGPT app cannot reach
-`localhost` on the user's workstation by itself.
+### Run the actual local beta
 
-Tests: `python -m pytest tests/test_favorites_navigation.py -q`.
+Requirements: **Python 3.12 or later**.
 
-## Job Passport and public manufacturing lab
+```bash
+git clone https://github.com/danieloculus0-bot/Axiom_Beta.git
+cd Axiom_Beta
+python -m pip install -r requirements.txt
+python run.py
+```
 
-**Local application:** choose **Jobs**, then click a job number. The read-only
-Job Passport at `/jobs/<id>/passport` brings together directly linked
-drawing records, FAI runs and their controlled version/checksum metadata,
-quality records, routings, purchase orders and material movements. Records
-attached only to the same *part*, including quote proposals, are displayed
-in a separate **not job evidence** section. Empty links do not imply completed
-work. No approval or purchasing action is performed by this screen.
+Then open **http://127.0.0.1:5060** on the computer running Axiom.
 
-**Public browser lab:** [`web/index.html`](web/index.html) is a responsive
-Gothic Lime interactive manufacturing scenario based on *fictional* job
-WO-2046. It includes an editable illustrative quote, measured-vs-tolerance
-FAI calculations and a SHA-256 chained session event ledger with verification
-and JSON export. The demo does not connect to the local ERP, BEAN agent, shop
-machines, live ForgeVault drawing bytes, or suppliers. It does not claim
-production-grade Decimal math or authenticated, immutable server receipts.
+This is intended for a local, trusted workstation while the product is in beta. Do not expose it directly to the internet or an unrestricted shop network. See [access controls and current restrictions](docs/ACCESS_CONTROL.md) and the [earlier detailed installation notes](docs/archive/README_2026-10-20_before_refresh.md).
 
-The planned public Workshop hosting URL is
-**https://danieloculus0-bot.github.io/BEAN/portfolio/axiom/**, backed by a
-byte-for-byte copy of this repository's browser lab. BEAN Workshop publishing
-must be verified before this is called a live deployment. Axiom's repository
-currently has no separately configured GitHub Pages site, so its own workflow
-checks the browser lab without attempting deployment.
+### Run the tests
 
-Test the local workbench with `python -m pytest -q`, and the public demo
-logic with `node --test web/engine.test.mjs` (Node 22). GitHub Actions runs
-both test suites. For a production shop network, authentication and roles
-remain required before Axiom can be exposed beyond its local trusted boundary.
+```bash
+python -m pytest -q
+node --test web/engine.test.mjs
+```
 
-## Purchasing intelligence (review branch)
+The second command tests the browser lab and requires Node.js (the project uses Node 22 in CI).
 
-The native [Purchasing Intelligence workbench](docs/PURCHASING_INTELLIGENCE.md)
-uses the same Axiom job, inventory, PO, method-dependency and event records
-as the rest of the application. Configure explicit stocking units, min/max,
-lead days and multiples; review shortage and late-inbound signals; record
-job reservations and consumption; stage reviewed purchase requisitions;
-link them to PO lines; and receive actual stock in idempotent transactions.
+## What is still being developed
 
-The workbench can also intake a canonical **EZstimate** persisted purchase
-request into local **draft** Axiom PR records, preserving source/digest and
-requiring exact inventory material-code, job and stocking-unit matches.
-Neither a procurement forecast nor an EZstimate source approval constitutes
-a supplier order or an external ERP acceptance. The new module performs no
-automatic external purchasing delivery.
+Axiom is meant to become a practical, connected manufacturing operating environment. Work still includes:
 
-Read the [purchasing rules and known boundaries](docs/PURCHASING_INTELLIGENCE.md).
+- Hardening authentication, permissions, backups, and shared-user deployment.
+- Completing reliable, authenticated integrations with actual shop ERP systems and external services.
+- Expanding workbook handling without losing the original Excel file's formatting, formulas, and revision history.
+- Validating real-world use with shop data and operators, not only automated tests and fictional examples.
+- Making navigation and everyday workflows easy enough to use without training people on the software's internal architecture.
 
-## Supplier quote and delivery intelligence
+A passing automated test establishes that the tested code path worked under its test conditions. It does **not** prove that a live ERP is connected or a production transaction was approved.
 
-Axiom's [Supplier Prices & Delivery Intelligence](docs/SUPPLIER_INTELLIGENCE.md)
-page at `/purchasing/suppliers` records append-only supplier offers, quoted
-lead times, minimum quantities, pack multiples, and expiry evidence. It ranks
-available quotes for replenishment or existing purchase requests against
-documented material need dates and observed completed-PO delivery history.
+## Documentation and technical details
 
-Original supplier identity and the PO placement date are snapshotted at
-PO-line creation; only a source-confirmed supplier promise is scored as a
-commitment. Receiving records actual physical delivery dates without changing
-the stock-consumption accounting, and full-line punctuality is measured
-against the first promise even if revised later.
+The engineering material remains available for people who need it, but it is not the first thing a new visitor should have to read.
 
-Recommendations are suggestions, not orders, and quote values are not
-invoice-matched actual spend. See the linked documentation for evidence
-limitations, sample sizes, and the remaining supplier/ERP integration work.
+| Document | What it covers |
+| --- | --- |
+| [Axiom product scope](docs/AXIOM_SCOPE.md) | What belongs in Axiom and what remains independent |
+| [Architecture](docs/ARCHITECTURE.md) | How the application's components and records fit together |
+| [Purchasing intelligence](docs/PURCHASING_INTELLIGENCE.md) | Inventory, demand, requisitions, and receiving |
+| [Supplier intelligence](docs/SUPPLIER_INTELLIGENCE.md) | Supplier quotes and delivery evidence |
+| [Purchase cost reconciliation](docs/PURCHASE_COST_RECONCILIATION.md) | Invoices, PO prices, and actual material costs |
+| [Managed workbooks plan](docs/MANAGED_WORKBOOKS_ARCHITECTURE.md) | Real Excel files and controlled business-data imports |
+| [Access control](docs/ACCESS_CONTROL.md) | Local access, experimental shared mode, and limitations |
+| [Cross-project build readiness](docs/BUILD_READINESS_SWEEP_2026-10-20.md) | Integration evidence and gaps |
+| [Previous detailed README (Oct. 26)](docs/archive/README_2026-10-26_before_product_intro.md) | The former technical README preserved verbatim |
+| [Earlier setup/history README](docs/archive/README_2026-10-20_before_refresh.md) | Extended installation notes and project history |
 
-## Actual purchase costs and invoice reconciliation
-
-The local [Cost Reconciliation](docs/PURCHASE_COST_RECONCILIATION.md)
-workbench at `/purchasing/costs` matches **actual invoice lines** against
-documented PO-agreed unit prices and posted physical receipts. It tracks
-immutable invoice evidence, landed charges, price variances, blocked
-overbilling and required local variance reviews. Invoice entry never changes
-on-hand stock or posts accounts payable or payment transactions.
-
-Invoice-backed cost can be explicitly associated with actual job material
-consumption, with item and quantity caps. The Job Passport displays these
-**partial, source-backed material costs**, not assumed full job profitability.
-
-Review-required real unit-price feedback for EZstimate is available at
-`/purchasing/costs/feedback.json`. It does not silently change estimator
-price memory or replace source quotations. See
-[reconciliation rules](docs/PURCHASE_COST_RECONCILIATION.md).
+**Bottom line:** Axiom is being built to make the business of manufacturing easier to operate. Its complexity should be behind the scenes, not dumped onto the people trying to use it.
