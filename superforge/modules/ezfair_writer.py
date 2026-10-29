@@ -28,7 +28,7 @@ R3_COLUMNS = {
     "Supplier Actual": 7,
     "Supplier Yes": 8,
     "Supplier No": 9,
-    "company Actual": 10,
+    "Inspection Actual": 10,
     "In Spec": 11,
     "Tooling Used": 13,
     "Comments": 14,
@@ -36,7 +36,7 @@ R3_COLUMNS = {
 
 GENERIC_HEADERS = [
     "Char Number", "Reference Location", "Requirement LSL", "Requirement Nominal", "Requirement USL",
-    "Type", "company Actual", "In Spec", "Tooling Used", "Comments",
+    "Type", "Inspection Actual", "In Spec", "Tooling Used", "Comments",
 ]
 
 HEADER_ALIASES = {
@@ -46,7 +46,7 @@ HEADER_ALIASES = {
     "Requirement Nominal": ["requirement nominal", "nominal", "requirement", "dimension", "specified requirement"],
     "Requirement USL": ["requirement usl", "usl", "upper spec limit", "upper limit", "maximum", "max"],
     "Type": ["type", "characteristic type", "dim type"],
-    "company Actual": ["company actual", "actual", "actual result", "measured actual", "measurement"],
+    "Inspection Actual": ["inspection actual", "actual", "actual result", "measured actual", "measurement"],
     "In Spec": ["in spec", "inspec", "pass fail", "pass/fail", "accept", "result"],
     "Tooling Used": ["tooling used", "tooling", "tool used", "gage", "gauge", "inspection tool"],
     "Comments": ["comments", "comment", "notes", "remark", "remarks"],
@@ -84,7 +84,7 @@ def _row_values(characteristic: Any) -> dict[str, Any]:
         "Requirement Nominal": _safe_cell_value(characteristic, "nominal"),
         "Requirement USL": _safe_cell_value(characteristic, "usl"),
         "Type": _safe_cell_value(characteristic, "type"),
-        "company Actual": _safe_cell_value(characteristic, "actual", ""),
+        "Inspection Actual": _safe_cell_value(characteristic, "actual", ""),
         "Tooling Used": _safe_cell_value(characteristic, "tooling", ""),
         "Comments": _safe_cell_value(characteristic, "comments", ""),
     }
@@ -171,7 +171,7 @@ def _ensure_r3_row_capacity(ws, characteristic_count: int) -> int:
 def _reset_r3_rows(ws, start_row: int, end_row: int) -> None:
     for row in range(start_row, end_row + 1):
         ws.cell(row=row, column=R3_COLUMNS["Char Number"]).value = row - start_row + 1
-        for header in ["Reference Location", "Requirement LSL", "Requirement Nominal", "Requirement USL", "Type", "Supplier Actual", "Supplier Yes", "Supplier No", "company Actual", "Tooling Used", "Comments"]:
+        for header in ["Reference Location", "Requirement LSL", "Requirement Nominal", "Requirement USL", "Type", "Supplier Actual", "Supplier Yes", "Supplier No", "Inspection Actual", "Tooling Used", "Comments"]:
             ws.cell(row=row, column=R3_COLUMNS[header]).value = None
         ws.cell(row=row, column=R3_COLUMNS["In Spec"]).value = _r3_inclusive_formula(row)
 
@@ -219,7 +219,7 @@ def _fill_r3_form(ws, characteristics: list[Any]) -> int:
         ws.cell(row=row, column=R3_COLUMNS["Requirement Nominal"]).value = values["Requirement Nominal"]
         ws.cell(row=row, column=R3_COLUMNS["Requirement USL"]).value = values["Requirement USL"]
         ws.cell(row=row, column=R3_COLUMNS["Type"]).value = values["Type"]
-        ws.cell(row=row, column=R3_COLUMNS["company Actual"]).value = None
+        ws.cell(row=row, column=R3_COLUMNS["Inspection Actual"]).value = None
         ws.cell(row=row, column=R3_COLUMNS["In Spec"]).value = _r3_inclusive_formula(row)
         ws.cell(row=row, column=R3_COLUMNS["Tooling Used"]).value = values["Tooling Used"]
         ws.cell(row=row, column=R3_COLUMNS["Comments"]).value = values["Comments"]
@@ -274,10 +274,10 @@ def _fill_generic(ws, characteristics: list[Any]) -> int:
             _copy_row_style(ws, start_row, row)
         values = _row_values(characteristic)
         for header, value in values.items():
-            if header == "company Actual":
+            if header == "Inspection Actual":
                 value = None
             ws.cell(row=row, column=columns[header]).value = value
-        actual_col = get_column_letter(columns["company Actual"])
+        actual_col = get_column_letter(columns["Inspection Actual"])
         lsl_col = get_column_letter(columns["Requirement LSL"])
         usl_col = get_column_letter(columns["Requirement USL"])
         in_spec_col = columns["In Spec"]
