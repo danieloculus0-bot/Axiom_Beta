@@ -1,6 +1,6 @@
 #define MyAppName "Axiom"
 #define MyAppVersion "1.0.0-beta"
-#define MyAppPublisher "Axiom / company"
+#define MyAppPublisher "Axiom / Independent Project"
 #define MyAppExeName "Axiom.exe"
 
 [Setup]
