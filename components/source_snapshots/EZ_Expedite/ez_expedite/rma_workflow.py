@@ -16,7 +16,7 @@ class RMAStage:
 
 STAGES = [
     RMAStage("INTAKE", "Intake", "csr", "Customer Service", "Complete intake fields."),
-    RMAStage("AWAITING CUSTOMER RETURN", "Product Returned to company", "shipping", "Shipping", "Receive the return and confirm RMA hold-area placement."),
+    RMAStage("AWAITING CUSTOMER RETURN", "Product Returned to Facility", "shipping", "Shipping", "Receive the return and confirm RMA hold-area placement."),
     RMAStage("RMA REVIEW", "RMA Review", "quality", "Quality", "Review product and issue a work order when required."),
     RMAStage("RETURN TO CUSTOMER", "Product Returned to Customer", "shipping", "Shipping", "Complete final inspection and shipment confirmation."),
     RMAStage("COMPLETE", "Complete", "shipping", "Shipping", "Verify completion and close."),
