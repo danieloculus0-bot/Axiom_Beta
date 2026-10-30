@@ -107,7 +107,7 @@ export function followupPurchaseRequest(state,id,note,at=new Date().toISOString(
 }
 export function latestFollowup(row){return row.followups?.at(-1)?.note||"No follow-up yet";}
 export function dueLabel(dueDate,status,today=localDay()){
- if(["VERIFIED","CANCELLED"].includes(status))return "COMPLETE";
+ if(["VERIFIED","CLOSED","CANCELLED"].includes(status))return "COMPLETE";
  if(!dueDate)return "UNSCHEDULED";
  const days=dayDiff(dueDate,today);
  return days<0?"OVERDUE":days===0?"DUE TODAY":days<=3?"DUE SOON":"ON TRACK";
