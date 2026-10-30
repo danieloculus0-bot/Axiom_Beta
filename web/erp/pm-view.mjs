@@ -7,7 +7,7 @@ import {
  pmOverview,machineSummary,getMachine,getTask,taskDue,localDay
 } from "./pm.mjs";
 
-const h=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;":"&quot;","'":"&#39;"}[c]));
+const h=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const label=(name,kind="")=>{
  const cls=["overdue","today"].includes(kind)?"bad":kind==="soon"?"warn":kind==="clear"?"ok":"";
  return '<span class="tag '+cls+'">'+h(name)+'</span>';
