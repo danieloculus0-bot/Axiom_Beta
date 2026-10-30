@@ -496,7 +496,7 @@ document.addEventListener("click",event=>{
       location.hash="#routing";
     }
     if(action==="clock-in"){
-      const j=job();if(packetIssues(state,j.id).length)throw Error("Clock start blocked by work-packet checks");
+      const j=job();const clockIssues=packetIssues(state,j.id);if(clockIssues.length)throw Error("Clock start blocked: "+clockIssues.join("; "));
       const step=$("clock-step").value;operator=$("operator-code").value.trim().toUpperCase();
       sessions=startSession(sessions,{id:crypto.randomUUID(),employee:operator,job:deep(j),step,timestamp:new Date().toISOString()});
       selectedStep=step;flash="Clock IN recorded locally. Nothing sent to a live ERP.";persist();render();
