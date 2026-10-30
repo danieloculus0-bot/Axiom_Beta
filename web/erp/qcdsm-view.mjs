@@ -13,7 +13,7 @@ export function wheelHtml(e){
  ];
  // A four-sector ring with Morale in the center; positions express relationships, not a causal verdict.
  const arcs=slices.map((s,i)=>{
-  const start=-90+i*90,end=start+90;
+  const start=-180+i*90,end=start+90;
   const p=(r,a)=>[230+r*Math.cos(a*Math.PI/180),230+r*Math.sin(a*Math.PI/180)];
   const [ax,ay]=p(82,start),[bx,by]=p(205,start),[cx,cy]=p(205,end),[dx,dy]=p(82,end);
   const path="M "+ax+" "+ay+" L "+bx+" "+by+" A 205 205 0 0 1 "+cx+" "+cy+
