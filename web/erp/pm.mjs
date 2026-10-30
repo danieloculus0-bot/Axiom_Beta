@@ -97,7 +97,7 @@ export function pmOverview(pm,today=localDay()){
   return {machines:summaries.length,tasks:tasks.length,overdue:tasks.filter(t=>t.kind==="overdue").length,
     dueToday:tasks.filter(t=>t.kind==="today").length,dueSoon:tasks.filter(t=>t.kind==="soon").length,
     completedToday:pm.completions.filter(c=>c.completedAt.slice(0,10)===today).length,
-    openRequests:pm.requests.filter(r=>!["VERIFIED","CANCELLED"].includes(r.status)).length,summaries};
+    openRequests:pm.requests.filter(r=>!["CLOSED","CANCELLED"].includes(r.status)).length,summaries};
 }
 const operatorCheck=operator=>{
   if(typeof operator!=="string"||!/^DEMO-[A-Z0-9]{1,16}$/.test(operator.toUpperCase()))
@@ -155,7 +155,7 @@ export function requestMaintenance(pm,machineId,type,priority,submittedBy=DEMO_O
 }
 export function closeMaintenanceRequest(pm,id,resolution="Example follow-up closed",at=new Date().toISOString()){
   const r=pm.requests.find(x=>x.id===id);
-  if(!r||r.status!=="OPEN")throw Error("Demo maintenance request is not open");
+  if(!r||!["OPEN","IN PROGRESS"].includes(r.status))throw Error("Demo maintenance request is not open");
   const n=clone(pm),item=n.requests.find(x=>x.id===id);
   item.status="CLOSED";item.closedAt=at;item.assignedTo="DEMO-MAINT";item.resolution=resolution;
   return n;
@@ -181,7 +181,7 @@ export function assignMaintenanceRequest(pm,id,owner,dueDate,at=new Date().toISO
  if(!["DEMO-MAINT","DEMO-OPS","DEMO-QA"].includes(owner))throw Error("Choose a fictional assignee");
  dayAdd(dueDate,0);
  const r=pm.requests.find(r=>r.id===id);
- if(!r||["CLOSED","VERIFIED","CANCELLED"].includes(r.status))throw Error("Maintenance request is no longer actionable");
+ if(!r||["CLOSED","CANCELLED"].includes(r.status))throw Error("Maintenance request is no longer actionable");
  const next=clone(pm),item=next.requests.find(x=>x.id===id);
  item.assignedTo=owner;item.dueDate=dueDate;item.followups||=[];
  if(item.status==="OPEN")item.status="IN PROGRESS";
@@ -191,16 +191,9 @@ export function assignMaintenanceRequest(pm,id,owner,dueDate,at=new Date().toISO
 export function followupMaintenanceRequest(pm,id,note,at=new Date().toISOString()){
  if(!MAINTENANCE_FOLLOWUPS.includes(note))throw Error("Choose an example follow-up");
  const r=pm.requests.find(x=>x.id===id);
- if(!r||r.status==="VERIFIED")throw Error("Maintenance request already verified");
+ if(!r||r.status==="CLOSED")throw Error("Maintenance request already closed");
  const next=clone(pm),item=next.requests.find(x=>x.id===id);
  item.followups||=[];item.followups.push({at,by:"DEMO-MAINT",note});
  item.updatedAt=at;
- return next;
-}
-export function verifyMaintenanceRequest(pm,id,at=new Date().toISOString()){
- const r=pm.requests.find(x=>x.id===id);
- if(!r||r.status!=="CLOSED")throw Error("Finish fictional maintenance work before verifying");
- const next=clone(pm),item=next.requests.find(x=>x.id===id);
- item.status="VERIFIED";item.verifiedAt=at;item.verifiedBy="DEMO-QA";
  return next;
 }
