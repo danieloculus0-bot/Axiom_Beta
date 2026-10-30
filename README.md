@@ -1,5 +1,17 @@
 # Axiom
 
+## Try Axiom now
+
+### [▶ LAUNCH THE LIVE AXIOM ERP DEMO](https://danieloculus0-bot.github.io/Axiom_Beta/erp/)
+
+**Start here.** A functional, interactive manufacturing ERP demonstration with connected fictional jobs, materials, purchasing, maintenance, quality, searchable menus, record-aware right-click **Open with**, and browser-local activity history. Try it directly, no installation required.
+
+**[Open the live ERP demo](https://danieloculus0-bot.github.io/Axiom_Beta/erp/)** · [View source and tests](web/erp/) · [Run the local beta](#run-the-actual-local-beta)
+
+The demo uses invented data saved in your browser. It does not connect to a real company, external ERP, BEAN agent, or production server. The local Axiom beta has additional features not exposed in the demo.
+
+---
+
 **One connected workspace for running a manufacturing business.**
 
 Axiom is a **local-first manufacturing operations and ERP application**. It is being built to connect the everyday work of a fabrication or machining shop: jobs, drawings, estimating, production planning, quality, inventory, purchasing, maintenance, and reporting.
@@ -85,11 +97,11 @@ Read the [product boundaries and integration rules](docs/AXIOM_SCOPE.md).
 
 ### Try the browser demonstration
 
-Open the [Axiom manufacturing browser lab](web/index.html).
+**[Launch the interactive Axiom ERP demo](https://danieloculus0-bot.github.io/Axiom_Beta/erp/)**. This is the primary browser experience, not the legacy lab.
 
-It follows a **fictional work order**, with example estimating, inspection calculations, a Job Passport, and an event ledger. It is interactive, but deliberately uses sample data and does **not** connect to a real ERP, a shop's records, a supplier, or a live BEAN agent.
+The live demo is an integrated browser-local ERP suite with fictional work orders, material allocation, purchasing and receiving, routed EWI and clocking, maintenance, quality holds, reporting, searchable menus, and contextual right-click navigation. It represents only the features implemented in the Pages demonstration, not the full local Axiom application. All activity stays local to the browser; no employer data, live ERP connector, or live BEAN service is included.
 
-**The browser lab is a demonstration of a few ideas, not the full local Axiom application.**
+The [original browser lab](https://danieloculus0-bot.github.io/Axiom_Beta/lab/) is legacy reference material, not the main user experience.
 
 ### Run the actual local beta
 
