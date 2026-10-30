@@ -259,6 +259,11 @@ function inventoryView(){
       h(i.id),h(i.name),h(i.onHand+" "+i.unit),h(reservedTotal(state,i.id)),h(available(state,i.id)),
       available(state,i.id)<=i.reorder?status("LOW"):status("OK")
     ]),"No related fictional material.",shownItems.map(i=>({type:"stock",id:i.id})))+'</section>';
+  const filteredStock=contextSelection("inventory",state.items);
+  if(selectedContext&&filteredStock.length===1&&filteredStock[0].id!==j.materialId){
+    s+='<div class="notice">This fictional material is not assigned to the currently selected job. Reserve stock only from a job that uses this material.</div>';
+    return s;
+  }
   s+='<section class="panel"><h2>Reserve stock for '+h(j.jobNumber)+'</h2><p>Required: '+h(j.quantity)+
     ' · Reserved: '+h(j.reserved)+' · Needed: '+h(Math.max(0,j.quantity-j.reserved))+
     ' · Available: '+h(available(state,j.materialId))+'</p>'+
@@ -348,9 +353,16 @@ function bridgeView(){
     ]),"No simulated time tickets yet.")+'</section>';
   return s;
 }
+function reportWithContext(id){
+  const report=makeReport(state,sessions,id);
+  const selected=selectedContext&&resolveContext(state,selectedContext.type,selectedContext.id);
+  if(selected&&selected.machineId&&id==="pm")report.rows=report.rows.filter(row=>row[1]===selected.machineId);
+  if(selected&&selected.machineId&&id==="requests")report.rows=report.rows.filter(row=>row[1]===selected.machineId);
+  return report;
+}
 function reportsView(){
   const selected=REPORTS.find(x=>x.id===selectedReport)||REPORTS[0];
-  const report=makeReport(state,sessions,selected.id);
+  const report=reportWithContext(selected.id);
   let s=heading("Management / browser-local analytics","Operational report center",
     "Seven cross-module operational reports and the event ledger, calculated from the same fictional jobs, stock, PM and clock events. No private ERP or external data.");
   s+='<div class="metrics">'+metric("Available reports",REPORTS.length,"All functional")+
@@ -423,7 +435,7 @@ document.addEventListener("click",event=>{
     }
     if(action==="clear-record-context"){selectedContext=null;selectedIntent="";flash="Record context cleared.";render();}
     if(action==="pm-csv") download(completionsCsv(state.pm),"text/csv;charset=utf-8","axiom-synthetic-pm-completions.csv");
-    if(action==="download-report") download(reportCsv(makeReport(state,sessions,selectedReport)),"text/csv;charset=utf-8","axiom-demo-"+selectedReport+"-report.csv");
+    if(action==="download-report") download(reportCsv(reportWithContext(selectedReport)),"text/csv;charset=utf-8","axiom-demo-"+selectedReport+"-report.csv");
     if(action==="pm-close-request") pmTransact(closeMaintenanceRequest(state.pm,id),"pm.request.closed",id+" / SIMULATED","Fictional maintenance request closed.");
     if(action==="reserve")transact(reserve(state,selectedJobId),"Material reserved for the selected fictional job.");
     if(action==="receive-po")transact(receivePurchaseOrder(state,id),"Simulated PO received into on-hand stock.");
