@@ -253,11 +253,12 @@ function inventoryView(){
     metric("Reserved for current job",j.reserved+" / "+j.quantity,j.materialId)+
     metric("Available current stock",available(state,j.materialId),"After all job reservations")+
     metric("Open purchase orders",state.purchaseOrders.filter(p=>p.status==="ORDERED").length,"Pending demo receipts")+'</div>';
+  const shownItems=contextSelection("inventory",state.items);
   s+='<section class="panel"><div class="panel-head"><h2>Material availability</h2><a href="#purchasing" class="action secondary">Purchasing</a></div>'+
-    table(["Stock item","Description","On hand","Reserved","Available","Reorder"],state.items.map(i=>[
+    table(["Stock item","Description","On hand","Reserved","Available","Reorder"],shownItems.map(i=>[
       h(i.id),h(i.name),h(i.onHand+" "+i.unit),h(reservedTotal(state,i.id)),h(available(state,i.id)),
       available(state,i.id)<=i.reorder?status("LOW"):status("OK")
-    ]))+'</section>';
+    ]),"No related fictional material.",shownItems.map(i=>({type:"stock",id:i.id})))+'</section>';
   s+='<section class="panel"><h2>Reserve stock for '+h(j.jobNumber)+'</h2><p>Required: '+h(j.quantity)+
     ' · Reserved: '+h(j.reserved)+' · Needed: '+h(Math.max(0,j.quantity-j.reserved))+
     ' · Available: '+h(available(state,j.materialId))+'</p>'+
@@ -272,10 +273,11 @@ function purchasingView(){
     '<label>Material item<select name="item">'+state.items.map(i=>'<option value="'+h(i.id)+'">'+h(i.id)+' · '+h(i.name)+'</option>').join("")+'</select></label>'+
     '<label>Quantity<input name="quantity" type="number" min="1" max="10000" required value="25"></label>'+
     '<button type="submit" class="action">Create PO</button></form><p class="small">Supplier is always FICTIONAL SUPPLIER. No real supplier names or prices.</p></section>';
-  s+='<section class="panel"><h2>PO ledger</h2>'+table(["Purchase order","Stock item","Qty","Supplier","State","Action"],state.purchaseOrders.map(p=>[
-    h(p.number),h(p.itemId),h(p.quantity),h(p.supplier),status(p.status),
-    p.status==="ORDERED"?'<button class="action secondary" data-action="receive-po" data-id="'+h(p.id)+'">Receive</button>':h(stamp(p.receivedAt))
-  ]),"No purchase orders yet. Create one above to test receiving.")+'</section>';
+  const shownPOs=contextSelection("purchasing",state.purchaseOrders);
+  s+='<section class="panel"><h2>PO ledger</h2>'+table(["Purchase order","Stock item","Qty","Supplier","State","Action"],shownPOs.map(p=>[
+     h(p.number),ctxSpan("stock",p.itemId,p.itemId),h(p.quantity),h(p.supplier),status(p.status),
+     p.status==="ORDERED"?'<button class="action secondary" data-action="receive-po" data-id="'+h(p.id)+'">Receive</button>':h(stamp(p.receivedAt))
+   ]),"No matching fictional POs. Use PO Entry above to issue one.",shownPOs.map(p=>({type:"po",id:p.id})))+'</section>';
   return s;
 }
 function qualityView(){
@@ -289,12 +291,13 @@ function qualityView(){
     '<form data-form="new-ncr" class="controls"><label>Fictional quality reason<select name="reason">'+
     QUALITY_REASONS.map(r=>'<option value="'+h(r)+'">'+h(r)+'</option>').join("")+
     '</select></label><button class="action danger" type="submit">Create quality hold</button></form></section>';
+  const shownQuality=contextSelection("quality",state.quality);
   s+='<section class="panel"><h2>Nonconformance register</h2>'+
-    table(["Record","Work order","Reason","State","Action"],state.quality.map(q=>{
+    table(["Record","Work order","Reason","State","Action"],shownQuality.map(q=>{
       const record=getJob(state,q.jobId);
       return [h(q.number),jobLink(record,"ewi"),h(q.reason),status(q.status),
         q.status==="OPEN"?'<button class="action secondary" data-action="close-ncr" data-id="'+h(q.id)+'">Close demo record</button>':h(stamp(q.closedAt))]
-    }),"No synthetic quality holds yet.")+'</section>';
+    }),"No matching fictional quality holds.",shownQuality.map(q=>({type:"quality",id:q.id})))+'</section>';
   return s;
 }
 function documentsView(){
@@ -304,7 +307,7 @@ function documentsView(){
   s+='<div class="metrics">'+metric("Selected work order",j.jobNumber,j.partNumber)+
     metric("Job revision",j.revision,"Target revision")+metric("Drawing revision",j.drawing.revision,"Illustrative only")+
     metric("Source check",issues.some(x=>x.toLowerCase().includes("drawing revision"))?"MISMATCH":"MATCH","Other holds may remain")+'</div>';
-  s+='<div class="columns"><section class="panel"><h2>Generic drawing viewer</h2><div class="diagram">'+drawingSvg(j)+'</div>'+
+  s+='<div class="columns"><section class="panel context-record" '+contextAttrs("drawing",j.id)+'><h2>Generic drawing viewer</h2><div class="diagram">'+drawingSvg(j)+'</div>'+
     '<p class="small">Original geometric illustration. Not a file from a company, customer or manufacturing system.</p></section>'+
     '<section class="panel"><h2>Document record</h2><p>Document: <b>'+h(j.drawing.number)+'</b><br>Source: '+
     h(j.drawing.source)+'<br>Document state: '+h(j.drawing.status)+'<br>Part: '+h(j.partNumber)+'</p>'+
