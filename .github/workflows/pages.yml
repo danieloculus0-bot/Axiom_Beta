@@ -39,7 +39,7 @@ jobs:
           test -s web/erp/navigation.mjs
           test -s web/erp/reports.mjs
           grep -q 'menu-search' web/erp/index.html
-          grep -q 'PM Tracker' web/erp/index.html
+          grep -q 'PM Tracker' web/erp/navigation.mjs
           test -s web/lab/index.html
           grep -q 'FUNCTIONAL LOCAL DEMO' web/ewi/index.html
           grep -q 'JobBOSS²: not connected' web/ewi/index.html
