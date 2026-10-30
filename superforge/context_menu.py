@@ -3,6 +3,7 @@ from urllib.parse import urlencode
 
 MODULES=[
  ("job_tracker","Job Tracker","/jobs"),
+ ("ewi","Electronic Work Instructions","/ewi"),
  ("purchase_orders","Purchase Order Tracker","/purchase-orders"),
  ("purchasing","Purchasing Intelligence","/purchasing"),
  ("inventory","Inventory Tracker","/inventory"),
@@ -28,17 +29,17 @@ MODULES=[
  ("audit","Audit Trail","/audit"),
 ]
 ENTITY_RELEVANCE={
- "job":{"job_tracker","purchase_orders","purchasing","inventory","clocking","quality","pm","ez_methods","vault","ezfair","ppap","planning","integrations","leadership","executive","payroll","accounting","sheets","bean","audit"},
+ "job":{"job_tracker","ewi","purchase_orders","purchasing","inventory","clocking","quality","pm","ez_methods","vault","ezfair","ppap","planning","integrations","leadership","executive","payroll","accounting","sheets","bean","audit"},
  "purchase_order":{"purchase_orders","purchasing","job_tracker","inventory","quality","ez_methods","suppliers","integrations","bean","audit"},
  "inventory_item":{"inventory","purchasing","purchase_orders","job_tracker","quality","ez_methods","suppliers","quoting","integrations","bean","audit"},
  "clocking_error":{"clocking","job_tracker","quality","payroll","sheets","bean","audit"},
  "quality_record":{"quality","job_tracker","purchase_orders","inventory","pm","ez_methods","vault","ezfair","ppap","suppliers","leadership","executive","bean","audit"},
  "machine":{"pm","job_tracker","quality","ez_methods","planning","leadership","bean","audit"},
- "document":{"vault","ezfair","ez_methods","quality","job_tracker","quoting","integrations","audit"},
+ "document":{"ewi","vault","ezfair","ez_methods","quality","job_tracker","quoting","integrations","audit"},
  "part":{"job_tracker","quality","ez_methods","vault","ezfair","ppap","inventory","quoting","suppliers","bean","audit"},
  "supplier":{"suppliers","purchase_orders","inventory","quality","ez_methods","quoting","leadership","bean","audit"},
  "fai":{"ezfair","ez_methods","quality","job_tracker","vault","ppap","bean","audit"},
- "method_plan":{"ez_methods","job_tracker","purchase_orders","inventory","quality","pm","vault","ezfair","planning","leadership","bean","audit"},
+ "method_plan":{"ewi","ez_methods","job_tracker","purchase_orders","inventory","quality","pm","vault","ezfair","planning","leadership","bean","audit"},
  "method_dependency":{"ez_methods","purchase_orders","inventory","job_tracker","quality","suppliers","ezfair","leadership","bean","audit"},
  "morale_pulse":{"leadership","executive","quality","planning","bean","audit"},
  "reward_account":{"leadership","automation","payroll","accounting","audit"},

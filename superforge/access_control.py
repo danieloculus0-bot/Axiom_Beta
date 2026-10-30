@@ -67,7 +67,7 @@ def _can_write(role: str, path: str) -> bool:
     if role == "quality":
         return path.startswith("/quality/")
     if role == "operations":
-        return path in {"/pm", "/clocking-errors"}
+        return path.startswith("/ewi/jobs/") or path in {"/pm", "/clocking-errors"}
     if role == "finance":
         return path.startswith(("/payroll/", "/accounting/", "/sheets/")) or path in {
             "/payroll/run", "/payroll/employee", "/accounting/account", "/sheets"

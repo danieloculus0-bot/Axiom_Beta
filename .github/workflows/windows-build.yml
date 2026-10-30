@@ -34,6 +34,12 @@ jobs:
           pyinstaller --noconfirm --clean --onefile --name Axiom --collect-all modules.ez_methods desktop.py
           if (!(Test-Path "dist\Axiom.exe")) { throw "Axiom.exe was not created" }
 
+      - name: Build standalone Axiom EWI operator executable
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --onefile --name Axiom-EWI --collect-all modules.ez_methods ewi_desktop.py
+          if (!(Test-Path "dist\\Axiom-EWI.exe")) { throw "Axiom-EWI.exe was not created" }
+
       - name: Smoke test frozen executable
         shell: pwsh
         run: |
@@ -113,6 +119,7 @@ jobs:
           name: Axiom-Windows-Installer
           path: |
             dist/Axiom.exe
+            dist/Axiom-EWI.exe
             dist-installer/Axiom_Setup_1.0.0-beta.exe
           if-no-files-found: error
 
