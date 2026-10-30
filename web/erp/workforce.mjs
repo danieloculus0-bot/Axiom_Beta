@@ -71,11 +71,15 @@ export function seedWorkforce(){
   sick_absence_clusters:0,turnover_count:0,staffing_shortage_count:0,quality_risk_signal:12};
  pulse.risk_score=calculateMoraleRisk(pulse);
  return {schema:1,demo:true,people,requirements,completions:[],pulses:[pulse],
-  nominations:[],ledger:[],actions:[]};
+  nominations:[],ledger:[],actions:[],incidents:[],safetySurveys:[]};
 }
 export function validateWorkforce(raw){
+ if(raw?.schema===1&&raw?.demo===true){
+  if(raw.incidents===undefined)raw.incidents=[];
+  if(raw.safetySurveys===undefined)raw.safetySurveys=[];
+ }
  if(!raw||raw.schema!==1||raw.demo!==true||
-  !["people","requirements","completions","pulses","nominations","ledger","actions"]
+  !["people","requirements","completions","pulses","nominations","ledger","actions","incidents","safetySurveys"]
    .every(key=>Array.isArray(raw[key])&&raw[key].length<=2000))throw Error("Invalid browser demo workforce state");
  return raw;
 }
@@ -154,4 +158,31 @@ export function closeDemoAction(workforce,id){
 }
 export function demoBalance(workforce,personId){
  return workforce.ledger.filter(x=>x.personId===personId).reduce((sum,x)=>sum+x.points,0);
+}
+
+
+// Aggregate safety evidence only. No personally identifiable injury records belong in this public demo.
+export const INCIDENT_KINDS=["recordable","first_aid","near_miss"];
+export function recordDemoIncident(workforce,input,today=new Date().toISOString().slice(0,10)){
+ const next=copy(validateWorkforce(workforce));
+ if(!DEPARTMENTS.includes(input.department))throw Error("Select a generic department");
+ if(!INCIDENT_KINDS.includes(input.kind))throw Error("Select a listed safety event classification");
+ const date=String(input.observedOn||today);
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(date))||
+   new Date(date).toISOString().slice(0,10)!==date)throw Error("Enter a valid safety event date");
+ if(date>today)throw Error("Safety event date cannot be in the future");
+ const id="SI-"+(next.incidents.length+1);
+ next.incidents.push({id,department:input.department,kind:input.kind,observedOn:date,
+  classification:"SIMULATED / UNVERIFIED"});
+ return next;
+}
+export function recordDemoSafetySurvey(workforce,input,today=new Date().toISOString().slice(0,10)){
+ const next=copy(validateWorkforce(workforce));
+ if(!DEPARTMENTS.includes(input.department))throw Error("Select a generic department");
+ const respondents=whole(input.respondents,1,1000);
+ const concerned=whole(input.concerned,0,1000);
+ if(concerned>respondents)throw Error("Safety concerns cannot exceed survey responses");
+ next.safetySurveys.push({id:"SS-"+(next.safetySurveys.length+1),department:input.department,
+  respondents,concerned,observedOn:today});
+ return next;
 }

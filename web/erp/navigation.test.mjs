@@ -5,11 +5,11 @@ import {
 } from "./navigation.mjs";
 test("every navigation entry is unique and maps to a hash route",()=>{
  const ids=MENU_ITEMS.map(x=>x.id);
- assert.equal(ids.length,15);
+ assert.equal(ids.length,16);
  assert.equal(new Set(ids).size,ids.length);
  assert.ok(MENU_GROUPS.every(g=>g.items.length>0));
  assert.ok(MENU_ITEMS.every(x=>x.href==="#"+x.id&&x.groupLabel&&x.hint));
- for(const id of ["dashboard","jobs","routing","ewi","documents","inventory","purchasing","requests","quality","pm","hr","morale","reports","bridge","audit"])
+ for(const id of ["dashboard","jobs","routing","ewi","documents","inventory","purchasing","requests","quality","pm","hr","morale","qcdsm","reports","bridge","audit"])
    assert.ok(getMenuItem(id));
  assert.equal(getMenuItem("nonexistent"),null);
 });
@@ -20,7 +20,8 @@ test("search finds working screens by label, synonym and group",()=>{
  assert.equal(searchMenu("JobBOSS")[0].id,"bridge");
  assert.equal(searchMenu("reporting")[0].id,"reports");
  assert.equal(searchMenu("training matrix")[0].id,"hr");
- assert.equal(searchMenu("QCDSM")[0].id,"morale");
+ assert.equal(searchMenu("QCDSM")[0].id,"qcdsm");
+ assert.equal(searchMenu("root cause")[0].id,"qcdsm");
  assert.ok(searchMenu("manufacturing").some(x=>x.id==="routing"));
  assert.equal(searchMenu("make a fake dummy module").length,0);
  assert.equal(searchMenu("").length,MENU_ITEMS.length);

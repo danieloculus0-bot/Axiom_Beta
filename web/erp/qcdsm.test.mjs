@@ -1,0 +1,97 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {seedState,raiseQuality,packetIssues} from "./engine.mjs";
+import {seedWorkforce,recordDemoPulse,recordDemoIncident,recordDemoSafetySurvey,validateWorkforce} from "./workforce.mjs";
+import {qcdsmEvidence,captureQualityContext,qualityContextFor} from "./qcdsm.mjs";
+import {renderQcdsm,wheelHtml,qualityRcaHtml} from "./qcdsm-view.mjs";
+import {makeReport} from "./reports.mjs";
+const today="2026-10-30",at="2026-10-30T12:00:00Z";
+const pulse={department:"Assembly",scheduled_headcount:20,present_headcount:18,overtime_hours:180,
+ over_50_hours_count:8,exhausted_pto_count:3,pto_absence_count:1,sick_absence_clusters:0,
+ turnover_count:0,staffing_shortage_count:3,quality_risk_signal:35};
+test("QCDSM uses factual ERP signals and missing baselines remain N/A",()=>{
+ const s=seedState(),w=seedWorkforce();
+ const e=qcdsmEvidence(s,w,"Machining",today);
+ assert.equal(e.moraleRisk,null);
+ assert.equal(e.safetyPriority,null);
+ assert.equal(e.cost.value,null);
+ assert.equal(e.delivery.value,null);
+ assert.equal(e.recordables,0);
+ assert.ok(e.possibleFactors.length===0);
+ assert.equal(e.quality.openHolds,0);
+ assert.match(wheelHtml(e),/MORALE/);
+ assert.match(wheelHtml(e),/Quality/);
+ assert.match(wheelHtml(e),/N\/A/);
+});
+test("overtime and 50+ hour pressure feed RCA investigation signals, no individual rating",()=>{
+ const w=recordDemoPulse(seedWorkforce(),pulse);
+ const e=qcdsmEvidence(seedState(),w,"Assembly",today);
+ assert.ok(e.overtimeLoad>.15);
+ assert.ok(e.possibleFactors.some(x=>x.key==="OVERTIME"));
+ assert.ok(e.possibleFactors.some(x=>x.key==="LONG_HOURS"));
+ assert.ok(e.possibleFactors.some(x=>x.key==="STAFFING"));
+ assert.ok(e.moraleRisk>0);
+ assert.equal(e.survey,null);
+ assert.ok(!e.possibleFactors.some(x=>x.key==="SAFETY_CONFIDENCE"));
+});
+test("recent recordable gives review signal without inventing unsafe employee sentiment",()=>{
+ const w=recordDemoIncident(seedWorkforce(),{department:"Quality",kind:"recordable",observedOn:today},today);
+ const e=qcdsmEvidence(seedState(),w,"Quality",today);
+ assert.equal(e.recordables,1);
+ assert.equal(e.safetyPriority,70);
+ assert.ok(e.possibleFactors.some(x=>x.key==="RECORDABLE"));
+ assert.equal(e.survey,null);
+ assert.ok(!e.possibleFactors.some(x=>x.key==="SAFETY_CONFIDENCE"));
+ const late=qcdsmEvidence(seedState(),w,"Quality","2026-12-10");
+ assert.equal(late.recordables,0);
+ assert.equal(late.safetyPriority,null);
+ assert.throws(()=>recordDemoIncident(w,{department:"Quality",kind:"recordable",observedOn:"2026-11-01"},today),/future/);
+});
+test("explicit aggregate confidence input changes safety priority, with validation",()=>{
+ let w=recordDemoSafetySurvey(seedWorkforce(),{department:"Maintenance",respondents:10,concerned:4},today);
+ let e=qcdsmEvidence(seedState(),w,"Maintenance",today);
+ assert.equal(e.safetyPriority,12);
+ assert.equal(e.survey.concerned,4);
+ assert.ok(e.possibleFactors.some(x=>x.key==="SAFETY_CONFIDENCE"));
+ assert.throws(()=>recordDemoSafetySurvey(w,{department:"Maintenance",respondents:5,concerned:6},today),/cannot exceed/);
+ assert.equal(validateWorkforce(w),w);
+});
+test("RCA snapshot links to actual ERP NCR and freezes referenced evidence, does not change job clock readiness",()=>{
+ let erp=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
+ let w=recordDemoPulse(seedWorkforce(),pulse);
+ w=recordDemoIncident(w,{department:"Assembly",kind:"recordable",observedOn:today},today);
+ let after=captureQualityContext(erp,w,erp.quality[0].id,"Assembly",today);
+ let ctx=qualityContextFor(after,erp.quality[0].id);
+ assert.equal(ctx.qualityId,erp.quality[0].id);
+ assert.equal(ctx.pulseId,w.pulses.at(-1).id);
+ assert.equal(ctx.safetyEventIds.length,1);
+ assert.equal(ctx.finding,"REVIEW_REQUIRED");
+ assert.ok(ctx.possibleFactors.some(x=>x.key==="OVERTIME"));
+ assert.deepEqual(packetIssues(after,"sample-1001"),packetIssues(erp,"sample-1001"));
+ assert.equal(qualityContextFor(erp,erp.quality[0].id),null);
+ assert.ok(after.events.some(e=>e.type==="quality.qcdsm.context_captured"));
+ const changed=recordDemoPulse(w,{...pulse,overtime_hours:0,over_50_hours_count:0,staffing_shortage_count:0});
+ assert.equal(qualityContextFor(after,erp.quality[0].id).pulseId,ctx.pulseId);
+ assert.notEqual(changed.pulses.at(-1).id,ctx.pulseId);
+ assert.throws(()=>captureQualityContext(erp,w,"missing","Assembly",today),/existing quality record/);
+});
+test("QCDSM report and wheel read same sources as quality and workforce modules",()=>{
+ let erp=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
+ let w=recordDemoPulse(seedWorkforce(),pulse);
+ w=recordDemoIncident(w,{department:"Assembly",kind:"recordable",observedOn:today},today);
+ const report=makeReport(erp,[],"qcdsm",today,w);
+ const row=report.rows.find(x=>x[0]==="Assembly");
+ const e=qcdsmEvidence(erp,w,"Assembly",today);
+ assert.equal(row[1],e.moraleRisk);
+ assert.equal(row[4],e.recordables);
+ assert.equal(row[5],e.safetyPriority);
+ assert.equal(row[6],e.quality.openHolds);
+ assert.equal(row[7],"N/A");
+ const ui=renderQcdsm(erp,w,"Assembly",today);
+ assert.match(ui,/data-form="safety-incident"/);
+ assert.match(ui,/data-form="safety-survey"/);
+ assert.match(ui,/QCDSM operating wheel/);
+ const rca=qualityRcaHtml(erp,w,"Assembly",today);
+ assert.match(rca,/data-form="quality-qcdsm-review"/);
+ assert.match(rca,/Capture QCDSM evidence for RCA/);
+});

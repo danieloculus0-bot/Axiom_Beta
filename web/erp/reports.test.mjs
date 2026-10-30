@@ -7,7 +7,7 @@ import {completePmTask} from "./pm.mjs";
 const at="2026-10-30T12:00:00.000Z",later="2026-10-30T12:00:30.000Z";
 test("all report types have functional rows, no fake network data",()=>{
  const state=seedState();
- assert.equal(REPORTS.length,9);
+ assert.equal(REPORTS.length,10);
  for(const report of REPORTS){
   const data=makeReport(state,[],report.id,"2026-10-30");
   assert.equal(data.id,report.id);
