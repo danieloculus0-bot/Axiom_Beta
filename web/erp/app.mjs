@@ -6,12 +6,16 @@ import {
 } from "./engine.mjs";
 import {startSession,stopSession,durationSeconds,sessionsCsv} from "../ewi/engine.mjs";
 import {renderPm} from "./pm-view.mjs";
+import {renderRequestDesk} from "./request-view.mjs";
+import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
+ issueRequestPO,syncReceivedRequests,verifyPurchaseRequest,followupPurchaseRequest} from "./requests.mjs";
 import {installContextMenu} from "./context-ui.mjs";
 import {resolveContext,contextRelated} from "./context-actions.mjs";
 import {installMenu} from "./navigation-ui.mjs";
 import {REPORTS,makeReport,reportCsv} from "./reports.mjs";
 import {getMachine,getTask,pmOverview,createMachine,addPmTask,completePmTask,requestMaintenance,
-  closeMaintenanceRequest,completionsCsv,localDay} from "./pm.mjs";
+  closeMaintenanceRequest,completionsCsv,localDay,dayAdd,
+  assignMaintenanceRequest,followupMaintenanceRequest} from "./pm.mjs";
 
 const $=id=>document.getElementById(id);
 const h=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -19,9 +23,9 @@ const deep=v=>structuredClone(v);
 const stateViews={
  dashboard:"Command Center",jobs:"Work Orders",routing:"Routing & Planning",
  ewi:"EWI & Clocking",inventory:"Inventory",purchasing:"Purchasing",
- quality:"Quality Control",documents:"Drawing Control",pm:"PM Tracker",reports:"Report Center",bridge:"ERP Emulator",audit:"Event History"
+ quality:"Quality Control",documents:"Drawing Control",pm:"PM Tracker",requests:"Request Desk",reports:"Report Center",bridge:"ERP Emulator",audit:"Event History"
 };
-let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="";
+let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""};
 function load(){
   try{
     const raw=localStorage.getItem(ERP_KEY);
@@ -122,7 +126,7 @@ function applyContextFocus(){
 function dashboard(){
   const active=sessions.filter(s=>!s.end).length,blocked=state.jobs.filter(j=>packetIssues(state,j.id).length).length;
   const ordered=state.purchaseOrders.filter(p=>p.status==="ORDERED").length;
-  const pm=pmOverview(state.pm);
+  const pm=pmOverview(state.pm),req=requestMetrics(state);
   let s=heading("Overview / connected shop workflow","Manufacturing command center",
     "One fictional dataset drives the job tracker, material transactions, quality holds, routed work instructions and clocking.");
   s+='<div class="metrics">'+metric("Work orders",state.jobs.length,"Synthetic orders")+
@@ -141,10 +145,15 @@ function dashboard(){
     moduleLink("routing","Routing","Work centers and steps")+
     moduleLink("quality","Quality","Create and close holds")+
     moduleLink("pm","PM Tracker","Maintenance schedules & requests")+
+    moduleLink("requests","Request Desk","Track assignments and follow-ups")+
     moduleLink("reports","Reports","Live synthetic operational reports")+
     moduleLink("purchasing","Purchasing","Receive demo inventory")+
     moduleLink("bridge","ERP Bridge","Emulated import and time receipt")+
     '</div></section></div>';
+  s+='<section class="panel"><div class="panel-head"><h2>Request follow-up</h2><a href="#requests" class="action secondary">Open Request Desk</a></div>'+
+    '<div class="pills">'+status(req.openPurchases+" PURCHASE REQUESTS")+
+    status(req.openMaintenance+" MAINTENANCE REQUESTS")+status(req.overdue+" OVERDUE")+
+    '</div><p class="small">Real browser-local request workflows use fictional records. Purchasing needs a received PO before completion.</p></section>';
   s+='<section class="panel"><div class="panel-head"><h2>Maintenance snapshot</h2><a href="#pm" class="action secondary">Open PM Tracker</a></div>'+
     '<div class="pills">'+status(pm.overdue+" OVERDUE TASKS")+' '+status(pm.dueToday+" DUE TODAY")+' '+status(pm.openRequests+" OPEN REQUESTS")+'</div>'+
     '<p class="small">'+h(pm.machines)+' generic machines · '+h(pm.tasks)+' recurring tasks. These are fictional maintenance records, not live equipment conditions.</p></section>';
@@ -394,7 +403,7 @@ function auditView(){
   return s;
 }
 const renderers={dashboard,jobs:jobsView,routing:routingView,ewi:clockView,inventory:inventoryView,
-  purchasing:purchasingView,quality:qualityView,documents:documentsView,pm:()=>renderPm(state.pm,selectedPmMachineId),reports:reportsView,bridge:bridgeView,audit:auditView};
+  purchasing:purchasingView,quality:qualityView,documents:documentsView,pm:()=>renderPm(state.pm,selectedPmMachineId),requests:()=>renderRequestDesk(state,selectedRequest),reports:reportsView,bridge:bridgeView,audit:auditView};
 function rememberJob(id){
   if(!getJob(state,id))return;
   selectedJobId=id;selectedStep=job().routing.operations[0].step;
