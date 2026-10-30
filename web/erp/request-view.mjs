@@ -39,7 +39,7 @@ export function renderRequestDesk(state,selected={kind:"",id:""}){
   '<div class="metric"><small>Purchases to verify</small><strong>'+metrics.needsVerification+'</strong><em>Received, awaiting requester</em></div></div>';
  s+='<div class="columns"><section class="panel"><h2>New purchase request</h2>'+
  form("request-purchase",
-   field("Fictional material",select("item",state.items.map(i=>i.id+" · "+i.name)))+
+   field("Fictional material",'<select name="item">'+state.items.map(i=>'<option value="'+h(i.id)+'">'+h(i.id+" · "+i.name)+'</option>').join("")+'</select>')+
    field("Quantity",'<input type="number" name="quantity" min="1" max="10000" value="10" required>')+
    field("Purpose",select("reason",PURCHASE_REASONS))+
    field("Priority",select("priority",PRIORITIES,"Medium"))+
