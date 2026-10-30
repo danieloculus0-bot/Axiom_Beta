@@ -6,6 +6,8 @@ import {
 } from "./engine.mjs";
 import {startSession,stopSession,durationSeconds,sessionsCsv} from "../ewi/engine.mjs";
 import {renderPm} from "./pm-view.mjs";
+import {installContextMenu} from "./context-ui.mjs";
+import {resolveContext,contextRelated} from "./context-actions.mjs";
 import {installMenu} from "./navigation-ui.mjs";
 import {REPORTS,makeReport,reportCsv} from "./reports.mjs";
 import {getMachine,getTask,pmOverview,createMachine,addPmTask,completePmTask,requestMaintenance,
@@ -19,7 +21,7 @@ const stateViews={
  ewi:"EWI & Clocking",inventory:"Inventory",purchasing:"Purchasing",
  quality:"Quality Control",documents:"Drawing Control",pm:"PM Tracker",reports:"Report Center",bridge:"ERP Emulator",audit:"Event History"
 };
-let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null;
+let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="";
 function load(){
   try{
     const raw=localStorage.getItem(ERP_KEY);
@@ -64,12 +66,59 @@ function metric(label,val,detail=""){return '<div class="metric"><small>'+h(labe
 function moduleLink(view,label,detail){
   return '<a href="#'+view+'"><b>'+h(label)+'</b><span>'+h(detail)+'</span></a>';
 }
-function table(headers,rows,empty="No synthetic records yet."){
+function contextAttrs(type,id){return '"data-ctx-type="'+h(type)+'" data-ctx-id="'+h(id)+'" tabindex="0" title="Right-click for Open with"';}
+function ctxSpan(type,id,text){return '<span class="context-record" data-ctx-type="'+h(type)+'" data-ctx-id="'+h(id)+'" tabindex="0" title="Right-click for Open with">'+h(text)+'</span>';}
+function table(headers,rows,empty="No synthetic records yet.",contexts=[]){
   if(!rows.length)return '<div class="empty">'+h(empty)+'</div>';
-  return '<div class="tablewrap"><table><thead><tr>'+headers.map(x=>'<th>'+h(x)+'</th>').join("")+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(x=>'<td>'+x+'</td>').join("")+'</tr>').join("")+'</tbody></table></div>';
+  return '<div class="tablewrap"><table><thead><tr>'+headers.map(x=>'<th>'+h(x)+'</th>').join("")+'</tr></thead><tbody>'+rows.map((r,i)=>{
+    const record=contexts[i],attr=record?contextAttrs(record.type,record.id):"";
+    return '<tr class="'+(record?"context-record-row":"")+'" '+attr+'>'+r.map(x=>'<td>'+x+'</td>').join("")+'</tr>';
+  }).join("")+'</tbody></table></div>';
 }
 function jobLink(j,view="routing"){return '<a class="cell-link" href="#'+view+'" data-job="'+h(j.id)+'">'+h(j.jobNumber)+'</a>';}
 function jobState(j){return packetIssues(state,j.id).length?'<span class="tag warn">REVIEW</span>':'<span class="tag ok">READY</span>';}
+function contextBanner(){
+  if(!selectedContext)return "";
+  const info=resolveContext(state,selectedContext.type,selectedContext.id);
+  if(!info){selectedContext=null;selectedIntent="";return "";}
+  return '<div class="context-trail"><span class="context-trail-icon">⌕</span><b>Open with:</b> '+h(info.label)+
+    '<span class="small muted">'+h(info.type.replace(/_/g," "))+', fictional browser record</span>'+
+    '<button class="action secondary" type="button" data-action="clear-record-context">Clear context</button></div>';
+}
+function contextSelection(view,rows){
+  const ids=contextRelated(state,selectedContext,view);
+  if(!ids)return rows;
+  if(view==="jobs")return rows.filter(row=>ids.includes(row.id));
+  if(view==="inventory")return rows.filter(row=>ids.includes(row.id));
+  if(view==="purchasing")return rows.filter(row=>ids.includes(row.itemId)&&(!selectedContext||selectedContext.type!=="po"||row.id===selectedContext.id));
+  if(view==="quality")return rows.filter(row=>ids.includes(row.jobId)&&(!selectedContext||selectedContext.type!=="quality"||row.id===selectedContext.id));
+  return rows;
+}
+function openContext(record,action){
+  const c=resolveContext(state,record.type,record.id);
+  if(!c)return;
+  selectedContext=record;selectedIntent=action.intent;
+  if(c.jobId)rememberJob(c.jobId);
+  else if(c.relatedJobs.length&&["routing","ewi","documents","quality"].includes(action.view))rememberJob(c.relatedJobs[0]);
+  if(c.machineId)selectedPmMachineId=c.machineId;
+  if(action.intent==="pm-report")selectedReport="pm";
+  if(action.intent==="request-report")selectedReport="requests";
+  if(location.hash==="#"+action.view){render();applyContextFocus();}
+  else location.hash="#"+action.view;
+}
+function applyContextFocus(){
+  if(!selectedContext)return;
+  const c=resolveContext(state,selectedContext.type,selectedContext.id);
+  if(!c)return;
+  let selector="";
+  if(selectedIntent==="new-job"&&c.part){const select=document.querySelector('[data-form="new-job"] select[name="part"]');if(select){select.value=c.part;selector='[data-form="new-job"] input[name="quantity"]';}}
+  if(selectedIntent==="new-po"&&c.itemId){const select=document.querySelector('[data-form="new-po"] select[name="item"]');if(select){select.value=c.itemId;selector='[data-form="new-po"] input[name="quantity"]';}}
+  if(selectedContext.type==="pm_task"&&selectedIntent==="machine"){
+    const select=document.getElementById("pm-completion-task");if(select)select.value=selectedContext.id;
+  }
+  if(selectedIntent==="requests")selector="#pm-request-queue";
+  if(selector){const el=document.querySelector(selector);el?.scrollIntoView?.({block:"center"});if(el?.matches?.("input"))el.focus({preventScroll:true});}
+}
 function dashboard(){
   const active=sessions.filter(s=>!s.end).length,blocked=state.jobs.filter(j=>packetIssues(state,j.id).length).length;
   const ordered=state.purchaseOrders.filter(p=>p.status==="ORDERED").length;
