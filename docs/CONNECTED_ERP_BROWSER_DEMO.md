@@ -20,6 +20,7 @@
 | Inventory | Computes on-hand, reserved and available material; applies job reservations |
 | Purchasing | Issues invented purchase orders and receives them into the same inventory balance |
 | Quality | Creates and closes synthetic nonconformance holds that affect the selected job's EWI readiness |
+| Preventive maintenance | Includes the separate PM Tracker's core public workflow concepts: invented machine register, recurring task schedules, due/overdue calculations, completion history, follow-up requests and CSV export. Browser-only, no real asset connections |
 | Document control | Adjusts fictional drawing revision to test mismatch and match behavior; this is not a true release/signature |
 | ERP emulator | Imports independent invented job and routing fixtures and issues fake acceptance receipts for completed browser-local clock sessions |
 | Events | Provides an append-order, **not immutable**, local action history and export/reset options |
@@ -41,3 +42,9 @@ node --test web/engine.test.mjs web/ewi/engine.test.mjs web/erp/engine.test.mjs
 Automated tests cover purchase order receipt updates, stock reservations and shortages, drawing-revision holds, quality hold release, simulated external import idempotence, duplicate simulator receipts, clock session handoff and starter jobs shared with standalone EWI.
 
 GitHub Pages only hosts the static site. The GitHub Actions publishing workflow needs a correctly configured GitHub Pages environment and permission; a successful git commit alone does not establish a live URL.
+
+## PM Tracker integration boundary
+
+Axiom includes a historical source snapshot under `components/source_snapshots/PM-Tracker/app.py`, while the maintained standalone PM-Tracker repository has its own Flask/SQLite and Excel-file functionality. This new `web/erp/#pm` screen brings those **concepts** into the connected Axiom Pages demonstration; it does **not** merge or expose a real site-server or production maintenance database. It uses the unchanged dark Axiom ERP visual theme and new original synthetic machine/task fixtures only.
+
+The demo supports task due dates, machine cards and shareable local machine links, PM log entries, maintenance requests and simulated closeout. Real QR scanning, workbooks, electronic signoffs, LOTO authorization, machine isolation, multi-user permissions and server data imports are not present. Completion here is a test event, not evidence that maintenance occurred. Never enter real operator or machine information.
