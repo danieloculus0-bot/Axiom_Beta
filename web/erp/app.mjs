@@ -72,7 +72,7 @@ function dashboard(){
      metric("Active clocks",active,"Browser-local sessions")+
      metric("Open POs",ordered,"Simulated purchasing")+'</div>';
   s+='<div class="columns"><section class="panel"><div class="panel-head"><h2>Recent work orders</h2><a href="#jobs" class="action secondary">All work orders</a></div>';
-  s+=table(["Job / part","Qty","Revision","Readiness","Open"],state.jobs.slice().reverse().slice(0,7).map(j=>[
+  s+=table(["Job","Part","Revision","Readiness","EWI"],state.jobs.slice().reverse().slice(0,7).map(j=>[
     jobLink(j),h(j.partNumber),h(j.revision),jobState(j),
     '<a href="#ewi" data-job="'+h(j.id)+'" class="action secondary">Open EWI</a>'
   ]));
@@ -96,7 +96,7 @@ function jobsView(){
     '<label>Order quantity<input type="number" name="quantity" min="1" max="1000" value="12" required></label>'+
     '<button class="action" type="submit">Create work order</button></form></section>';
   s+='<section class="panel"><div class="panel-head"><h2>Shop order register</h2><a class="action secondary" href="#bridge">Import simulator job</a></div>'+
-    table(["Work order","Part / rev","Qty","Reserved","Source","EWI","Status"],state.jobs.map(j=>[
+    table(["Work order","Part","Rev","Qty","Reserved","Source","Readiness","EWI"],state.jobs.map(j=>[
       jobLink(j,"routing"),h(j.partNumber)+" / "+h(j.revision),h(j.quantity),h(j.reserved||0),
       h(j.origin),jobState(j),
       '<a class="action secondary" href="#ewi" data-job="'+h(j.id)+'">Open</a>'
@@ -329,8 +329,8 @@ document.addEventListener("click",event=>{
     if(action==="sync"){
       const routing=emulatorFetchRouting(id);
       if(!routing.operations.length)throw Error("Emulator routing is missing");
-      const result=syncEmulatorJob(state,id);rememberJob(result.jobId);
-      transact(result.state,result.imported?"Imported fictional job and routed operations.":"This fictional job was already imported.");
+      const result=syncEmulatorJob(state,id);state=result.state;rememberJob(result.jobId);
+      transact(state,result.imported?"Imported fictional job and routed operations.":"This fictional job was already imported.");
       location.hash="#routing";
     }
     if(action==="clock-in"){
