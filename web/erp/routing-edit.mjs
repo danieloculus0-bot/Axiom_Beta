@@ -80,7 +80,10 @@ export function reviewRoutingDraft(state,jobId,sessions=[],at=new Date().toISOSt
  const j=getJob(state,jobId);
  if(!j||j.routing.reviewState!=="REVIEW_REQUIRED")
    fail("No edited route is awaiting demo review");
- if(sessions.some(s=>s.jobId===jobId))fail("Clock history prevents routing modification");
+ // BETA: completing a review flag does not alter the routed operations.
+ // Allow marking the fictional route reviewed even after a local clock event.
+ // The previous interlock is preserved below for possible restoration.
+ // if(sessions.some(s=>s.jobId===jobId))fail("Clock history prevents routing modification");
  validateRoutingDraft(j,j.routing.operations);
  if(!Number.isFinite(Date.parse(at)))fail("Invalid review timestamp");
  return change(state,"routing.demo_reviewed",j.jobNumber+" / DEMO REVIEW ONLY",n=>{
