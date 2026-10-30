@@ -169,7 +169,7 @@ export function completionsCsv(pm){
 }
 
 
-/* Maintenance request follow-up and verification for the fictional browser demo.
+/* Maintenance request assignment and follow-up for the fictional browser demo.
  * Existing closeMaintenanceRequest API is preserved for old PM tests.
  */
 export const MAINTENANCE_FOLLOWUPS=[
