@@ -157,7 +157,7 @@ export function closeMaintenanceRequest(pm,id,resolution="Example follow-up clos
   const r=pm.requests.find(x=>x.id===id);
   if(!r||!["OPEN","IN PROGRESS"].includes(r.status))throw Error("Demo maintenance request is not open");
   const n=clone(pm),item=n.requests.find(x=>x.id===id);
-  item.status="CLOSED";item.closedAt=at;item.assignedTo="DEMO-MAINT";item.resolution=resolution;
+  item.status="CLOSED";item.closedAt=at;item.assignedTo||="DEMO-MAINT";item.resolution=resolution;
   return n;
 }
 export function completionsCsv(pm){
