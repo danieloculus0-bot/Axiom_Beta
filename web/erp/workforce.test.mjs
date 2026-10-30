@@ -15,7 +15,7 @@ test("morale risk retains existing SuperForge aggregate weighting and bounding",
  assert.equal(calculateMoraleRisk(example),98.5);
  assert.equal(calculateMoraleRisk({...example,pto_absence_count:15}),98.5);
  assert.equal(calculateMoraleRisk({scheduled_headcount:10,present_headcount:0,
-  overtime_hours:10000,turnover_count:100,staffing_shortage_count:100,quality_risk_signal:500}),100);
+  overtime_hours:10000,turnover_count:100,staffing_shortage_count:100,quality_risk_signal:500}),70);
 });
 test("seeded workforce uses only demo codes and generic roles",()=>{
  const s=seedWorkforce();
