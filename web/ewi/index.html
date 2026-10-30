@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#101416">
+<meta name="description" content="Real browser-local Axiom electronic work instructions and clocking demo using invented example records only. No live ERP connection.">
+<title>Axiom | EWI & Operator Clocking Demo</title>
+<link rel="stylesheet" href="./style.css">
+<script type="module" src="./app.mjs"></script>
+</head>
+<body>
+<div class="frame">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html" aria-label="Back to Axiom lab">AXIOM<span>.</span><small>Operator station / browser demo</small></a>
+    <nav aria-label="Operator station">
+      <a href="#workbench" class="nav active" id="nav-workbench">▣ &nbsp; EWI Workbench</a>
+      <a href="#sessions" class="nav" id="nav-sessions">◷ &nbsp; Clock History</a>
+      <a href="#about" class="nav" id="nav-about">ⓘ &nbsp; System &amp; Limitations</a>
+    </nav>
+    <div class="sidebar-foot">
+      <span class="status-dot"></span> Local engine operational
+      <p>All data on this page is invented. No proprietary records, source drawings, or JobBOSS connection.</p>
+      <a href="../index.html">Open Axiom browser lab</a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="header">
+      <div><span class="overline">AXIOM / ELECTRONIC WORK INSTRUCTIONS</span><h1>EWI <span class="light">+ Job Clocking</span></h1></div>
+      <div class="health"><span class="pill positive">Browser clock: working</span><span class="pill disabled">JobBOSS²: not connected</span></div>
+    </header>
+    <div class="truth" role="note"><strong>FUNCTIONAL LOCAL DEMO.</strong> The start/stop clock, elapsed time, persistence, CSV exports, job navigation and hold logic really work in this browser. The drawings, job numbers and routed instructions are fictional. Nothing here connects to, writes to or represents a record in JobBOSS².</div>
+    <section class="view active" id="workbench-view">
+      <div class="toolbar">
+        <div class="job-picker">
+          <label for="job-select">WORK ORDER</label>
+          <select id="job-select"><option value="sample-1001">DEMO-4102 | Generic formed bracket | Rev C</option><option value="sample-1002">DEMO-4103 | Generic mount | Rev B (revision conflict)</option></select>
+        </div>
+        <div class="job-picker employee-picker"><label for="employee">OPERATOR DEMO CODE</label><input id="employee" value="DEMO-01" maxlength="32" autocomplete="off" spellcheck="false" aria-describedby="operator-note"></div>
+        <div class="toolbar-right"><span class="pill positive" id="packet-status">Ready / demo checks passed</span><a href="#sessions" class="outline-link">Clock history</a></div>
+      </div>
+      <div class="job-kpis">
+        <div class="kpi"><small>WORK ORDER</small><strong id="job-number">DEMO-4102</strong><span>Invented example</span></div>
+        <div class="kpi"><small>PART / REV</small><strong id="part-number">SYN-BRACKET-12 / C</strong><span id="part-desc">Generic training part</span></div>
+        <div class="kpi"><small>ORDER QUANTITY</small><strong id="order-qty">36</strong><span>Pieces, synthetic</span></div>
+        <div class="kpi"><small>ACTIVE CLOCK</small><strong id="clock-total">00:00:00</strong><span id="active-label">No operation active</span></div>
+      </div>
+      <div class="alerts" id="alerts" role="status" aria-live="polite"></div>
+
+      <div class="layout">
+        <section class="drawing pane">
+          <div class="pane-head">
+            <div><span class="overline">SOURCE A · GENERIC DRAWING</span><h2>Controlled drawing viewer <span class="pill disabled">SAMPLE</span></h2></div>
+            <div class="zoom-controls">
+              <button type="button" id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
+              <span id="zoom-label">100%</span>
+              <button type="button" id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+              <button type="button" id="zoom-reset" title="Fit drawing" aria-label="Fit drawing">Fit</button>
+              <button type="button" id="print-drawing" title="Print current generic drawing">Print</button>
+            </div>
+          </div>
+          <div class="source-strip">
+            <div><small>DOCUMENT</small><strong id="drawing-id">SYN-DWG-12</strong></div>
+            <div><small>REV</small><strong id="drawing-rev">C</strong></div>
+            <div><small>CONTROL</small><strong id="drawing-state">Illustrative release</strong></div>
+          </div>
+          <div class="drawing-viewport" id="drawing-viewport"><div id="drawing-content"></div></div>
+          <p class="caption">Illustrative vector drawing created solely for this demo. Not an authenticated PDF, not an engineering release and not intended for fabrication.</p>
+        </section>
+
+        <section class="routing pane">
+          <div class="pane-head"><div><span class="overline">SOURCE B · GENERIC ROUTING</span><h2>Routed work instructions</h2></div><span class="pill disabled">SAMPLE</span></div>
+          <div class="routing-meta"><span id="routing-source">Invented operations, not ERP records</span><strong id="operation-count">4 operations</strong></div>
+          <div id="route-list" class="route-list"></div>
+        </section>
+      </div>
+      <section class="clock-console pane" aria-label="Clocking controls">
+        <div class="pane-head"><div><span class="overline">OPERATOR TERMINAL</span><h2>Operation clocking</h2></div><span class="pill disabled">LOCAL ONLY · NEVER TRANSMITTED</span></div>
+        <div class="clock-grid">
+          <div><small>SELECTED OPERATION</small><strong id="selected-operation">10 · Laser cut blank</strong><p id="selected-check">Choose a routed step above.</p></div>
+          <div class="clock-time"><small>SESSION TIMER</small><strong id="session-timer">00:00:00</strong><span id="session-indicator">READY TO CLOCK IN</span></div>
+          <div class="clock-buttons"><button id="clock-start" class="primary">Clock IN</button><button id="clock-stop" class="stop" disabled>Clock OUT</button></div>
+        </div>
+        <div id="clock-message" role="status" aria-live="polite" class="message"></div>
+        <p class="caption" id="operator-note">Employee codes are examples, not verified identities. Clocking events are saved in this browser only. They are neither approved labor entries nor payroll records. <a href="#about">See limitations</a>.</p>
+      </section>
+    </section>
+
+    <section class="view" id="sessions-view">
+      <div class="section-head"><div><span class="overline">BROWSER-LOCAL EVENT RECORDS</span><h2>Clock history &amp; export</h2><p>Actual start and stop timestamps are recorded locally in your browser. History remains after a refresh on the same browser, unless storage is disabled or cleared.</p></div></div>
+      <div class="summary">
+        <div class="kpi"><small>SESSIONS</small><strong id="stat-sessions">0</strong></div>
+        <div class="kpi"><small>RUNNING</small><strong id="stat-active">0</strong></div>
+        <div class="kpi"><small>FINISHED</small><strong id="stat-complete">0</strong></div>
+        <div class="kpi"><small>FINISHED TIME</small><strong id="stat-hours">00:00:00</strong></div>
+      </div>
+      <div class="pane history-panel">
+        <div class="pane-head"><h2>Recorded clock sessions</h2><div class="actions"><button type="button" id="export-csv">Export CSV</button><button type="button" id="export-json">Export JSON</button><button type="button" id="clear-history" class="danger">Clear local history</button></div></div>
+        <div class="table-scroll"><table><thead><tr><th>Employee</th><th>Job</th><th>Operation</th><th>Clock in (local)</th><th>Clock out (local)</th><th>Elapsed</th><th>State</th></tr></thead><tbody id="history-body"></tbody></table></div>
+        <p class="caption" id="storage-status">Storage check pending</p>
+      </div>
+      <div class="truth"><strong>NO ERP POSTING:</strong> The downloaded CSV/JSON files are your browser's local demo records, not ECI time tickets. No internet requests are made to a JobBOSS server.</div>
+    </section>
+
+    <section class="view" id="about-view">
+      <span class="overline">CAPABILITIES AND BOUNDARIES</span><h2>What is real here?</h2>
+      <div class="about-grid">
+        <div class="pane"><h3>Working in this browser</h3><p>Selectable work orders and operation steps; a genuine elapsed-time clock; local start/stop event records; prevention of multiple active sessions for the same operator code; persistence in localStorage; drawing zoom and print; routing/drawing revision hold checks; and CSV/JSON export.</p></div>
+        <div class="pane"><h3>Fictional by design</h3><p>Every job number, drawing, part, instruction, inspection note, work center and quantity is synthetic, created exclusively for this public demonstration. The drawing is an original generic SVG mockup, not a downloaded manufacturing print.</p></div>
+        <div class="pane"><h3>Not implemented on GitHub Pages</h3><p>No live ECI JobBOSS² API connection, central clock database, time-ticket submission, payroll validation, user authentication, role/shift controls, manufacturing signoffs, official document release, or multi-device synchronization. Browsers cannot safely hold ERP API secrets on a public page.</p></div>
+        <div class="pane"><h3>Actual Axiom desktop direction</h3><p>The server-connected Axiom application uses a separate Python backend, controlled drawing storage, and opt-in ERP adapters. Real JobBOSS integration requires authorized access and tested API mappings. This Pages demo does not claim that backend is active here.</p></div>
+      </div>
+      <a href="https://github.com/danieloculus0-bot/Axiom_Beta" class="outline-link">Review Axiom source code</a>
+    </section>
+    <footer>AXIOM EWI / FUNCTIONAL PUBLIC DEMO · SYNTHETIC ONLY · NO LIVE JOBBOSS DATA</footer>
+  </main>
+</div>
+
+<template id="drawing-sample-1001">
+<svg class="blueprint" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 650" role="img" aria-label="Generic illustrative L-bracket orthographic drawing with hole pattern and example dimensions">
+<defs>
+<marker id="arrowA" markerWidth="7" markerHeight="7" refX="4" refY="3" orient="auto"><path d="M6 1L1 3L6 5" fill="none" stroke="#27333c" stroke-width="1.1"/></marker>
+<pattern id="paperA" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="#eef2f4" stroke-width="1"/></pattern>
+</defs>
+<rect width="1000" height="650" fill="#fff"/><rect width="1000" height="650" fill="url(#paperA)" />
+<rect x="25" y="25" width="950" height="600" fill="none" stroke="#24343c" stroke-width="2"/>
+<g stroke="#24343c" fill="none" stroke-width="2.5">
+<rect x="165" y="155" width="420" height="235" rx="3"/>
+<path d="M165 199 H585" stroke-dasharray="12 7" stroke-width="1.6"/>
+<circle cx="228" cy="252" r="17"/><circle cx="522" cy="252" r="17"/>
+<circle cx="228" cy="343" r="17"/><circle cx="522" cy="343" r="17"/>
+<path d="M145 252H607 M228 135V412 M522 135V412" stroke-dasharray="10 6 2 6" stroke="#70808a" stroke-width="1"/>
+<path d="M630 390 H784 V304 H760 V365 H630Z"/>
+</g>
+<g fill="none" stroke="#51636c" stroke-width="1.4" marker-start="url(#arrowA)" marker-end="url(#arrowA)">
+<path d="M165 109H585"/><path d="M110 155V390"/><path d="M228 423H522"/><path d="M809 304V390"/>
+</g>
+<g stroke="#51636c" stroke-width="1.2"><path d="M165 110V151 M585 110V151 M111 155H164 M111 390H164 M228 391V427 M522 391V427 M784 302H819 M784 390H819"/></g>
+<g fill="#1e3038" font-family="Arial,sans-serif" font-size="18">
+<text x="365" y="100" text-anchor="middle">120 REF</text><text x="99" y="285" text-anchor="middle" transform="rotate(-90 99 285)">80 REF</text>
+<text x="375" y="445" text-anchor="middle">84 HOLE CENTRES</text><text x="833" y="352" transform="rotate(-90 833 352)">25 REF</text>
+<text x="165" y="137" font-size="15" font-weight="bold">TOP VIEW / NOT TO SCALE</text>
+<text x="629" y="275" font-size="15" font-weight="bold">SIDE VIEW / SCHEMATIC</text>
+<text x="610" y="232">4 × Ø8 REF</text><path d="M595 235L539 251" stroke="#24343c" fill="none" stroke-width="1.4"/>
+<text x="635" y="416" font-size="16">90° REF</text><text x="165" y="475" font-size="16">EXAMPLE NOTES</text>
+<text x="165" y="501" font-size="14">1. UNIT: mm. Dimensions are illustrative.</text>
+<text x="165" y="524" font-size="14">2. Not suitable for cutting, forming, or inspection.</text>
+<text x="165" y="547" font-size="14">3. ALL GEOMETRY IS INVENTED FOR UI TESTING.</text>
+</g>
+<rect x="610" y="488" width="345" height="118" fill="#fff" stroke="#263842" stroke-width="1.6"/>
+<path d="M610 529H955M610 571H955M851 529V606" stroke="#263842"/>
+<g fill="#172c36" font-family="Arial,sans-serif"><text x="623" y="507" font-size="12">GENERIC DEMONSTRATION DRAWING</text><text x="623" y="522" font-size="17" font-weight="bold">FORMED BRACKET (EXAMPLE)</text><text x="623" y="546" font-size="12">DRAWING NO.</text><text x="623" y="563" font-size="18" font-weight="bold">SYN-DWG-12</text><text x="866" y="547" font-size="12">REV</text><text x="866" y="563" font-size="20" font-weight="bold">C</text><text x="623" y="587" font-size="14">SOURCE: ILLUSTRATIVE</text><text x="623" y="600" font-size="11">NO MANUFACTURING AUTHORITY</text></g>
+<text x="500" y="80" font-family="Arial,sans-serif" font-size="31" font-weight="bold" fill="#dd6870" opacity=".40" text-anchor="middle">SYNTHETIC SAMPLE / NOT FOR PRODUCTION</text>
+</svg>
+</template>
+
+<template id="drawing-sample-1002">
+<svg class="blueprint" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 650" role="img" aria-label="Generic illustrative plate drawing revision A while the job requires B">
+<defs><marker id="arrowB" markerWidth="7" markerHeight="7" refX="4" refY="3" orient="auto"><path d="M6 1L1 3L6 5" fill="none" stroke="#24343c"/></marker></defs>
+<rect width="1000" height="650" fill="#fff"/><rect x="25" y="25" width="950" height="600" fill="none" stroke="#24343c" stroke-width="2"/>
+<g stroke="#24343c" fill="none" stroke-width="2.5"><rect x="205" y="160" width="450" height="260" rx="25"/>
+<rect x="266" y="275" width="99" height="31" rx="15.5"/><rect x="495" y="275" width="99" height="31" rx="15.5"/>
+<path d="M185 292H678M430 142V439" stroke="#81949f" stroke-width="1" stroke-dasharray="13 7 3 7"/>
+</g>
+<g stroke="#51636c" stroke-width="1.4" fill="none" marker-start="url(#arrowB)" marker-end="url(#arrowB)">
+<path d="M205 117H655"/><path d="M150 160V420"/>
+</g><g stroke="#51636c"><path d="M205 119V160M655 119V160 M151 160H204 M151 420H204"/></g>
+<g fill="#24343c" font-family="Arial,sans-serif"><text x="430" y="108" text-anchor="middle" font-size="19">140 REF</text><text x="138" y="290" text-anchor="middle" transform="rotate(-90 138 290)" font-size="19">90 REF</text>
+<text x="205" y="145" font-size="16" font-weight="bold">TOP VIEW / GENERIC PLATE</text><text x="690" y="294" font-size="18">2 × SLOTS</text><path d="M683 298L585 291" stroke="#24343c" stroke-width="1.5"/>
+<text x="205" y="475" font-size="15">INVENTED EXAMPLE / NOT TO SCALE</text>
+<text x="205" y="508" font-size="15">Release check intentionally fails:</text>
+<text x="205" y="533" font-size="17" font-weight="bold">Job Rev B ≠ Drawing Rev A</text></g>
+<rect x="610" y="488" width="345" height="118" fill="#fff" stroke="#263842" stroke-width="1.6"/>
+<path d="M610 529H955M610 571H955M851 529V606" stroke="#263842"/>
+<g fill="#172c36" font-family="Arial,sans-serif"><text x="623" y="507" font-size="12">GENERIC DEMONSTRATION DRAWING</text><text x="623" y="522" font-size="17" font-weight="bold">SLOTTED PLATE (EXAMPLE)</text><text x="623" y="546" font-size="12">DRAWING NO.</text><text x="623" y="563" font-size="18" font-weight="bold">SYN-DWG-07</text><text x="866" y="547" font-size="12">REV</text><text x="866" y="563" font-size="20" font-weight="bold">A</text><text x="623" y="587" font-size="14">SOURCE: ILLUSTRATIVE</text><text x="623" y="600" font-size="11">NO MANUFACTURING AUTHORITY</text></g>
+<text x="500" y="80" font-family="Arial,sans-serif" font-size="31" font-weight="bold" fill="#dd6870" opacity=".40" text-anchor="middle">SYNTHETIC SAMPLE / NOT FOR PRODUCTION</text>
+</svg>
+</template>
+</body>
+</html>
