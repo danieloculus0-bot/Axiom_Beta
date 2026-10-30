@@ -79,5 +79,5 @@ test("both public screens render usable forms with clear non-production boundari
   assert.ok(hr.includes(token),token);
  for(const token of ['data-form="morale-pulse"','data-form="morale-nominate"','No real identities','No monetary conversion'])
   assert.ok(morale.includes(token),token);
- assert.ok(!hr.includes("EZ Fabricating")&&!morale.includes("WMF"));
+ assert.ok(hr.includes("Entirely synthetic")&&morale.includes("Entirely synthetic"));
 });
