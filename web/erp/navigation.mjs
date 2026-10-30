@@ -16,7 +16,8 @@ export const MENU_GROUPS=[
   ]},
   {id:"supply",label:"Supply Chain",items:[
     {id:"inventory",label:"Inventory",icon:"◈",hint:"Stock and reservations",keywords:["material","part tracker","material tracker","inventory entry","stock tracker","on hand"]},
-    {id:"purchasing",label:"Purchasing",icon:"▥",hint:"Issue and receive demo POs",keywords:["purchase order","purchase order tracker","po tracker","po entry","purchase order entry","purchasing entry","receiving","procurement","suppliers"]}
+    {id:"purchasing",label:"Purchasing",icon:"▥",hint:"Issue and receive demo POs",keywords:["purchase order","purchase order tracker","po tracker","po entry","purchase order entry","purchasing entry","receiving","procurement","suppliers"]},
+    {id:"requests",label:"Request Desk",icon:"☑",hint:"Purchase and maintenance requests, assignments, follow-ups",keywords:["purchase request","requisition","purchase requisition","maintenance request","requests","follow up","assigned","overdue","request tracker"]}
   ]},
   {id:"operations",label:"Quality & Assets",items:[
     {id:"quality",label:"Quality Control",icon:"◉",hint:"Hold and release examples",keywords:["NCR","inspection","nonconformance"]},
