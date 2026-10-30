@@ -9,6 +9,9 @@ import {renderPm} from "./pm-view.mjs";
 import {renderRequestDesk} from "./request-view.mjs";
 import {WORKFORCE_KEY,seedWorkforce,validateWorkforce,addDemoPerson,assignDemoRole,recordDemoPulse,completeDemoTraining,nominateDemoRecognition,reviewDemoNomination,closeDemoAction} from "./workforce.mjs";
 import {renderHr,renderMorale} from "./workforce-view.mjs";
+import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
+import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
+import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
@@ -27,9 +30,10 @@ const deep=v=>structuredClone(v);
 const stateViews={
  dashboard:"Command Center",jobs:"Work Orders",routing:"Routing & Planning",
  ewi:"EWI & Clocking",inventory:"Inventory",purchasing:"Purchasing",
- quality:"Quality Control",documents:"Drawing Control",pm:"PM Tracker",requests:"Request Desk",hr:"Human Resources",morale:"Morale & Recognition",reports:"Report Center",bridge:"ERP Emulator",audit:"Event History"
+ quality:"Quality Control",documents:"Drawing Control",pm:"PM Tracker",requests:"Request Desk",hr:"Human Resources",morale:"Morale & Recognition",qcdsm:"QCDSM Wheel",reports:"Report Center",bridge:"ERP Emulator",audit:"Event History"
 };
 let workforce=seedWorkforce();
+let qcdsmDepartment="Assembly";
 let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""},routeDraft=null;
 function load(){
   try{
@@ -142,7 +146,7 @@ function applyContextFocus(){
 function dashboard(){
   const active=sessions.filter(s=>!s.end).length,blocked=state.jobs.filter(j=>packetIssues(state,j.id).length).length;
   const ordered=state.purchaseOrders.filter(p=>p.status==="ORDERED").length;
-  const pm=pmOverview(state.pm),req=requestMetrics(state);
+  const pm=pmOverview(state.pm),req=requestMetrics(state),qcdsm=qcdsmEvidence(state,workforce,qcdsmDepartment);
   let s=heading("Overview / connected shop workflow","Manufacturing command center",
     "One fictional dataset drives the job tracker, material transactions, quality holds, routed work instructions and clocking.");
   s+='<div class="metrics">'+metric("Work orders",state.jobs.length,"Synthetic orders")+
@@ -164,10 +168,16 @@ function dashboard(){
     moduleLink("requests","Request Desk","Track assignments and follow-ups")+
     moduleLink("hr","Human Resources","Demo roles and training")+
     moduleLink("morale","Morale","Company pulse and recognition")+
+    moduleLink("qcdsm","QCDSM Wheel","Morale, Quality, Cost, Delivery & Safety")+
     moduleLink("reports","Reports","Live synthetic operational reports")+
     moduleLink("purchasing","Purchasing","Receive demo inventory")+
     moduleLink("bridge","ERP Bridge","Emulated import and time receipt")+
     '</div></section></div>';
+  s+='<section class="panel"><div class="panel-head"><h2>QCDSM operating signals</h2><a class="action secondary" href="#qcdsm">Open wheel</a></div>'+
+    '<div class="pills">'+status("MORALE "+(qcdsm.moraleRisk===null?"N/A":qcdsm.moraleRisk+"/100"))+
+    status("SAFETY "+(qcdsm.safetyPriority===null?"N/A":qcdsm.safetyPriority+" priority"))+
+    status("QUALITY "+qcdsm.quality.openHolds+" OPEN NCR")+
+    '</div><p class="small">Aggregate synthetic inputs; Cost and Delivery remain N/A without reliable source baselines. Safety and overtime indicators should be reviewed during quality RCA, not assumed causal.</p></section>';
   s+='<section class="panel"><div class="panel-head"><h2>Request follow-up</h2><a href="#requests" class="action secondary">Open Request Desk</a></div>'+
     '<div class="pills">'+status(req.openPurchases+" PURCHASE REQUESTS")+
     status(req.openMaintenance+" MAINTENANCE REQUESTS")+status(req.overdue+" OVERDUE")+
@@ -331,6 +341,7 @@ function qualityView(){
       return [h(q.number),jobLink(record,"ewi"),h(q.reason),status(q.status),
         q.status==="OPEN"?'<button class="action secondary" data-action="close-ncr" data-id="'+h(q.id)+'">Close demo record</button>':h(stamp(q.closedAt))]
     }),"No matching fictional quality holds.",shownQuality.map(q=>({type:"quality",id:q.id})))+'</section>';
+  s+=qualityRcaHtml(state,workforce,qcdsmDepartment,new Date().toISOString().slice(0,10));
   return s;
 }
 function documentsView(){
@@ -422,7 +433,7 @@ function auditView(){
   return s;
 }
 const renderers={dashboard,jobs:jobsView,routing:routingView,ewi:clockView,inventory:inventoryView,
-  purchasing:purchasingView,quality:qualityView,documents:documentsView,pm:()=>renderPm(state.pm,selectedPmMachineId),requests:()=>renderRequestDesk(state,selectedRequest),hr:()=>renderHr(workforce),morale:()=>renderMorale(workforce),reports:reportsView,bridge:bridgeView,audit:auditView};
+  purchasing:purchasingView,quality:qualityView,documents:documentsView,pm:()=>renderPm(state.pm,selectedPmMachineId),requests:()=>renderRequestDesk(state,selectedRequest),hr:()=>renderHr(workforce),morale:()=>renderMorale(workforce),qcdsm:()=>renderQcdsm(state,workforce,qcdsmDepartment,new Date().toISOString().slice(0,10)),reports:reportsView,bridge:bridgeView,audit:auditView};
 function rememberJob(id){
   if(!getJob(state,id))return;
   if(routeDraft&&routeDraft.jobId!==id)routeDraft=null;
@@ -546,7 +557,19 @@ document.addEventListener("submit",event=>{
       case "hr-training":
         workforceTransact(completeDemoTraining(workforce,String(f.get("person")),String(f.get("requirement"))),"hr.training.completed",String(f.get("person"))+" / DEMO","Simulated training verification recorded. Fictional points credited.");break;
       case "morale-pulse":
-        workforceTransact(recordDemoPulse(workforce,Object.fromEntries(f)),"morale.pulse.recorded","Synthetic aggregate workforce signal","Fictional company-pulse record added.");break;
+        qcdsmDepartment=String(f.get("department"));
+        workforceTransact(recordDemoPulse(workforce,Object.fromEntries(f)),"morale.pulse.recorded","Synthetic aggregate workforce signal","Fictional company-pulse record added; QCDSM evidence recalculated.");break;
+      case "qcdsm-department":
+        qcdsmDepartment=String(f.get("department"));flash="";render();break;
+      case "safety-incident":
+        qcdsmDepartment=String(f.get("department"));
+        workforceTransact(recordDemoIncident(workforce,Object.fromEntries(f)),"safety.synthetic.event.recorded","Fictional safety event / "+qcdsmDepartment,"Synthetic safety evidence recorded for QCDSM / RCA.");break;
+      case "safety-survey":
+        qcdsmDepartment=String(f.get("department"));
+        workforceTransact(recordDemoSafetySurvey(workforce,Object.fromEntries(f)),"safety.synthetic.confidence.recorded","Fictional aggregate survey / "+qcdsmDepartment,"Aggregate fictional safety-confidence signal recorded.");break;
+      case "quality-qcdsm-review":
+        qcdsmDepartment=String(f.get("department"));
+        transact(captureQualityContext(state,workforce,String(f.get("qualityId")),qcdsmDepartment),"QCDSM evidence linked to a synthetic quality investigation. Root cause remains unconfirmed.");break;
       case "morale-nominate":
         workforceTransact(nominateDemoRecognition(workforce,String(f.get("person")),String(f.get("category")),String(f.get("reason")),Number(f.get("points"))),"morale.recognition.nominated","Fictional recognition nomination","Nomination added for demonstration review.");break;
       case "routing-save":{
