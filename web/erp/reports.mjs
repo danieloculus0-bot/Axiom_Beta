@@ -11,6 +11,7 @@ export const REPORTS=[
  {id:"labor",label:"Operation clock sessions",description:"Genuine elapsed browser-local time events, not payroll"},
  {id:"pm",label:"PM schedule status",description:"Task due dates based on fictional machines"},
  {id:"requests",label:"Maintenance request queue",description:"Fictional corrective maintenance requests"},
+ {id:"purchase_requests",label:"Purchase request follow-up",description:"Owned requests, PO receipt, due dates and latest follow-up"},
  {id:"events",label:"Browser transaction events",description:"Append-order local activity only"}
 ];
 export function makeReport(state,sessions,id,today=localDay()){
@@ -46,6 +47,11 @@ export function makeReport(state,sessions,id,today=localDay()){
   columns=["Request","Machine","Issue","Priority","Status","Opened","Closed"];
   rows=state.pm.requests.map(r=>[r.id,r.machineId||"General",r.type,r.priority,r.status,
     r.submittedAt,r.closedAt||""]);break;
+ case "purchase_requests":
+  columns=["Request","Stock item","Qty","Owner","Due","Status","Linked PO","Receipt","Last follow-up"];
+  rows=(state.purchaseRequests||[]).map(r=>[r.id,r.itemId,r.quantity,r.owner,r.dueDate,r.status,
+   state.purchaseOrders.find(p=>p.id===r.linkedPoId)?.number||"",
+   r.receivedAt||"",r.followups?.at(-1)?.note||""]);break;
  case "events":
   columns=["Timestamp","Event","Description"];
   rows=state.events.map(e=>[e.at,e.type,e.detail]);break;
