@@ -341,7 +341,7 @@ function qualityView(){
       return [h(q.number),jobLink(record,"ewi"),h(q.reason),status(q.status),
         q.status==="OPEN"?'<button class="action secondary" data-action="close-ncr" data-id="'+h(q.id)+'">Close demo record</button>':h(stamp(q.closedAt))]
     }),"No matching fictional quality holds.",shownQuality.map(q=>({type:"quality",id:q.id})))+'</section>';
-  s+=qualityRcaHtml(state,workforce,qcdsmDepartment,new Date().toISOString().slice(0,10));
+  s+=qualityRcaHtml(state,workforce,qcdsmDepartment,localDay());
   return s;
 }
 function documentsView(){
@@ -433,7 +433,7 @@ function auditView(){
   return s;
 }
 const renderers={dashboard,jobs:jobsView,routing:routingView,ewi:clockView,inventory:inventoryView,
-  purchasing:purchasingView,quality:qualityView,documents:documentsView,pm:()=>renderPm(state.pm,selectedPmMachineId),requests:()=>renderRequestDesk(state,selectedRequest),hr:()=>renderHr(workforce),morale:()=>renderMorale(workforce),qcdsm:()=>renderQcdsm(state,workforce,qcdsmDepartment,new Date().toISOString().slice(0,10)),reports:reportsView,bridge:bridgeView,audit:auditView};
+  purchasing:purchasingView,quality:qualityView,documents:documentsView,pm:()=>renderPm(state.pm,selectedPmMachineId),requests:()=>renderRequestDesk(state,selectedRequest),hr:()=>renderHr(workforce),morale:()=>renderMorale(workforce),qcdsm:()=>renderQcdsm(state,workforce,qcdsmDepartment,localDay()),reports:reportsView,bridge:bridgeView,audit:auditView};
 function rememberJob(id){
   if(!getJob(state,id))return;
   if(routeDraft&&routeDraft.jobId!==id)routeDraft=null;
