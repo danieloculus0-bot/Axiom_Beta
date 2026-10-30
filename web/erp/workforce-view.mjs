@@ -58,6 +58,7 @@ export function renderMorale(w){
  const actions=w.actions.filter(x=>x.status==="OPEN");
  let html=heading("Leadership / QCDSM / workforce health","Morale & Recognition",
   "Aggregate company-pulse signals, human-reviewed recognition and management follow-ups. The score is an attention heuristic, never an individual employee rating.");
+ html+='<p class="subtitle"><strong>BEAN+Axiom doesn’t see morale as some fluffy HR metric. BEAN sees it as the foundation of operational performance.</strong> <a href="https://github.com/danieloculus0-bot/BEAN" target="_blank" rel="noopener noreferrer">What is BEAN?</a></p>';
  html+=notice;
  html+='<div class="metrics">'+metric("Latest pulse risk",latest?latest.risk_score+"/100":"n/a","Aggregate attention score")+
   metric("Recorded pulses",w.pulses.length,"Department-level samples")+
