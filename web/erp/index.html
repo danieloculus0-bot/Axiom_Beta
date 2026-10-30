@@ -12,19 +12,17 @@
   <aside class="sidebar">
     <a class="brand" href="#dashboard">AXIOM<span>.</span><small>MANUFACTURING ERP · DEMO</small></a>
     <div class="environment">● BROWSER-LOCAL ENVIRONMENT<br><small>Invented records only. No enterprise server.</small></div>
-    <nav aria-label="ERP modules">
-      <a href="#dashboard" data-nav="dashboard">◫ &nbsp; Command Center</a>
-      <a href="#jobs" data-nav="jobs">▦ &nbsp; Work Orders</a>
-      <a href="#routing" data-nav="routing">☷ &nbsp; Routing &amp; Planning</a>
-      <a href="#ewi" data-nav="ewi">▤ &nbsp; EWI &amp; Clocking</a>
-      <a href="#inventory" data-nav="inventory">◈ &nbsp; Inventory</a>
-      <a href="#purchasing" data-nav="purchasing">▥ &nbsp; Purchasing</a>
-      <a href="#quality" data-nav="quality">◉ &nbsp; Quality Control</a>
-      <a href="#pm" data-nav="pm">⚙ &nbsp; PM Tracker</a>
-      <a href="#documents" data-nav="documents">▧ &nbsp; Drawing Control</a>
-      <a href="#bridge" data-nav="bridge">⛓ &nbsp; ERP Emulator</a>
-      <a href="#audit" data-nav="audit">◷ &nbsp; Event History</a>
-    </nav>
+    <div class="menu-search-box">
+      <label for="menu-search">FIND A SCREEN</label>
+      <input id="menu-search" type="search" placeholder="Jobs, PM, clocking..." aria-label="Search ERP screens" autocomplete="off" spellcheck="false">
+      <small>Ctrl+K or / to search</small>
+    </div>
+    <div id="menu-tabs" class="menu-tabs" role="tablist" aria-label="Navigation mode">
+      <button type="button" role="tab" data-menu-tab="menu" class="selected" aria-selected="true">Menu</button>
+      <button type="button" role="tab" data-menu-tab="favorites" aria-selected="false">Favorites</button>
+      <button type="button" role="tab" data-menu-tab="recent" aria-selected="false">Recent</button>
+    </div>
+    <nav id="module-nav" class="module-nav" aria-label="ERP modules"></nav>
     <div class="sidebar-footer">
       <a href="../ewi/">Full-screen EWI demo</a>
       <a href="../lab/">Original browser lab</a>
@@ -35,6 +33,7 @@
   <div class="workspace">
     <header class="topbar">
       <div class="crumb"><b>AXIOM</b> / <span id="breadcrumb">Command Center</span></div>
+      <button type="button" id="menu-launch" class="top-search" aria-label="Search ERP screens">⌕ &nbsp; Find screen <span>Ctrl+K</span></button>
       <div class="top-right"><span id="storage-indicator">Initializing local demo</span><span class="tag accent">ERP SANDBOX</span><span class="avatar">DEMO</span></div>
     </header>
     <main class="content">
