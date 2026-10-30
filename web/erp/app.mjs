@@ -393,7 +393,7 @@ function bridgeView(){
   return s;
 }
 function reportWithContext(id){
-  const report=makeReport(state,sessions,id);
+  const report=makeReport(state,sessions,id,localDay(),workforce);
   const selected=selectedContext&&resolveContext(state,selectedContext.type,selectedContext.id);
   if(selected&&selected.machineId&&id==="pm")report.rows=report.rows.filter(row=>row[1]===selected.machineId);
   if(selected&&selected.machineId&&id==="requests")report.rows=report.rows.filter(row=>row[1]===selected.machineId);
@@ -403,7 +403,7 @@ function reportsView(){
   const selected=REPORTS.find(x=>x.id===selectedReport)||REPORTS[0];
   const report=reportWithContext(selected.id);
   let s=heading("Management / browser-local analytics","Operational report center",
-    "Seven cross-module operational reports and the event ledger, calculated from the same fictional jobs, stock, PM and clock events. No private ERP or external data.");
+    "Cross-module operational reports and the event ledger, using the same fictional ERP and workforce evidence. No private ERP or external data.");
   s+='<div class="metrics">'+metric("Available reports",REPORTS.length,"All functional")+
     metric("Selected rows",report.rows.length,"Current fictional records")+
     metric("Source systems","LOCAL","One Axiom demo state")+
