@@ -1,0 +1,43 @@
+name: Publish Axiom Browser Lab to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/deploy-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test browser demo logic
+        run: node --test web/engine.test.mjs web/ewi/engine.test.mjs
+      - name: Enable/configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - name: Upload static public site
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: web
+      - name: Publish static site
+        id: deploy
+        uses: actions/deploy-pages@v4
