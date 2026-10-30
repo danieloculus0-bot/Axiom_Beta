@@ -105,6 +105,8 @@ function openContext(record,action){
   if(c.jobId)rememberJob(c.jobId);
   else if(c.relatedJobs.length&&["routing","ewi","documents","quality"].includes(action.view))rememberJob(c.relatedJobs[0]);
   if(c.machineId)selectedPmMachineId=c.machineId;
+  if(record.type==="purchase_request")selectedRequest={kind:"purchase",id:record.id};
+  if(record.type==="pm_request")selectedRequest={kind:"maintenance",id:record.id};
   if(action.intent==="pm-report")selectedReport="pm";
   if(action.intent==="request-report")selectedReport="requests";
   if(location.hash==="#"+action.view){render();applyContextFocus();}
