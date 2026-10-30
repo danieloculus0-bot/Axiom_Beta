@@ -3,14 +3,14 @@
  * No HR database, live auth, payroll, vendor, API or real employee data.
  */
 export const WORKFORCE_KEY="axiom_public_workforce_demo_v1";
-export const DEPARTMENTS=["Assembly","Machining","Quality","Maintenance"];
+export const DEPARTMENTS=["Assembly","Machining","Quality","Maintenance","HR / Finance"];
 export const ROLES=[
  {id:"operator",title:"Operator",department:"Assembly"},
  {id:"machinist",title:"Machinist",department:"Machining"},
  {id:"inspector",title:"Inspector",department:"Quality"},
  {id:"technician",title:"Maintenance Technician",department:"Maintenance"},
  {id:"supervisor",title:"Production Supervisor",department:"Assembly"},
- {id:"hr",title:"HR / Training Coordinator",department:"Quality"}
+ {id:"hr",title:"HR / Training Coordinator",department:"HR / Finance"}
 ];
 export const CATEGORIES=["quality","safety","training","kaizen","recognition"];
 export const REASONS=["First-pass quality","Safety improvement","Training milestone","Kaizen suggestion","Teamwork"];
@@ -115,7 +115,8 @@ export function recordDemoPulse(workforce,input){
  return next;
 }
 export function completeDemoTraining(workforce,personId,requirementId){
- const next=copy(validateWorkforce(workforce)),person=requirePerson(next,personId);
+ const next=copy(validateWorkforce(workforce));
+ requirePerson(next,personId);
  const req=next.requirements.find(x=>x.id===requirementId);
  if(!req)throw Error("Choose a training requirement");
  const duplicate=next.completions.some(x=>x.personId===personId&&x.requirementId===requirementId);
