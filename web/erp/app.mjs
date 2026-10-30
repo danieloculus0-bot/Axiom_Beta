@@ -7,6 +7,8 @@ import {
 import {startSession,stopSession,durationSeconds,sessionsCsv} from "../ewi/engine.mjs";
 import {renderPm} from "./pm-view.mjs";
 import {renderRequestDesk} from "./request-view.mjs";
+import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
+import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
  issueRequestPO,syncReceivedRequests,verifyPurchaseRequest,followupPurchaseRequest} from "./requests.mjs";
 import {installContextMenu} from "./context-ui.mjs";
@@ -25,7 +27,7 @@ const stateViews={
  ewi:"EWI & Clocking",inventory:"Inventory",purchasing:"Purchasing",
  quality:"Quality Control",documents:"Drawing Control",pm:"PM Tracker",requests:"Request Desk",reports:"Report Center",bridge:"ERP Emulator",audit:"Event History"
 };
-let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""};
+let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""},routeDraft=null;
 function load(){
   try{
     const raw=localStorage.getItem(ERP_KEY);
@@ -196,6 +198,7 @@ function routingView(){
     moduleLink("quality","Quality","Review holds")+
     moduleLink("ewi","EWI","Clock operation")+'</div>'+
     '<h3 style="margin-top:20px">Source labels</h3><p>Routing: '+h(j.routing.source)+'<br>Drawing: '+h(j.drawing.number)+' / Rev '+h(j.drawing.revision)+'</p></section></div>';
+  s+=routingEditorHtml(j,routeDraft?.jobId===j.id?routeDraft.operations:null,sessions.some(session=>session.jobId===j.id));
   return s;
 }
 function drawingSvg(j){
@@ -408,6 +411,7 @@ const renderers={dashboard,jobs:jobsView,routing:routingView,ewi:clockView,inven
   purchasing:purchasingView,quality:qualityView,documents:documentsView,pm:()=>renderPm(state.pm,selectedPmMachineId),requests:()=>renderRequestDesk(state,selectedRequest),reports:reportsView,bridge:bridgeView,audit:auditView};
 function rememberJob(id){
   if(!getJob(state,id))return;
+  if(routeDraft&&routeDraft.jobId!==id)routeDraft=null;
   selectedJobId=id;selectedStep=job().routing.operations[0].step;
   history.replaceState(null,"",location.pathname+"?job="+encodeURIComponent(id)+location.hash);
 }
@@ -436,6 +440,31 @@ document.addEventListener("click",event=>{
   if(!button)return;
   const action=button.dataset.action,id=button.dataset.id;
   try{
+    if(action==="routing-start"){
+      const j=job();
+      if(sessions.some(s=>s.jobId===j.id))throw Error("Clocking history exists for this job. Use another fictional job for routing changes.");
+      routeDraft={jobId:j.id,operations:editableRouting(j)};
+      flash="Edit fictional routing, then save for demo review.";
+      render();
+      document.getElementById("routing-editor")?.scrollIntoView({block:"start"});
+    }
+    if(["routing-up","routing-down","routing-add","routing-remove"].includes(action)){
+      if(!routeDraft||routeDraft.jobId!==job().id)throw Error("Open the routing editor for this fictional job first");
+      routeDraft.operations=readRoutingEditor(document.getElementById("routing-editor-form"));
+      const index=Number(button.dataset.index);
+      if(action==="routing-up")routeDraft.operations=moveRouteStep(routeDraft.operations,index,-1);
+      if(action==="routing-down")routeDraft.operations=moveRouteStep(routeDraft.operations,index,1);
+      if(action==="routing-remove")routeDraft.operations=removeRouteStep(routeDraft.operations,index);
+      if(action==="routing-add")routeDraft.operations=addRouteStep(routeDraft.operations);
+      flash="";
+      render();
+      document.getElementById("routing-editor")?.scrollIntoView({block:"start"});
+    }
+    if(action==="routing-cancel"){routeDraft=null;flash="Routing edit cancelled, no changes saved.";render();}
+    if(action==="routing-review"){
+      if(routeDraft)throw Error("Save or cancel draft edits before review");
+      transact(reviewRoutingDraft(state,job().id,sessions),"Sample routing reviewed. This is not a production release.");
+    }
     if(action==="pm-select-machine") {selectedPmMachineId=id;flash="";render();document.getElementById("pm-machine-card")?.scrollIntoView({block:"start"});}
     if(action==="pm-select-task") {const item=getTask(state.pm,id);if(!item)throw Error("Demo task missing");selectedPmMachineId=item.machineId;render();const picker=document.getElementById("pm-completion-task");if(picker)picker.value=id;picker?.scrollIntoView({block:"center"});}
     if(action==="pm-open-requests") document.getElementById("pm-request-queue")?.scrollIntoView({block:"start"});
@@ -467,7 +496,7 @@ document.addEventListener("click",event=>{
       location.hash="#routing";
     }
     if(action==="clock-in"){
-      const j=job();if(packetIssues(state,j.id).length)throw Error("Clock start blocked by work-packet checks");
+      const j=job();const clockIssues=packetIssues(state,j.id);if(clockIssues.length)throw Error("Clock start blocked: "+clockIssues.join("; "));
       const step=$("clock-step").value;operator=$("operator-code").value.trim().toUpperCase();
       sessions=startSession(sessions,{id:crypto.randomUUID(),employee:operator,job:deep(j),step,timestamp:new Date().toISOString()});
       selectedStep=step;flash="Clock IN recorded locally. Nothing sent to a live ERP.";persist();render();
@@ -494,6 +523,12 @@ document.addEventListener("submit",event=>{
   const f=new FormData(form);
   try{
     switch(form.dataset.form){
+      case "routing-save":{
+        if(!routeDraft||routeDraft.jobId!==job().id)throw Error("No active routing edit for this job");
+        const updated=saveRoutingDraft(state,routeDraft.jobId,readRoutingEditor(form),sessions);
+        routeDraft=null;
+        transact(updated,"Edited routing saved for demo review. EWI clocking is blocked until reviewed.");break;
+      }
       case "pm-new-machine": {
         const result=createMachine(state.pm,String(f.get("machine-type")),String(f.get("criticality")));
         selectedPmMachineId=result.id;

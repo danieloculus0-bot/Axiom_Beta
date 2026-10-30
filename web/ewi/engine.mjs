@@ -78,6 +78,7 @@ export function evaluatePacket(job) {
   }
   if (!routing || !Array.isArray(routing.operations) || !routing.operations.length) issues.push("Routed instructions missing");
   else if (routing.revision !== job.revision) issues.push("Routing revision " + routing.revision + " does not match job revision " + job.revision);
+  if (routing?.reviewState === "REVIEW_REQUIRED") issues.push("Edited routing awaiting demo review");
   return issues;
 }
 
