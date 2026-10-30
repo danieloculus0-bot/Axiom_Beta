@@ -39,7 +39,7 @@ export function seedState() {
     {id:"MAT-PLATE",name:"Generic sheet stock",unit:"blank",onHand:70,reorder:30},
     {id:"MAT-BAR",name:"Generic bar stock",unit:"length",onHand:40,reorder:20},
     {id:"MAT-FIX",name:"Generic hardware",unit:"unit",onHand:160,reorder:60}
-  ],purchaseOrders:[],quality:[],receipts:[],pm:seedPm(),events:[
+  ],purchaseOrders:[],purchaseRequests:[],quality:[],receipts:[],pm:seedPm(),events:[
     {id:"evt-seed",at:"DEMO SEED",type:"scenario.initialized",detail:"Entirely invented records, browser only"}
   ]};
 }
@@ -47,6 +47,8 @@ export function validateState(raw) {
   if(!raw || raw.schema!==1 || raw.demo!==true || !Array.isArray(raw.jobs) || !Array.isArray(raw.items) ||
      !Array.isArray(raw.purchaseOrders) || !Array.isArray(raw.quality) ||
      !Array.isArray(raw.receipts) || !Array.isArray(raw.events)) throw Error("Invalid demo state");
+  if (!raw.purchaseRequests) raw.purchaseRequests=[]; // Upgrade previously saved demo data without losing records.
+  if(!Array.isArray(raw.purchaseRequests))throw Error("Invalid fictional requisitions");
   if (!raw.pm) raw.pm = seedPm(); // Upgrade existing users without resetting their browser ERP data.
   validatePm(raw.pm);
   return raw;
