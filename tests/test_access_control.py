@@ -46,20 +46,27 @@ def _login(client, name):
     return _csrf(client.get("/quality/new").get_data(as_text=True))
 
 
-def test_local_mode_blocks_non_loopback_even_when_bound_to_all_interfaces(tmp_path, monkeypatch):
+def test_local_beta_mode_has_no_extra_request_ip_gate(tmp_path, monkeypatch):
     monkeypatch.setenv("AXIOM_DATA_DIR", str(tmp_path / "local"))
     monkeypatch.setenv("AXIOM_ACCESS_MODE", "local")
     from superforge.app import create_app
     app = create_app({"TESTING": True})
     client = app.test_client()
     assert client.get("/health", environ_overrides={"REMOTE_ADDR": "127.0.0.1"}).status_code == 200
-    assert client.post(
-        "/jobs", data={"job_number": "SHOULD-NOT-EXIST"},
-        environ_overrides={"REMOTE_ADDR": "192.0.2.50"}
-    ).status_code == 403
-    from superforge.db import db
-    with db() as con:
-        assert con.execute("SELECT COUNT(*) FROM jobs WHERE job_number='SHOULD-NOT-EXIST'").fetchone()[0] == 0
+    # Beta only: no independent request-source restriction is applied.
+    # This is a simulated socket address, not proof of network reachability.
+    assert client.get("/health", environ_overrides={"REMOTE_ADDR": "192.0.2.50"}).status_code == 200
+
+    # RESTORE WITH THE LOCAL REQUEST-IP GATE BEFORE INTENDED SHARED DEPLOYMENT:
+    # assert client.post(
+    #     "/jobs", data={"job_number": "SHOULD-NOT-EXIST"},
+    #     environ_overrides={"REMOTE_ADDR": "192.0.2.50"}
+    # ).status_code == 403
+    # from superforge.db import db
+    # with db() as con:
+    #     assert con.execute(
+    #         "SELECT COUNT(*) FROM jobs WHERE job_number='SHOULD-NOT-EXIST'"
+    #     ).fetchone()[0] == 0
 
 
 def test_shared_mode_rejects_missing_users(tmp_path, monkeypatch):

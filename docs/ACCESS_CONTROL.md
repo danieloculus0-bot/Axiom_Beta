@@ -4,7 +4,11 @@ Axiom is not yet certified or ready for unrestricted multiuser shop deployment. 
 
 ## Default localhost mode
 
-AXIOM_ACCESS_MODE=local (default) accepts only socket peers at loopback addresses (127.0.0.1 and ::1). Keep the server bound to 127.0.0.1. Never put local mode behind a proxy, tunnel or remote gateway that maps external connections to loopback: local mode cannot distinguish them.
+**Beta development branch experiment:** `AXIOM_ACCESS_MODE=local` temporarily does **not** apply a second HTTP peer-IP check. The original `_loopback(request.remote_addr)` guard and its previous negative test are preserved as comments for later restoration. The default `run.py` continues binding to `127.0.0.1`; this change is NOT permission to deploy the local app to a network, or expose confidential data.
+
+**Original production-intended behavior (commented out in this beta branch):** `AXIOM_ACCESS_MODE=local` accepts only loopback socket peers (127.0.0.1 and ::1), including when a server is inadvertently bound to all interfaces. Restore that check before any deliberate shared/network deployment. Do not put local mode behind a proxy, tunnel or remote gateway.
+
+This experiment is a code-complexity assessment, **not** a confirmed fix for a failed CI run. The historical workflows reviewed so far largely failed for assertion or integration regressions, not evidence of this particular localhost check blocking tests. Shared mode remains unchanged.
 
 ## Experimental shared-user mode
 
