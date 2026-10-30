@@ -30,6 +30,9 @@ test("one running time session per operator, including on a different job",()=>{
   assert.equal(sessions.length,1);
   assert.equal(sessions[0].employee,"DEMO-01");
   assert.equal(sessions[0].end,null);
+  assert.throws(()=>startSession([],{
+    id:"unauthorized-demo-code",employee:"REAL123",job:EXAMPLES[0],step:"10",timestamp:t1
+  }),/fictional demo operator code/);
   assert.throws(()=>startSession(sessions,{
     id:"s2",employee:"demo-01",job:EXAMPLES[0],step:"20",timestamp:t1
   }),/already clocked in/);
