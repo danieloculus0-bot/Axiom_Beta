@@ -36,7 +36,7 @@ export function renderPm(pm,selectedMachineId){
   metric("Due today / soon",stats.dueToday+" / "+stats.dueSoon,"Within next 7 days")+
   metric("Open requests",stats.openRequests,"Fictional repair queue")+'</div>';
  s+='<div class="columns"><section class="panel"><div class="panel-head"><h2>Equipment register</h2>'+
-  '<button class="action secondary" data-action="pm-print" type="button">Print machine card</button></div>'+
+  '<span class="tag">SYNTHETIC REGISTER</span></div>'+
   table(["Machine","Department / location","Criticality","PM status","Next due","Select"],
    stats.summaries.map(item=>[h(item.machine.name)+'<div class="small muted">'+h(item.machine.id)+'</div>',
      h(item.machine.department)+'<div class="small muted">'+h(item.machine.location)+'</div>',
@@ -52,7 +52,7 @@ export function renderPm(pm,selectedMachineId){
   '<div class="receipt">Completed today: <b>'+h(stats.completedToday)+'</b></div>'+
   '<div class="receipt">Tasks tracked: <b>'+h(stats.tasks)+'</b></div>'+
   '<div class="receipt">Open maintenance requests: <b>'+h(stats.openRequests)+'</b></div>'+
-  '<div class="actions" style="margin-top:12px"><a href="#pm-requests" class="action secondary">Open request queue</a>'+
+  '<div class="actions" style="margin-top:12px"><button type="button" class="action secondary" data-action="pm-open-requests">Open request queue</button>'+
   '<button class="action secondary" data-action="pm-csv">Export demo PM CSV</button></div></section></div>';
  if(machine&&summary){
   s+='<section class="panel" id="pm-machine-card"><div class="panel-head"><div><div class="eyebrow">Equipment / '+h(machine.id)+'</div>'+
@@ -83,7 +83,7 @@ export function renderPm(pm,selectedMachineId){
     '<p class="small">Schedule starts from the local date. Each template has an example inspection statement and a safety notice. The browser does not manage actual equipment.</p></section>'+
     '<section class="panel"><h2>Quick completion</h2>'+
     '<form data-form="pm-complete" class="controls">'+
-    '<label>Fictional PM task<select name="task">'+summary.tasks.map(t=>
+    '<label>Fictional PM task<select name="task" id="pm-completion-task">'+summary.tasks.map(t=>
       '<option value="'+h(t.id)+'">'+h(t.id+" · "+t.name)+'</option>').join("")+'</select></label>'+
     '<label>Demo operator code<input name="operator" value="DEMO-01" pattern="DEMO-[A-Za-z0-9]{1,16}" maxlength="21" required></label>'+
     '<label>Result<select name="result"><option value="PASS">PASS / demo</option><option value="NEEDS ATTENTION">NEEDS ATTENTION / opens demo request</option></select></label>'+
