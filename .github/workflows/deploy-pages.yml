@@ -1,4 +1,4 @@
-name: Publish Axiom Browser Lab to GitHub Pages
+name: Publish Axiom Connected ERP Demo to GitHub Pages
 
 on:
   push:
@@ -29,7 +29,7 @@ jobs:
         with:
           node-version: '22'
       - name: Test browser demo logic
-        run: node --test web/engine.test.mjs web/ewi/engine.test.mjs
+        run: node --test web/engine.test.mjs web/ewi/engine.test.mjs web/erp/engine.test.mjs
       - name: Enable/configure Pages
         uses: actions/configure-pages@v5
         with:
