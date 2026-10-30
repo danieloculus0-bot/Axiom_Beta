@@ -6,7 +6,7 @@
 import {CATALOG,getJob} from "./engine.mjs";
 import {getMachine,getTask} from "./pm.mjs";
 
-export const CONTEXT_TYPES=["job","part","stock","po","quality","drawing","machine","pm_task","pm_request"];
+export const CONTEXT_TYPES=["job","part","stock","po","quality","drawing","machine","pm_task","pm_request","purchase_request"];
 const TARGETS={
   job:[
     ["jobs","Job Tracker","track"],["routing","Routing & Planning","route"],
@@ -43,7 +43,11 @@ const TARGETS={
     ["pm","PM Task & Machine","machine"],["reports","PM Schedule Report","pm-report"]
   ],
   pm_request:[
-    ["pm","Maintenance Requests","requests"],["reports","Maintenance Request Report","request-report"]
+    ["requests","Manage Maintenance Request","requests"],["pm","PM Equipment","machine"],["reports","Maintenance Request Report","request-report"]
+  ],
+  purchase_request:[
+    ["requests","Purchase Request Tracker","requests"],["purchasing","Purchase Order Tracker","purchase"],
+    ["inventory","Related Material","material"]
   ]
 };
 export function resolveContext(state,type,id){
@@ -59,6 +63,7 @@ export function resolveContext(state,type,id){
    case "machine":record=getMachine(state.pm,id);machineId=record?.id;break;
    case "pm_task":record=getTask(state.pm,id);machineId=record?.machineId;break;
    case "pm_request":record=state.pm.requests.find(x=>x.id===id);machineId=record?.machineId;break;
+   case "purchase_request":record=(state.purchaseRequests||[]).find(x=>x.id===id);itemId=record?.itemId;break;
   }
   if(!record)return null;
   if(jobId){
@@ -79,7 +84,8 @@ export function resolveContext(state,type,id){
        type==="drawing"?record.drawing.number+" / Rev "+record.drawing.revision:
        type==="machine"?record.name:
        type==="pm_task"?record.name:
-       type==="pm_request"?record.id:"Record"};
+       type==="pm_request"?record.id:
+       type==="purchase_request"?record.id:"Record"};
 }
 export function contextActions(state,type,id){
  const record=resolveContext(state,type,id);
