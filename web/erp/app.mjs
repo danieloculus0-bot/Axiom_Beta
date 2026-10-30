@@ -398,7 +398,8 @@ function render(){
   $("job-context").innerHTML=state.jobs.map(x=>'<option value="'+h(x.id)+'" '+(x.id===selectedJobId?"selected":"")+'>'+
     h(x.jobNumber+" · "+x.partNumber)+'</option>').join("");
   menu?.markActive(view);
-  $("view").innerHTML='<div id="flash" role="status">'+h(flash)+'</div>'+renderers[view]();
+  $("view").innerHTML='<div id="flash" role="status">'+h(flash)+'</div>'+contextBanner()+renderers[view]();
+  applyContextFocus();
 }
 function download(data,type,name){
   const url=URL.createObjectURL(new Blob([data],{type}));
@@ -420,6 +421,7 @@ document.addEventListener("click",event=>{
       if(navigator.clipboard?.writeText){navigator.clipboard.writeText(link).then(()=>{flash="Fictional machine link copied.";render();}).catch(()=>window.prompt("Copy demo machine link:",link));}
       else window.prompt("Copy demo machine link:",link);
     }
+    if(action==="clear-record-context"){selectedContext=null;selectedIntent="";flash="Record context cleared.";render();}
     if(action==="pm-csv") download(completionsCsv(state.pm),"text/csv;charset=utf-8","axiom-synthetic-pm-completions.csv");
     if(action==="download-report") download(reportCsv(makeReport(state,sessions,selectedReport)),"text/csv;charset=utf-8","axiom-demo-"+selectedReport+"-report.csv");
     if(action==="pm-close-request") pmTransact(closeMaintenanceRequest(state.pm,id),"pm.request.closed",id+" / SIMULATED","Fictional maintenance request closed.");
@@ -450,7 +452,7 @@ document.addEventListener("click",event=>{
       state,sessions},null,2),"application/json","axiom-erp-synthetic-demo.json");
     if(action==="export-csv")download(sessionsCsv(sessions),"text/csv;charset=utf-8","axiom-erp-demo-clock.csv");
     if(action==="reset" && confirm("Delete all fictional Axiom ERP and EWI clock records in this browser and reset the demo?")){
-      state=seedState();sessions=[];rememberJob(state.jobs[0].id);
+      state=seedState();sessions=[];selectedContext=null;selectedIntent="";rememberJob(state.jobs[0].id);
       flash="Local demo reset to fictional starter records.";persist();render();
     }
   }catch(e){flash=e.message;render();}
@@ -526,5 +528,6 @@ const requestedMachine=new URLSearchParams(location.search).get("machine");
 selectedPmMachineId=state.pm.machines.some(m=>m.id===requestedMachine)?requestedMachine:state.pm.machines[0]?.id||"";
 selectedStep=job().routing.operations[0].step;
 menu=installMenu({root:$("module-nav"),search:$("menu-search"),tabs:$("menu-tabs"),launch:$("menu-launch"),
-  getCurrent:currentView,onNavigate:id=>{if(location.hash==="#"+id)render();}});
+  getCurrent:currentView,onNavigate:id=>{selectedContext=null;selectedIntent="";if(location.hash==="#"+id)render();}});
+installContextMenu({getState:()=>state,onNavigate:openContext});
 render();
