@@ -22,8 +22,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test web/engine.test.mjs web/ewi/engine.test.mjs web/erp/engine.test.mjs
-      - run: node --check web/erp/app.mjs && node --check web/ewi/app.mjs
+      - run: node --test web/engine.test.mjs web/ewi/engine.test.mjs web/erp/engine.test.mjs web/erp/pm.test.mjs
+      - run: node --check web/erp/app.mjs && node --check web/ewi/app.mjs && node --check web/erp/pm-view.mjs
       - name: Assert source files and synthetic boundary are present
         run: |
           test -s web/index.html
@@ -34,6 +34,9 @@ jobs:
           test -s web/erp/index.html
           test -s web/erp/app.mjs
           test -s web/erp/engine.mjs
+          test -s web/erp/pm.mjs
+          test -s web/erp/pm-view.mjs
+          grep -q 'PM Tracker' web/erp/index.html
           test -s web/lab/index.html
           grep -q 'FUNCTIONAL LOCAL DEMO' web/ewi/index.html
           grep -q 'JobBOSS²: not connected' web/ewi/index.html
