@@ -79,3 +79,12 @@ The live **Request Desk** is browser-only, using entirely invented material, equ
 Maintenance requests reuse Axiom's existing PM request data model and are tracked in the same Request Desk with owner, due date, and follow-up history. **Closed means work completed**; a separate verification stage is deliberately not required for maintenance. Existing browser state is migrated without deleting jobs, PM schedules, or clocking data. Reporting includes the fictional purchase request follow-up register.
 
 This demo has no emails, active reminder service, external purchasing integration, approval permissions, actual personnel assignment, live uploads or BEAN connection. It is not appropriate for entering real business or employee records. Quality management remains a limited demonstration of holds, pending the deeper native Quality Forge representation.
+
+
+## Editable sample routing, existing EZ Methods / EWI contracts
+
+The existing Routing & Planning screen at `/erp/#routing` now exposes **Edit this routing** for the selected fictional work order when it has no clocking history. The editor can change operation names, step identifiers, illustrative work centers, instructions, and check text; add/remove steps; and reorder them. Changes update the **same** browser-local `job.routing` record read by shop-floor EWI, with a draft event and before/after summary in the fictional event history. Editing is restricted to valid fictional center IDs, and the shared EWI normalizer rejects duplicate step IDs or incomplete instructions.
+
+**Save draft for review** marks the route `REVIEW_REQUIRED`; the existing EWI packet validator refuses new clock starts until the operator explicitly selects **Mark demo review complete**. This is a mock review acknowledgment, never a real routing release. Existing clock history prevents editing or reviewing a changed route, so prior recorded sessions remain consistent with operation details. Uncommitted form changes are not stored until Save. Job, part, drawing, and context-aware right-click routes into this screen remain intact.
+
+The local Python EZ Methods engine remains the more advanced deterministic planning model: controlled drawing/FAI evidence, operation dependencies, tooling, material availability and promised dates. This public Pages implementation does **not** call Python EZ Methods, upload real drawings, enumerate actual machine capabilities, or invoke BEAN. Independent BEAN-assisted analysis work needs an authenticated, tested adapter before being advertised as live.
