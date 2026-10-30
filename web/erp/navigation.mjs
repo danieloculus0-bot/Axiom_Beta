@@ -6,17 +6,17 @@ export const NAV_KEY="axiom_public_erp_menu_v1";
 
 export const MENU_GROUPS=[
   {id:"workspace",label:"Workspace",items:[
-    {id:"dashboard",label:"Command Center",icon:"◫",hint:"Home KPIs and quick links",keywords:["home","overview","dashboard","today"]}
+    {id:"dashboard",label:"Command Center",icon:"◫",hint:"Home KPIs and quick links",keywords:["home","overview","dashboard","today","right click help","open with"]}
   ]},
   {id:"production",label:"Manufacturing",items:[
-    {id:"jobs",label:"Work Orders",icon:"▦",hint:"Create and track fictional jobs",keywords:["job entry","job tracker","production order"]},
+    {id:"jobs",label:"Work Orders",icon:"▦",hint:"Create and track fictional jobs",keywords:["job entry","job tracker","production order","work order entry","job tracking"]},
     {id:"routing",label:"Routing & Planning",icon:"☷",hint:"Job-specific operations",keywords:["engineering","methods","work centers"]},
     {id:"ewi",label:"EWI & Clocking",icon:"▤",hint:"Operator drawings and time",keywords:["shop floor","data collection","time tickets","MES"]},
     {id:"documents",label:"Drawing Control",icon:"▧",hint:"Generic document revisions",keywords:["drawing","revision","document control","engineering"]}
   ]},
   {id:"supply",label:"Supply Chain",items:[
-    {id:"inventory",label:"Inventory",icon:"◈",hint:"Stock and reservations",keywords:["material","part tracker","on hand"]},
-    {id:"purchasing",label:"Purchasing",icon:"▥",hint:"Issue and receive demo POs",keywords:["purchase order","receiving","procurement","suppliers"]}
+    {id:"inventory",label:"Inventory",icon:"◈",hint:"Stock and reservations",keywords:["material","part tracker","material tracker","inventory entry","stock tracker","on hand"]},
+    {id:"purchasing",label:"Purchasing",icon:"▥",hint:"Issue and receive demo POs",keywords:["purchase order","purchase order tracker","po tracker","po entry","purchase order entry","purchasing entry","receiving","procurement","suppliers"]}
   ]},
   {id:"operations",label:"Quality & Assets",items:[
     {id:"quality",label:"Quality Control",icon:"◉",hint:"Hold and release examples",keywords:["NCR","inspection","nonconformance"]},

@@ -6,6 +6,8 @@ import {
 } from "./engine.mjs";
 import {startSession,stopSession,durationSeconds,sessionsCsv} from "../ewi/engine.mjs";
 import {renderPm} from "./pm-view.mjs";
+import {installContextMenu} from "./context-ui.mjs";
+import {resolveContext,contextRelated} from "./context-actions.mjs";
 import {installMenu} from "./navigation-ui.mjs";
 import {REPORTS,makeReport,reportCsv} from "./reports.mjs";
 import {getMachine,getTask,pmOverview,createMachine,addPmTask,completePmTask,requestMaintenance,
@@ -19,7 +21,7 @@ const stateViews={
  ewi:"EWI & Clocking",inventory:"Inventory",purchasing:"Purchasing",
  quality:"Quality Control",documents:"Drawing Control",pm:"PM Tracker",reports:"Report Center",bridge:"ERP Emulator",audit:"Event History"
 };
-let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null;
+let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="";
 function load(){
   try{
     const raw=localStorage.getItem(ERP_KEY);
@@ -64,12 +66,59 @@ function metric(label,val,detail=""){return '<div class="metric"><small>'+h(labe
 function moduleLink(view,label,detail){
   return '<a href="#'+view+'"><b>'+h(label)+'</b><span>'+h(detail)+'</span></a>';
 }
-function table(headers,rows,empty="No synthetic records yet."){
+function contextAttrs(type,id){return '"data-ctx-type="'+h(type)+'" data-ctx-id="'+h(id)+'" tabindex="0" title="Right-click for Open with"';}
+function ctxSpan(type,id,text){return '<span class="context-record" data-ctx-type="'+h(type)+'" data-ctx-id="'+h(id)+'" tabindex="0" title="Right-click for Open with">'+h(text)+'</span>';}
+function table(headers,rows,empty="No synthetic records yet.",contexts=[]){
   if(!rows.length)return '<div class="empty">'+h(empty)+'</div>';
-  return '<div class="tablewrap"><table><thead><tr>'+headers.map(x=>'<th>'+h(x)+'</th>').join("")+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(x=>'<td>'+x+'</td>').join("")+'</tr>').join("")+'</tbody></table></div>';
+  return '<div class="tablewrap"><table><thead><tr>'+headers.map(x=>'<th>'+h(x)+'</th>').join("")+'</tr></thead><tbody>'+rows.map((r,i)=>{
+    const record=contexts[i],attr=record?contextAttrs(record.type,record.id):"";
+    return '<tr class="'+(record?"context-record-row":"")+'" '+attr+'>'+r.map(x=>'<td>'+x+'</td>').join("")+'</tr>';
+  }).join("")+'</tbody></table></div>';
 }
 function jobLink(j,view="routing"){return '<a class="cell-link" href="#'+view+'" data-job="'+h(j.id)+'">'+h(j.jobNumber)+'</a>';}
 function jobState(j){return packetIssues(state,j.id).length?'<span class="tag warn">REVIEW</span>':'<span class="tag ok">READY</span>';}
+function contextBanner(){
+  if(!selectedContext)return "";
+  const info=resolveContext(state,selectedContext.type,selectedContext.id);
+  if(!info){selectedContext=null;selectedIntent="";return "";}
+  return '<div class="context-trail"><span class="context-trail-icon">⌕</span><b>Open with:</b> '+h(info.label)+
+    '<span class="small muted">'+h(info.type.replace(/_/g," "))+', fictional browser record</span>'+
+    '<button class="action secondary" type="button" data-action="clear-record-context">Clear context</button></div>';
+}
+function contextSelection(view,rows){
+  const ids=contextRelated(state,selectedContext,view);
+  if(!ids)return rows;
+  if(view==="jobs")return rows.filter(row=>ids.includes(row.id));
+  if(view==="inventory")return rows.filter(row=>ids.includes(row.id));
+  if(view==="purchasing")return rows.filter(row=>ids.includes(row.itemId)&&(!selectedContext||selectedContext.type!=="po"||row.id===selectedContext.id));
+  if(view==="quality")return rows.filter(row=>ids.includes(row.jobId)&&(!selectedContext||selectedContext.type!=="quality"||row.id===selectedContext.id));
+  return rows;
+}
+function openContext(record,action){
+  const c=resolveContext(state,record.type,record.id);
+  if(!c)return;
+  selectedContext=record;selectedIntent=action.intent;
+  if(c.jobId)rememberJob(c.jobId);
+  else if(c.relatedJobs.length&&["routing","ewi","documents","quality"].includes(action.view))rememberJob(c.relatedJobs[0]);
+  if(c.machineId)selectedPmMachineId=c.machineId;
+  if(action.intent==="pm-report")selectedReport="pm";
+  if(action.intent==="request-report")selectedReport="requests";
+  if(location.hash==="#"+action.view){render();applyContextFocus();}
+  else location.hash="#"+action.view;
+}
+function applyContextFocus(){
+  if(!selectedContext)return;
+  const c=resolveContext(state,selectedContext.type,selectedContext.id);
+  if(!c)return;
+  let selector="";
+  if(selectedIntent==="new-job"&&c.part){const select=document.querySelector('[data-form="new-job"] select[name="part"]');if(select){select.value=c.part;selector='[data-form="new-job"] input[name="quantity"]';}}
+  if(selectedIntent==="new-po"&&c.itemId){const select=document.querySelector('[data-form="new-po"] select[name="item"]');if(select){select.value=c.itemId;selector='[data-form="new-po"] input[name="quantity"]';}}
+  if(selectedContext.type==="pm_task"&&selectedIntent==="machine"){
+    const select=document.getElementById("pm-completion-task");if(select)select.value=selectedContext.id;
+  }
+  if(selectedIntent==="requests")selector="#pm-request-queue";
+  if(selector){const el=document.querySelector(selector);el?.scrollIntoView?.({block:"center"});if(el?.matches?.("input"))el.focus({preventScroll:true});}
+}
 function dashboard(){
   const active=sessions.filter(s=>!s.end).length,blocked=state.jobs.filter(j=>packetIssues(state,j.id).length).length;
   const ordered=state.purchaseOrders.filter(p=>p.status==="ORDERED").length;
@@ -81,10 +130,11 @@ function dashboard(){
      metric("Active clocks",active,"Browser-local sessions")+
      metric("Open POs",ordered,"Simulated purchasing")+'</div>';
   s+='<div class="columns"><section class="panel"><div class="panel-head"><h2>Recent work orders</h2><a href="#jobs" class="action secondary">All work orders</a></div>';
-  s+=table(["Job","Part","Revision","Readiness","EWI"],state.jobs.slice().reverse().slice(0,7).map(j=>[
-    jobLink(j),h(j.partNumber),h(j.revision),jobState(j),
+  const recentJobs=state.jobs.slice().reverse().slice(0,7);
+  s+=table(["Job","Part","Revision","Readiness","EWI"],recentJobs.map(j=>[
+    jobLink(j),ctxSpan("part",j.partNumber,j.partNumber),h(j.revision),jobState(j),
     '<a href="#ewi" data-job="'+h(j.id)+'" class="action secondary">Open EWI</a>'
-  ]));
+  ]),"No fictional jobs yet.",recentJobs.map(j=>({type:"job",id:j.id})));
   s+='</section><section class="panel"><h2>Production modules</h2><div class="feature">'+
     moduleLink("jobs","Jobs","Create and select orders")+
     moduleLink("ewi","Clocking","Live local timers")+
@@ -109,12 +159,13 @@ function jobsView(){
     '<label>Generic catalog item<select name="part">'+CATALOG.map(c=>'<option value="'+h(c.partNumber)+'">'+h(c.partNumber)+' · Rev '+h(c.revision)+'</option>').join("")+'</select></label>'+
     '<label>Order quantity<input type="number" name="quantity" min="1" max="1000" value="12" required></label>'+
     '<button class="action" type="submit">Create work order</button></form></section>';
+  const shownJobs=contextSelection("jobs",state.jobs);
   s+='<section class="panel"><div class="panel-head"><h2>Shop order register</h2><a class="action secondary" href="#bridge">Import simulator job</a></div>'+
-    table(["Work order","Part","Rev","Qty","Reserved","Source","Readiness","EWI"],state.jobs.map(j=>[
-      jobLink(j,"routing"),h(j.partNumber)+" / "+h(j.revision),h(j.quantity),h(j.reserved||0),
+    table(["Work order","Part","Rev","Qty","Reserved","Source","Readiness","EWI"],shownJobs.map(j=>[
+      jobLink(j,"routing"),ctxSpan("part",j.partNumber,j.partNumber),h(j.revision),h(j.quantity),h(j.reserved||0),
       h(j.origin),jobState(j),
       '<a class="action secondary" href="#ewi" data-job="'+h(j.id)+'">Open</a>'
-    ]))+'</section>';
+    ]),"No related fictional jobs for this record.",shownJobs.map(j=>({type:"job",id:j.id})))+'</section>';
   return s;
 }
 function routingView(){
@@ -202,11 +253,17 @@ function inventoryView(){
     metric("Reserved for current job",j.reserved+" / "+j.quantity,j.materialId)+
     metric("Available current stock",available(state,j.materialId),"After all job reservations")+
     metric("Open purchase orders",state.purchaseOrders.filter(p=>p.status==="ORDERED").length,"Pending demo receipts")+'</div>';
+  const shownItems=contextSelection("inventory",state.items);
   s+='<section class="panel"><div class="panel-head"><h2>Material availability</h2><a href="#purchasing" class="action secondary">Purchasing</a></div>'+
-    table(["Stock item","Description","On hand","Reserved","Available","Reorder"],state.items.map(i=>[
+    table(["Stock item","Description","On hand","Reserved","Available","Reorder"],shownItems.map(i=>[
       h(i.id),h(i.name),h(i.onHand+" "+i.unit),h(reservedTotal(state,i.id)),h(available(state,i.id)),
       available(state,i.id)<=i.reorder?status("LOW"):status("OK")
-    ]))+'</section>';
+    ]),"No related fictional material.",shownItems.map(i=>({type:"stock",id:i.id})))+'</section>';
+  const filteredStock=contextSelection("inventory",state.items);
+  if(selectedContext&&filteredStock.length===1&&filteredStock[0].id!==j.materialId){
+    s+='<div class="notice">This fictional material is not assigned to the currently selected job. Reserve stock only from a job that uses this material.</div>';
+    return s;
+  }
   s+='<section class="panel"><h2>Reserve stock for '+h(j.jobNumber)+'</h2><p>Required: '+h(j.quantity)+
     ' · Reserved: '+h(j.reserved)+' · Needed: '+h(Math.max(0,j.quantity-j.reserved))+
     ' · Available: '+h(available(state,j.materialId))+'</p>'+
@@ -221,10 +278,11 @@ function purchasingView(){
     '<label>Material item<select name="item">'+state.items.map(i=>'<option value="'+h(i.id)+'">'+h(i.id)+' · '+h(i.name)+'</option>').join("")+'</select></label>'+
     '<label>Quantity<input name="quantity" type="number" min="1" max="10000" required value="25"></label>'+
     '<button type="submit" class="action">Create PO</button></form><p class="small">Supplier is always FICTIONAL SUPPLIER. No real supplier names or prices.</p></section>';
-  s+='<section class="panel"><h2>PO ledger</h2>'+table(["Purchase order","Stock item","Qty","Supplier","State","Action"],state.purchaseOrders.map(p=>[
-    h(p.number),h(p.itemId),h(p.quantity),h(p.supplier),status(p.status),
-    p.status==="ORDERED"?'<button class="action secondary" data-action="receive-po" data-id="'+h(p.id)+'">Receive</button>':h(stamp(p.receivedAt))
-  ]),"No purchase orders yet. Create one above to test receiving.")+'</section>';
+  const shownPOs=contextSelection("purchasing",state.purchaseOrders);
+  s+='<section class="panel"><h2>PO ledger</h2>'+table(["Purchase order","Stock item","Qty","Supplier","State","Action"],shownPOs.map(p=>[
+     h(p.number),ctxSpan("stock",p.itemId,p.itemId),h(p.quantity),h(p.supplier),status(p.status),
+     p.status==="ORDERED"?'<button class="action secondary" data-action="receive-po" data-id="'+h(p.id)+'">Receive</button>':h(stamp(p.receivedAt))
+   ]),"No matching fictional POs. Use PO Entry above to issue one.",shownPOs.map(p=>({type:"po",id:p.id})))+'</section>';
   return s;
 }
 function qualityView(){
@@ -238,12 +296,13 @@ function qualityView(){
     '<form data-form="new-ncr" class="controls"><label>Fictional quality reason<select name="reason">'+
     QUALITY_REASONS.map(r=>'<option value="'+h(r)+'">'+h(r)+'</option>').join("")+
     '</select></label><button class="action danger" type="submit">Create quality hold</button></form></section>';
+  const shownQuality=contextSelection("quality",state.quality);
   s+='<section class="panel"><h2>Nonconformance register</h2>'+
-    table(["Record","Work order","Reason","State","Action"],state.quality.map(q=>{
+    table(["Record","Work order","Reason","State","Action"],shownQuality.map(q=>{
       const record=getJob(state,q.jobId);
       return [h(q.number),jobLink(record,"ewi"),h(q.reason),status(q.status),
         q.status==="OPEN"?'<button class="action secondary" data-action="close-ncr" data-id="'+h(q.id)+'">Close demo record</button>':h(stamp(q.closedAt))]
-    }),"No synthetic quality holds yet.")+'</section>';
+    }),"No matching fictional quality holds.",shownQuality.map(q=>({type:"quality",id:q.id})))+'</section>';
   return s;
 }
 function documentsView(){
@@ -253,7 +312,7 @@ function documentsView(){
   s+='<div class="metrics">'+metric("Selected work order",j.jobNumber,j.partNumber)+
     metric("Job revision",j.revision,"Target revision")+metric("Drawing revision",j.drawing.revision,"Illustrative only")+
     metric("Source check",issues.some(x=>x.toLowerCase().includes("drawing revision"))?"MISMATCH":"MATCH","Other holds may remain")+'</div>';
-  s+='<div class="columns"><section class="panel"><h2>Generic drawing viewer</h2><div class="diagram">'+drawingSvg(j)+'</div>'+
+  s+='<div class="columns"><section class="panel context-record" '+contextAttrs("drawing",j.id)+'><h2>Generic drawing viewer</h2><div class="diagram">'+drawingSvg(j)+'</div>'+
     '<p class="small">Original geometric illustration. Not a file from a company, customer or manufacturing system.</p></section>'+
     '<section class="panel"><h2>Document record</h2><p>Document: <b>'+h(j.drawing.number)+'</b><br>Source: '+
     h(j.drawing.source)+'<br>Document state: '+h(j.drawing.status)+'<br>Part: '+h(j.partNumber)+'</p>'+
@@ -294,9 +353,16 @@ function bridgeView(){
     ]),"No simulated time tickets yet.")+'</section>';
   return s;
 }
+function reportWithContext(id){
+  const report=makeReport(state,sessions,id);
+  const selected=selectedContext&&resolveContext(state,selectedContext.type,selectedContext.id);
+  if(selected&&selected.machineId&&id==="pm")report.rows=report.rows.filter(row=>row[1]===selected.machineId);
+  if(selected&&selected.machineId&&id==="requests")report.rows=report.rows.filter(row=>row[1]===selected.machineId);
+  return report;
+}
 function reportsView(){
   const selected=REPORTS.find(x=>x.id===selectedReport)||REPORTS[0];
-  const report=makeReport(state,sessions,selected.id);
+  const report=reportWithContext(selected.id);
   let s=heading("Management / browser-local analytics","Operational report center",
     "Seven cross-module operational reports and the event ledger, calculated from the same fictional jobs, stock, PM and clock events. No private ERP or external data.");
   s+='<div class="metrics">'+metric("Available reports",REPORTS.length,"All functional")+
@@ -344,7 +410,8 @@ function render(){
   $("job-context").innerHTML=state.jobs.map(x=>'<option value="'+h(x.id)+'" '+(x.id===selectedJobId?"selected":"")+'>'+
     h(x.jobNumber+" · "+x.partNumber)+'</option>').join("");
   menu?.markActive(view);
-  $("view").innerHTML='<div id="flash" role="status">'+h(flash)+'</div>'+renderers[view]();
+  $("view").innerHTML='<div id="flash" role="status">'+h(flash)+'</div>'+contextBanner()+renderers[view]();
+  applyContextFocus();
 }
 function download(data,type,name){
   const url=URL.createObjectURL(new Blob([data],{type}));
@@ -366,8 +433,9 @@ document.addEventListener("click",event=>{
       if(navigator.clipboard?.writeText){navigator.clipboard.writeText(link).then(()=>{flash="Fictional machine link copied.";render();}).catch(()=>window.prompt("Copy demo machine link:",link));}
       else window.prompt("Copy demo machine link:",link);
     }
+    if(action==="clear-record-context"){selectedContext=null;selectedIntent="";flash="Record context cleared.";render();}
     if(action==="pm-csv") download(completionsCsv(state.pm),"text/csv;charset=utf-8","axiom-synthetic-pm-completions.csv");
-    if(action==="download-report") download(reportCsv(makeReport(state,sessions,selectedReport)),"text/csv;charset=utf-8","axiom-demo-"+selectedReport+"-report.csv");
+    if(action==="download-report") download(reportCsv(reportWithContext(selectedReport)),"text/csv;charset=utf-8","axiom-demo-"+selectedReport+"-report.csv");
     if(action==="pm-close-request") pmTransact(closeMaintenanceRequest(state.pm,id),"pm.request.closed",id+" / SIMULATED","Fictional maintenance request closed.");
     if(action==="reserve")transact(reserve(state,selectedJobId),"Material reserved for the selected fictional job.");
     if(action==="receive-po")transact(receivePurchaseOrder(state,id),"Simulated PO received into on-hand stock.");
@@ -396,7 +464,7 @@ document.addEventListener("click",event=>{
       state,sessions},null,2),"application/json","axiom-erp-synthetic-demo.json");
     if(action==="export-csv")download(sessionsCsv(sessions),"text/csv;charset=utf-8","axiom-erp-demo-clock.csv");
     if(action==="reset" && confirm("Delete all fictional Axiom ERP and EWI clock records in this browser and reset the demo?")){
-      state=seedState();sessions=[];rememberJob(state.jobs[0].id);
+      state=seedState();sessions=[];selectedContext=null;selectedIntent="";rememberJob(state.jobs[0].id);
       flash="Local demo reset to fictional starter records.";persist();render();
     }
   }catch(e){flash=e.message;render();}
@@ -472,5 +540,6 @@ const requestedMachine=new URLSearchParams(location.search).get("machine");
 selectedPmMachineId=state.pm.machines.some(m=>m.id===requestedMachine)?requestedMachine:state.pm.machines[0]?.id||"";
 selectedStep=job().routing.operations[0].step;
 menu=installMenu({root:$("module-nav"),search:$("menu-search"),tabs:$("menu-tabs"),launch:$("menu-launch"),
-  getCurrent:currentView,onNavigate:id=>{if(location.hash==="#"+id)render();}});
+  getCurrent:currentView,onNavigate:id=>{selectedContext=null;selectedIntent="";if(location.hash==="#"+id)render();}});
+installContextMenu({getState:()=>state,onNavigate:openContext});
 render();
