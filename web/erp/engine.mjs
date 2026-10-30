@@ -2,6 +2,7 @@
  * The "external" ERP is a deterministic local emulator, not ECI JobBOSS software.
  */
 import {EXAMPLES, evaluatePacket, startSession, stopSession, durationSeconds} from "../ewi/engine.mjs";
+import {seedPm,validatePm} from "./pm.mjs";
 
 export const ERP_KEY = "axiom_public_erp_suite_v1";
 export const CLOCK_KEY = "axiom_ewi_public_demo_sessions_v1";
@@ -38,7 +39,7 @@ export function seedState() {
     {id:"MAT-PLATE",name:"Generic sheet stock",unit:"blank",onHand:70,reorder:30},
     {id:"MAT-BAR",name:"Generic bar stock",unit:"length",onHand:40,reorder:20},
     {id:"MAT-FIX",name:"Generic hardware",unit:"unit",onHand:160,reorder:60}
-  ],purchaseOrders:[],quality:[],receipts:[],events:[
+  ],purchaseOrders:[],quality:[],receipts:[],pm:seedPm(),events:[
     {id:"evt-seed",at:"DEMO SEED",type:"scenario.initialized",detail:"Entirely invented records, browser only"}
   ]};
 }
@@ -46,6 +47,8 @@ export function validateState(raw) {
   if(!raw || raw.schema!==1 || raw.demo!==true || !Array.isArray(raw.jobs) || !Array.isArray(raw.items) ||
      !Array.isArray(raw.purchaseOrders) || !Array.isArray(raw.quality) ||
      !Array.isArray(raw.receipts) || !Array.isArray(raw.events)) throw Error("Invalid demo state");
+  if (!raw.pm) raw.pm = seedPm(); // Upgrade existing users without resetting their browser ERP data.
+  validatePm(raw.pm);
   return raw;
 }
 export function getJob(state,id) {return state.jobs.find(j=>j.id===id)??null;}
