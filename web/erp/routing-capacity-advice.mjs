@@ -78,13 +78,15 @@ export function assessAlternateCenters(job, step, scenario) {
       blocked.push("Calendar hours exceed the selected planning-window duration.");
     } else {
       const occupied = center.bookedHours + center.queuedHours + center.maintenanceHours;
-      requiredHours = round(center.setupHours + center.runHours);
-      availableHours = round(center.calendarHours - occupied);
+      const rawRequired = center.setupHours + center.runHours;
+      const rawAvailable = center.calendarHours - occupied;
+      requiredHours = round(rawRequired);
+      availableHours = round(rawAvailable);
       utilizationPercent = round(100 * occupied / center.calendarHours);
-      slackHours = round(availableHours - requiredHours);
+      slackHours = round(rawAvailable - rawRequired);
       if (occupied > center.calendarHours)
         blocked.push("Booked, queued and maintenance hours exceed calendar hours.");
-      else if (slackHours < 0)
+      else if (rawAvailable < rawRequired)
         blocked.push("Insufficient remaining hours after booked, queued and maintenance load.");
     }
     const idleCandidate = center.routedOperationCount === 0;

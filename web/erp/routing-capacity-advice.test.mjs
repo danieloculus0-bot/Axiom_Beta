@@ -87,3 +87,19 @@ test("unregistered work center cannot be recommended",()=>{
   assert.equal(r.assessments[0].status,"EXCLUDED");
   assert.equal(r.suggestions.length,0);
 });
+
+test("fractional-hour deficit is excluded before rounded display values",()=>{
+  const c=center();
+  c.calendarHours=8;c.bookedHours=0;c.queuedHours=0;c.maintenanceHours=0;
+  c.setupHours=1;c.runHours=7.004;
+  const insufficient=assess(c);
+  assert.equal(insufficient.assessments[0].status,"EXCLUDED");
+  assert.equal(insufficient.assessments[0].slackHours,0);
+  assert.equal(insufficient.suggestions.length,0);
+  assert.match(insufficient.assessments[0].blocked.join(" "),/Insufficient remaining hours/);
+  c.runHours=6.996;
+  const sufficient=assess(c);
+  assert.equal(sufficient.assessments[0].status,"SCENARIO_ELIGIBLE");
+  assert.equal(sufficient.suggestions.length,1);
+  assert.equal(sufficient.assessments[0].slackHours,0);
+});
