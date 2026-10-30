@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1113">
+<title>Axiom ERP | Connected Manufacturing Demonstration</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <a class="brand" href="#dashboard">AXIOM<span>.</span><small>MANUFACTURING ERP · DEMO</small></a>
+    <div class="environment">● BROWSER-LOCAL ENVIRONMENT<br><small>Invented records only. No enterprise server.</small></div>
+    <nav aria-label="ERP modules">
+      <a href="#dashboard" data-nav="dashboard">◫ &nbsp; Command Center</a>
+      <a href="#jobs" data-nav="jobs">▦ &nbsp; Work Orders</a>
+      <a href="#routing" data-nav="routing">☷ &nbsp; Routing &amp; Planning</a>
+      <a href="#ewi" data-nav="ewi">▤ &nbsp; EWI &amp; Clocking</a>
+      <a href="#inventory" data-nav="inventory">◈ &nbsp; Inventory</a>
+      <a href="#purchasing" data-nav="purchasing">▥ &nbsp; Purchasing</a>
+      <a href="#quality" data-nav="quality">◉ &nbsp; Quality Control</a>
+      <a href="#documents" data-nav="documents">▧ &nbsp; Drawing Control</a>
+      <a href="#bridge" data-nav="bridge">⛓ &nbsp; ERP Emulator</a>
+      <a href="#audit" data-nav="audit">◷ &nbsp; Event History</a>
+    </nav>
+    <div class="sidebar-footer">
+      <a href="../ewi/">Full-screen EWI demo</a>
+      <a href="../lab/">Original browser lab</a>
+      <a href="https://github.com/danieloculus0-bot/Axiom_Beta">GitHub source</a>
+      <small>Simulation only. Not payroll, not production, not connected to JobBOSS².</small>
+    </div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar">
+      <div class="crumb"><b>AXIOM</b> / <span id="breadcrumb">Command Center</span></div>
+      <div class="top-right"><span id="storage-indicator">Initializing local demo</span><span class="tag accent">ERP SANDBOX</span><span class="avatar">DEMO</span></div>
+    </header>
+    <main class="content">
+      <div class="notice"><b>FUNCTIONAL FICTIONAL ERP:</b> Transactions, routing, material and clock events work in your browser. All records, organizations, drawings and operator codes are invented. This is not JobBOSS², an authorized ERP connection, or a shared server.</div>
+      <div class="context">
+        <label for="job-context">CURRENT WORK ORDER</label>
+        <select id="job-context" aria-label="Select active work order"></select>
+        <span id="context-status" class="tag">Review</span>
+        <span class="spacer"></span>
+        <a href="#ewi" class="action secondary">Open operator workbench</a>
+        <a href="#bridge" class="action secondary">ERP simulator</a>
+      </div>
+      <div id="view" aria-live="polite"></div>
+    </main>
+    <footer>AXIOM ERP · PUBLIC INTERACTIVE DEMONSTRATION · 100% SYNTHETIC · SAVED IN THIS BROWSER ONLY · NO LIVE API</footer>
+  </div>
+</div>
+<script type="module" src="./app.mjs"></script>
+</body>
+</html>

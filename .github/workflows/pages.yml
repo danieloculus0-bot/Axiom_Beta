@@ -22,7 +22,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test web/engine.test.mjs web/ewi/engine.test.mjs
+      - run: node --test web/engine.test.mjs web/ewi/engine.test.mjs web/erp/engine.test.mjs
+      - run: node --check web/erp/app.mjs && node --check web/ewi/app.mjs
       - name: Assert source files and synthetic boundary are present
         run: |
           test -s web/index.html
@@ -30,8 +31,14 @@ jobs:
           test -s web/ewi/index.html
           test -s web/ewi/app.mjs
           test -s web/ewi/engine.mjs
+          test -s web/erp/index.html
+          test -s web/erp/app.mjs
+          test -s web/erp/engine.mjs
+          test -s web/lab/index.html
           grep -q 'FUNCTIONAL LOCAL DEMO' web/ewi/index.html
           grep -q 'JobBOSS²: not connected' web/ewi/index.html
-          grep -q 'Interactive sample, not live ERP' web/index.html
-          grep -q 'No production approval implied' web/index.html
+          grep -q 'Interactive sample, not live ERP' web/lab/index.html
+          grep -q 'No production approval implied' web/lab/index.html
+          grep -q 'FUNCTIONAL FICTIONAL ERP' web/erp/index.html
+          grep -q 'No enterprise server' web/erp/index.html
 

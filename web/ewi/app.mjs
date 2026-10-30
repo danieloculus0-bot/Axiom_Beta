@@ -1,14 +1,64 @@
 import {EXAMPLES, evaluatePacket, startSession, stopSession, durationSeconds, summarize, sessionsCsv} from "./engine.mjs";
+import {ERP_KEY, validateState, packetIssues} from "../erp/engine.mjs";
 
 const $ = id => document.getElementById(id);
 const STORE = "axiom_ewi_public_demo_sessions_v1";
-const jobs = EXAMPLES.map(record => structuredClone(record));
+let jobs = EXAMPLES.map(record => structuredClone(record));
+let erpState = null;
 let job = jobs[0];
 let selectedStep = job.routing.operations[0].step;
 let zoom = 100;
 let sessions = [];
 let storageEnabled = false;
 let lastMessage = "";
+
+function issuesFor(item) {
+  return erpState ? packetIssues(erpState, item.id) : evaluatePacket(item);
+}
+
+function refreshJobs() {
+  erpState = null;
+  jobs = EXAMPLES.map(record => structuredClone(record));
+  try {
+    const raw = localStorage.getItem(ERP_KEY);
+    if (raw && raw.length < 1800000) {
+      const candidate = validateState(JSON.parse(raw));
+      if (candidate.jobs.length) {
+        erpState = candidate;
+        jobs = candidate.jobs.filter(j => j && j.demo !== false &&
+          typeof j.id === "string" && j.routing && Array.isArray(j.routing.operations));
+      }
+    }
+  } catch { /* Standalone synthetic EWI remains usable without the ERP portal. */ }
+  const wanted = new URLSearchParams(location.search).get("job") || job.id;
+  job = jobs.find(j => j.id === wanted) || jobs[0] || EXAMPLES[0];
+  selectedStep = job.routing.operations[0].step;
+  const select = $("job-select");
+  select.replaceChildren();
+  jobs.forEach(j => select.add(new Option(j.jobNumber + " | " + j.partNumber + " | Rev " + j.revision, j.id)));
+  select.value = job.id;
+}
+
+function genericDrawing(item) {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns,"svg");
+  svg.setAttribute("viewBox","0 0 720 420"); svg.setAttribute("class","blueprint");
+  svg.setAttribute("role","img"); svg.setAttribute("aria-label","Original generic demonstration drawing, not for fabrication");
+  const add = (name, attrs, text) => {
+    const el = document.createElementNS(ns,name);
+    Object.entries(attrs).forEach(([key,value])=>el.setAttribute(key,String(value)));
+    if (text != null) el.textContent = String(text);
+    svg.append(el); return el;
+  };
+  add("rect",{width:720,height:420,fill:"#f4f7f7"});
+  add("rect",{x:125,y:105,width:320,height:160,fill:"none",stroke:"#304650","stroke-width":3});
+  [[166,145],[404,145],[166,227],[404,227]].forEach(([cx,cy])=>add("circle",{cx,cy,r:12,fill:"none",stroke:"#304650","stroke-width":2}));
+  add("text",{x:120,y:55,fill:"#2b4149","font-size":18,"font-family":"Arial"}, "GENERIC EXAMPLE / NOT TO SCALE");
+  add("text",{x:470,y:315,fill:"#2b4149","font-size":15,"font-family":"Arial"},item.drawing.number);
+  add("text",{x:470,y:340,fill:"#2b4149","font-size":15,"font-family":"Arial"},item.partNumber+" / Rev "+item.drawing.revision);
+  add("text",{x:360,y:204,"text-anchor":"middle",fill:"#b45f66","font-size":28,"font-weight":"bold",opacity:0.58}, "DEMO / NOT FOR PRODUCTION");
+  return svg;
+}
 
 function readStorage() {
   try {
@@ -20,7 +70,7 @@ function readStorage() {
         sessions = parsed.filter(s =>
           s && typeof s === "object" &&
           typeof s.id === "string" && s.id.length < 100 &&
-          typeof s.employee === "string" && s.employee.length <= 32 &&
+          typeof s.employee === "string" && /^DEMO-[A-Z0-9]{1,16}$/.test(s.employee) &&
           typeof s.jobId === "string" && typeof s.step === "string" &&
           typeof s.jobNumber === "string" && typeof s.partNumber === "string" &&
           typeof s.operation === "string" && typeof s.start === "string" &&
@@ -70,7 +120,7 @@ function showMessage(message, error=false) {
 }
 
 function renderJob() {
-  const issues = evaluatePacket(job);
+  const issues = issuesFor(job);
   $("job-number").textContent = job.jobNumber;
   $("part-number").textContent = job.partNumber + " / " + job.revision;
   $("part-desc").textContent = "Fictional training example";
@@ -96,7 +146,7 @@ function renderJob() {
     alerts.classList.add("visible");
   } else alerts.classList.remove("visible");
   const template = $("drawing-" + job.id);
-  $("drawing-content").replaceChildren(template.content.cloneNode(true));
+  $("drawing-content").replaceChildren(template ? template.content.cloneNode(true) : genericDrawing(job));
   zoom = 100;
   updateZoom();
   renderRouting();
@@ -164,7 +214,7 @@ function updateZoom() {
 function updateClock() {
   const now = Date.now();
   const operatorActive = activeOperator();
-  const issues = evaluatePacket(job);
+  const issues = issuesFor(job);
   const thisJob = sessions.filter(s=>s.jobId===job.id);
   const running = thisJob.filter(s=>!s.end);
   const selected = job.routing.operations.find(op=>op.step===selectedStep);
@@ -236,6 +286,7 @@ function navigate() {
 
 function install() {
   readStorage();
+  refreshJobs();
   $("job-select").addEventListener("change", e=>{
     job = jobs.find(j=>j.id===e.target.value) || jobs[0];
     selectedStep = job.routing.operations[0].step;
@@ -250,6 +301,7 @@ function install() {
 
   $("clock-start").addEventListener("click",()=>{
     try {
+      if (issuesFor(job).length) throw Error("EWI work-packet checks block this job: " + issuesFor(job).join("; "));
       const updated = startSession(sessions,{
         id:crypto.randomUUID(),employee:$("employee").value,job,
         step:selectedStep,timestamp:new Date().toISOString()
@@ -290,7 +342,9 @@ function install() {
   window.addEventListener("hashchange",navigate);
   window.addEventListener("storage",event=>{
     if (event.key===STORE) {readStorage();updateClock();renderHistory();}
+    if (event.key===ERP_KEY) {refreshJobs();renderJob();renderHistory();}
   });
+  window.addEventListener("focus",()=>{refreshJobs();renderJob();renderHistory();});
   setInterval(()=>{updateClock();if(location.hash==="#sessions")renderHistory();},1000);
   renderJob();
   navigate();
