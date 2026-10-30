@@ -310,6 +310,7 @@ function rememberJob(id){
 }
 function render(){
   if(!getJob(state,selectedJobId))selectedJobId=state.jobs[0].id;
+  if(!getMachine(state.pm,selectedPmMachineId))selectedPmMachineId=state.pm.machines[0]?.id||"";
   const view=currentView(),j=job();
   $("breadcrumb").textContent=stateViews[view];
   $("storage-indicator").textContent=stored?"Local browser data":"In-memory only";
