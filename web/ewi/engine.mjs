@@ -83,7 +83,7 @@ export function evaluatePacket(job) {
 
 export function startSession(sessions, {id, employee, job, step, timestamp}) {
   const operator = String(employee || "").trim().toUpperCase();
-  if (!/^[A-Z0-9_.-]{1,32}$/.test(operator)) throw Error("Enter an employee code (1 to 32 letters, numbers, dots, underscores, or hyphens)");
+  if (!/^DEMO-[A-Z0-9]{1,16}$/.test(operator)) throw Error("Use a fictional demo operator code such as DEMO-01. Never enter actual employee IDs.");
   if (!job || evaluatePacket(job).length) throw Error("Drawing and routing checks must pass before clocking");
   if (!job.routing.operations.some(op => op.step === step)) throw Error("Selected operation does not exist on this job");
   if (sessions.some(s => s.employee === operator && !s.end)) throw Error(operator + " is already clocked in. Stop that session first.");
