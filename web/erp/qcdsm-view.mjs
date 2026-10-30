@@ -74,7 +74,7 @@ export function renderQcdsm(state,workforce,department="Assembly",today){
   '<button class="action">Record example survey</button></form>'+
   '<p class="small">This is entered aggregate evidence only, not an actual confidential employee survey.</p></div></div></section>'+
   '<section class="panel"><h2>Quality root-cause analysis handoff</h2><p>Open a quality record and capture the current department pulse and safety evidence as an auditable, time-stamped investigation snapshot. Existing EWI hold/release behavior is unchanged.</p>'+
-  '<a class="action" href="#quality">Open Quality Control / RCA</a></section>';
+  '<a class="action" href="#quality">Open Quality Control / RCA</a><p class="small"><a href="https://danieloculus0-bot.github.io/64-/" rel="noopener noreferrer">Open the separate 64Δ facility board</a>. Its 8×8 layout is a scenario and location model, not a synchronized feed from this public ERP demo.</p></section>';
 }
 export function qualityRcaHtml(state,workforce,department,today){
  const choices=(state.quality||[]).map(q=>'<option value="'+h(q.id)+'">'+h(q.number)+' · '+h(q.reason)+'</option>').join("");
