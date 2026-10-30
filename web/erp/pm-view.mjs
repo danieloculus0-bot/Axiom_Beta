@@ -14,10 +14,13 @@ const label=(name,kind="")=>{
 };
 const section=(title,body,extra="")=>'<section class="panel"><div class="panel-head"><h2>'+h(title)+'</h2>'+extra+'</div>'+body+'</section>';
 const metric=(title,value,caption)=>'<div class="metric"><small>'+h(title)+'</small><strong>'+h(value)+'</strong><em>'+h(caption)+'</em></div>';
-const table=(headers,rows,empty)=>{
+const table=(headers,rows,empty,contexts=[])=>{
  if(!rows.length)return '<div class="empty">'+h(empty)+'</div>';
  return '<div class="tablewrap"><table><thead><tr>'+headers.map(x=>'<th>'+h(x)+'</th>').join("")+'</tr></thead><tbody>'+
-  rows.map(cols=>'<tr>'+cols.map(value=>'<td>'+value+'</td>').join("")+'</tr>').join("")+'</tbody></table></div>';
+  rows.map((cols,index)=>{
+   const rec=contexts[index],attr=rec?' class="context-record-row" tabindex="0" data-ctx-type="'+h(rec.type)+'" data-ctx-id="'+h(rec.id)+'" title="Right-click for Open with"':"";
+   return '<tr'+attr+'>'+cols.map(value=>'<td>'+value+'</td>').join("")+'</tr>';
+  }).join("")+'</tbody></table></div>';
 };
 const fieldOptions=(values,select)=>values.map((value,index)=>'<option value="'+h(select?index:value)+'">'+h(value)+'</option>').join("");
 const dayStamp=at=>at?at.slice(0,10):"Not recorded";
@@ -42,7 +45,7 @@ export function renderPm(pm,selectedMachineId){
      h(item.machine.department)+'<div class="small muted">'+h(item.machine.location)+'</div>',
      h(item.machine.criticality),label(item.label,item.kind),h(item.nextDue||"Unscheduled"),
      '<button type="button" class="action secondary" data-action="pm-select-machine" data-id="'+h(item.machine.id)+'">Open</button>'
-   ]),"No fictional machines yet.")+
+   ]),"No fictional machines yet.",stats.summaries.map(item=>({type:"machine",id:item.machine.id})))+
   '</section><section class="panel"><h2>Add a fictional machine</h2>'+
   '<form class="controls" data-form="pm-new-machine"><label>Demo equipment type<select name="machine-type">'+fieldOptions(MACHINE_TYPES)+'</select></label>'+
   '<label>Criticality<select name="criticality">'+fieldOptions(["Low","Medium","High"])+'</select></label>'+
@@ -55,7 +58,7 @@ export function renderPm(pm,selectedMachineId){
   '<div class="actions" style="margin-top:12px"><button type="button" class="action secondary" data-action="pm-open-requests">Open request queue</button>'+
   '<button class="action secondary" data-action="pm-csv">Export demo PM CSV</button></div></section></div>';
  if(machine&&summary){
-  s+='<section class="panel" id="pm-machine-card"><div class="panel-head"><div><div class="eyebrow">Equipment / '+h(machine.id)+'</div>'+
+  s+='<section class="panel context-record" tabindex="0" data-ctx-type="machine" data-ctx-id="'+h(machine.id)+'" title="Right-click for Open with" id="pm-machine-card"><div class="panel-head"><div><div class="eyebrow">Equipment / '+h(machine.id)+'</div>'+
     '<h2>'+h(machine.name)+'</h2></div><div class="pills">'+label(summary.label,summary.kind)+
     '<span class="tag">'+h(machine.criticality)+' criticality</span></div></div>'+
     '<div class="twocol"><div><p><b>Area:</b> '+h(machine.department)+' / '+h(machine.location)+
@@ -73,7 +76,7 @@ export function renderPm(pm,selectedMachineId){
       h(task.frequencyDays)+" days<div class='small muted'>"+h(task.role)+" · "+h(task.estimatedMinutes)+" min</div>",
       h(task.due||"Unscheduled"),label(task.label,task.kind),
       '<button class="action secondary" data-action="pm-select-task" data-id="'+h(task.id)+'" type="button">Complete</button>'
-    ]),"No tasks assigned to this fictional asset."),
+    ]),"No tasks assigned to this fictional asset.",summary.tasks.map(task=>({type:"pm_task",id:task.id}))),
    '<span class="tag">'+h(summary.tasks.length)+' recurring tasks</span>');
   s+='<div class="columns"><section class="panel"><h2>Add recurring PM task</h2>'+
     '<form data-form="pm-new-task" class="controls">'+
@@ -114,7 +117,7 @@ export function renderPm(pm,selectedMachineId){
     label(r.status,r.status==="CLOSED"?"clear":"today"),
     r.status==="OPEN"?'<button class="action secondary" data-action="pm-close-request" data-id="'+h(r.id)+'">Close example</button>':
     '<span class="small muted">'+h(dayStamp(r.closedAt))+'</span>'
-   ]),"No fictional maintenance requests yet.")+'</section>';
+   ]),"No fictional maintenance requests yet.",pm.requests.slice().reverse().map(r=>({type:"pm_request",id:r.id})))+'</section>';
  s+='<div class="notice"><b>MODULE BOUNDARY:</b> The full PM Tracker is still a separate Flask/SQLite/Excel-backed application. This GitHub Pages module reproduces its public-facing PM workflows using fictional local state. It does not connect to that server, sync workbooks, or perform actual QR scanning.</div>';
  return s;
 }
