@@ -74,7 +74,7 @@ export function installMenu({root,search,tabs,launch,getCurrent,onNavigate=()=>{
    const active=btn.dataset.menuTab===mode;
    btn.classList.toggle("selected",active);
    btn.setAttribute("aria-selected",String(active));
-   btn.tabIndex=active?0:-1;
+   btn.tabIndex=0;
   });
   let shown=[];
   const q=query.trim();
@@ -96,6 +96,15 @@ export function installMenu({root,search,tabs,launch,getCurrent,onNavigate=()=>{
   }
   root.setAttribute("data-menu-mode",q?"search":mode);
  }
+ tabs.addEventListener("keydown",event=>{
+  if(!["ArrowLeft","ArrowRight"].includes(event.key))return;
+  const buttons=[...tabs.querySelectorAll("[data-menu-tab]")];
+  const index=buttons.indexOf(document.activeElement);
+  if(index<0)return;
+  event.preventDefault();
+  const next=buttons[(index+(event.key==="ArrowRight"?1:-1)+buttons.length)%buttons.length];
+  mode=next.dataset.menuTab;query="";search.value="";next.focus();render();
+ });
  tabs.addEventListener("click",event=>{
   const btn=event.target.closest("[data-menu-tab]");
   if(!btn)return;
@@ -135,6 +144,7 @@ export function installMenu({root,search,tabs,launch,getCurrent,onNavigate=()=>{
  });
  function markActive(id){
   const found=getMenuItem(id);
+  if(found){prefs=visitMenu(prefs,id);persist();}
   if(found&&!openGroups.has(found.group))openGroups.add(found.group);
   render();
  }
