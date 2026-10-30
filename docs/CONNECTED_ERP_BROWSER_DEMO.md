@@ -23,6 +23,7 @@
 | Preventive maintenance | Includes the separate PM Tracker's core public workflow concepts: invented machine register, recurring task schedules, due/overdue calculations, completion history, follow-up requests and CSV export. Browser-only, no real asset connections |
 | Document control | Adjusts fictional drawing revision to test mismatch and match behavior; this is not a true release/signature |
 | ERP emulator | Imports independent invented job and routing fixtures and issues fake acceptance receipts for completed browser-local clock sessions |
+| Reports | Eight browser-local, functional report views covering jobs, inventory, POs, quality, labor, PM, maintenance requests and events, each with full CSV export |
 | Events | Provides an append-order, **not immutable**, local action history and export/reset options |
 
 The in-browser "ERP emulator" has a conceptual REST-shaped contract for explaining integration boundaries; it is a JavaScript mock, **not a JobBOSS² replica or HTTP server**. It provides **no live network/API endpoints**, ERP data access, or credential handling. No session is actually submitted to JobBOSS². The production Axiom Windows desktop/backend architecture remains separate and requires authorized ECI integrations.
@@ -48,3 +49,13 @@ GitHub Pages only hosts the static site. The GitHub Actions publishing workflow 
 Axiom includes a historical source snapshot under `components/source_snapshots/PM-Tracker/app.py`, while the maintained standalone PM-Tracker repository has its own Flask/SQLite and Excel-file functionality. This new `web/erp/#pm` screen brings those **concepts** into the connected Axiom Pages demonstration; it does **not** merge or expose a real site-server or production maintenance database. It uses the unchanged dark Axiom ERP visual theme and new original synthetic machine/task fixtures only.
 
 The demo supports task due dates, machine cards and shareable local machine links, PM log entries, maintenance requests and simulated closeout. Real QR scanning, workbooks, electronic signoffs, LOTO authorization, machine isolation, multi-user permissions and server data imports are not present. Completion here is a test event, not evidence that maintenance occurred. Never enter real operator or machine information.
+
+## Axiom ERP navigation
+
+The public `/erp/` workspace now has a scalable two-level menu organized by functional department rather than a single flat list. Menu search supports screen names and common ERP synonyms; browser-local favorites and recents let people return to frequent screens. **Ctrl+K** or **/** focuses screen search. The new Report Center (`#reports`) is a real read-only query of the existing synthetic dataset, not a placeholder page.
+
+Menu entries are registered only for implemented browser screens. This deliberately avoids the impression that unimplemented accounting, MRP, scheduling, payroll, or other large ERP subsystems are already functional. The shell uses Axiom's existing dark charcoal, lime accent and component styles, rather than vendor-sourced branding or UI assets.
+
+Menu preferences are isolated from the demo's production data under `axiom_public_erp_menu_v1`. They are local to the viewer's browser; accounts, shared user profiles, permission-driven menus and backend search are not implemented.
+
+The report exports are demonstrations of ordinary browser state. None are official financial reports, production schedules, certified inspections or employee/payroll records.
