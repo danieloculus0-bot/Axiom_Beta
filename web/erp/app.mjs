@@ -6,12 +6,16 @@ import {
 } from "./engine.mjs";
 import {startSession,stopSession,durationSeconds,sessionsCsv} from "../ewi/engine.mjs";
 import {renderPm} from "./pm-view.mjs";
+import {renderRequestDesk} from "./request-view.mjs";
+import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
+ issueRequestPO,syncReceivedRequests,verifyPurchaseRequest,followupPurchaseRequest} from "./requests.mjs";
 import {installContextMenu} from "./context-ui.mjs";
 import {resolveContext,contextRelated} from "./context-actions.mjs";
 import {installMenu} from "./navigation-ui.mjs";
 import {REPORTS,makeReport,reportCsv} from "./reports.mjs";
 import {getMachine,getTask,pmOverview,createMachine,addPmTask,completePmTask,requestMaintenance,
-  closeMaintenanceRequest,completionsCsv,localDay} from "./pm.mjs";
+  closeMaintenanceRequest,completionsCsv,localDay,dayAdd,
+  assignMaintenanceRequest,followupMaintenanceRequest} from "./pm.mjs";
 
 const $=id=>document.getElementById(id);
 const h=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -19,9 +23,9 @@ const deep=v=>structuredClone(v);
 const stateViews={
  dashboard:"Command Center",jobs:"Work Orders",routing:"Routing & Planning",
  ewi:"EWI & Clocking",inventory:"Inventory",purchasing:"Purchasing",
- quality:"Quality Control",documents:"Drawing Control",pm:"PM Tracker",reports:"Report Center",bridge:"ERP Emulator",audit:"Event History"
+ quality:"Quality Control",documents:"Drawing Control",pm:"PM Tracker",requests:"Request Desk",reports:"Report Center",bridge:"ERP Emulator",audit:"Event History"
 };
-let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="";
+let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""};
 function load(){
   try{
     const raw=localStorage.getItem(ERP_KEY);
@@ -101,6 +105,8 @@ function openContext(record,action){
   if(c.jobId)rememberJob(c.jobId);
   else if(c.relatedJobs.length&&["routing","ewi","documents","quality"].includes(action.view))rememberJob(c.relatedJobs[0]);
   if(c.machineId)selectedPmMachineId=c.machineId;
+  if(record.type==="purchase_request")selectedRequest={kind:"purchase",id:record.id};
+  if(record.type==="pm_request")selectedRequest={kind:"maintenance",id:record.id};
   if(action.intent==="pm-report")selectedReport="pm";
   if(action.intent==="request-report")selectedReport="requests";
   if(location.hash==="#"+action.view){render();applyContextFocus();}
@@ -122,7 +128,7 @@ function applyContextFocus(){
 function dashboard(){
   const active=sessions.filter(s=>!s.end).length,blocked=state.jobs.filter(j=>packetIssues(state,j.id).length).length;
   const ordered=state.purchaseOrders.filter(p=>p.status==="ORDERED").length;
-  const pm=pmOverview(state.pm);
+  const pm=pmOverview(state.pm),req=requestMetrics(state);
   let s=heading("Overview / connected shop workflow","Manufacturing command center",
     "One fictional dataset drives the job tracker, material transactions, quality holds, routed work instructions and clocking.");
   s+='<div class="metrics">'+metric("Work orders",state.jobs.length,"Synthetic orders")+
@@ -141,10 +147,15 @@ function dashboard(){
     moduleLink("routing","Routing","Work centers and steps")+
     moduleLink("quality","Quality","Create and close holds")+
     moduleLink("pm","PM Tracker","Maintenance schedules & requests")+
+    moduleLink("requests","Request Desk","Track assignments and follow-ups")+
     moduleLink("reports","Reports","Live synthetic operational reports")+
     moduleLink("purchasing","Purchasing","Receive demo inventory")+
     moduleLink("bridge","ERP Bridge","Emulated import and time receipt")+
     '</div></section></div>';
+  s+='<section class="panel"><div class="panel-head"><h2>Request follow-up</h2><a href="#requests" class="action secondary">Open Request Desk</a></div>'+
+    '<div class="pills">'+status(req.openPurchases+" PURCHASE REQUESTS")+
+    status(req.openMaintenance+" MAINTENANCE REQUESTS")+status(req.overdue+" OVERDUE")+
+    '</div><p class="small">Real browser-local request workflows use fictional records. Purchasing needs a received PO before completion.</p></section>';
   s+='<section class="panel"><div class="panel-head"><h2>Maintenance snapshot</h2><a href="#pm" class="action secondary">Open PM Tracker</a></div>'+
     '<div class="pills">'+status(pm.overdue+" OVERDUE TASKS")+' '+status(pm.dueToday+" DUE TODAY")+' '+status(pm.openRequests+" OPEN REQUESTS")+'</div>'+
     '<p class="small">'+h(pm.machines)+' generic machines · '+h(pm.tasks)+' recurring tasks. These are fictional maintenance records, not live equipment conditions.</p></section>';
@@ -394,7 +405,7 @@ function auditView(){
   return s;
 }
 const renderers={dashboard,jobs:jobsView,routing:routingView,ewi:clockView,inventory:inventoryView,
-  purchasing:purchasingView,quality:qualityView,documents:documentsView,pm:()=>renderPm(state.pm,selectedPmMachineId),reports:reportsView,bridge:bridgeView,audit:auditView};
+  purchasing:purchasingView,quality:qualityView,documents:documentsView,pm:()=>renderPm(state.pm,selectedPmMachineId),requests:()=>renderRequestDesk(state,selectedRequest),reports:reportsView,bridge:bridgeView,audit:auditView};
 function rememberJob(id){
   if(!getJob(state,id))return;
   selectedJobId=id;selectedStep=job().routing.operations[0].step;
@@ -436,9 +447,17 @@ document.addEventListener("click",event=>{
     if(action==="clear-record-context"){selectedContext=null;selectedIntent="";flash="Record context cleared.";render();}
     if(action==="pm-csv") download(completionsCsv(state.pm),"text/csv;charset=utf-8","axiom-synthetic-pm-completions.csv");
     if(action==="download-report") download(reportCsv(reportWithContext(selectedReport)),"text/csv;charset=utf-8","axiom-demo-"+selectedReport+"-report.csv");
-    if(action==="pm-close-request") pmTransact(closeMaintenanceRequest(state.pm,id),"pm.request.closed",id+" / SIMULATED","Fictional maintenance request closed.");
+    if(action==="pm-close-request"||action==="close-maint-request")pmTransact(closeMaintenanceRequest(state.pm,id),"pm.request.closed",id+" / SIMULATED","Fictional maintenance request closed.");
+    if(action==="select-request"){selectedRequest={kind:button.dataset.kind,id};render();document.getElementById("request-detail")?.scrollIntoView({block:"start"});}
+    if(action==="approve-request")transact(approvePurchaseRequest(state,id),"Purchase request approved. Still awaiting an actual fictional PO receipt.");
+    if(action==="issue-request-po")transact(issueRequestPO(state,id),"Fictional PO issued for purchase request. Not completed until received.");
+    if(action==="verify-purchase-request")transact(verifyPurchaseRequest(state,id),"Purchase request verified after linked PO receipt.");
     if(action==="reserve")transact(reserve(state,selectedJobId),"Material reserved for the selected fictional job.");
-    if(action==="receive-po")transact(receivePurchaseOrder(state,id),"Simulated PO received into on-hand stock.");
+    if(action==="receive-po"){
+      let next=receivePurchaseOrder(state,id);
+      if(next.purchaseRequests.some(r=>r.linkedPoId===id&&r.status==="ORDERED"))next=syncReceivedRequests(next,id);
+      transact(next,"Simulated PO received. Linked purchase request awaits confirmation.");
+    }
     if(action==="close-ncr")transact(closeQuality(state,id),"Synthetic quality record closed. EWI interlock recalculated.");
     if(action==="sync"){
       const routing=emulatorFetchRouting(id);
@@ -500,6 +519,28 @@ document.addEventListener("submit",event=>{
         pmTransact(result.pm,"pm.request.opened",result.id+" / FICTIONAL","A fictional maintenance request was opened.");
         break;
       }
+      case "request-purchase":{
+        const result=createPurchaseRequest(state,{itemId:String(f.get("item")),quantity:Number(f.get("quantity")),
+          reason:String(f.get("reason")),priority:String(f.get("priority")),owner:String(f.get("owner")),dueDate:String(f.get("due"))});
+        selectedRequest={kind:"purchase",id:result.id};
+        transact(result.state,"Fictional purchase requisition submitted. Not yet ordered.");break;
+      }
+      case "request-maintenance":{
+        const result=requestMaintenance(state.pm,String(f.get("machine")),String(f.get("type")),String(f.get("priority")));
+        const pm=assignMaintenanceRequest(result.pm,result.id,String(f.get("owner")),String(f.get("due")));
+        selectedRequest={kind:"maintenance",id:result.id};
+        pmTransact(pm,"pm.request.opened",result.id+" / assigned","Fictional maintenance request assigned.");break;
+      }
+      case "request-assign":
+        transact(assignPurchaseRequest(state,String(f.get("id")),String(f.get("owner")),String(f.get("due"))),"Purchase request ownership and deadline updated.");break;
+      case "request-purchase-followup":
+        transact(followupPurchaseRequest(state,String(f.get("id")),String(f.get("note"))),"Purchase follow-up recorded.");break;
+      case "request-maint-assign":
+        pmTransact(assignMaintenanceRequest(state.pm,String(f.get("id")),String(f.get("owner")),String(f.get("due"))),
+          "pm.request.assigned",String(f.get("id")),"Maintenance owner and due date updated.");break;
+      case "request-maint-followup":
+        pmTransact(followupMaintenanceRequest(state.pm,String(f.get("id")),String(f.get("note"))),
+          "pm.request.followup",String(f.get("id")),"Maintenance follow-up recorded.");break;
       case "new-job":{
         const result=createJob(state,String(f.get("part")),Number(f.get("quantity")));
         state=result.state;rememberJob(result.jobId);flash="Created a fictional Axiom work order. Reserve material to enable clocking.";
