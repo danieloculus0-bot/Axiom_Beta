@@ -22,11 +22,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test web/engine.test.mjs
+      - run: node --test web/engine.test.mjs web/ewi/engine.test.mjs
       - name: Assert source files and synthetic boundary are present
         run: |
           test -s web/index.html
           test -s web/engine.mjs
+          test -s web/ewi/index.html
+          test -s web/ewi/app.mjs
+          test -s web/ewi/engine.mjs
+          grep -q 'FUNCTIONAL LOCAL DEMO' web/ewi/index.html
+          grep -q 'JobBOSS²: not connected' web/ewi/index.html
           grep -q 'Interactive sample, not live ERP' web/index.html
           grep -q 'No production approval implied' web/index.html
 
