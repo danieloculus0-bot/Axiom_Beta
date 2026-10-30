@@ -69,3 +69,13 @@ Search the module sidebar with **Ctrl+K** or **/** and terms such as `PO Tracker
 Choosing a destination carries the selected fictional record, filters related records, switches the selected job or machine where appropriate, and preselects part/material on existing Work Order Entry and PO Entry forms. A current-context banner lets the viewer clear the filter. The selection is session-local UI state; the underlying fictional records remain stored in browser localStorage. The public menu never calls local Axiom Flask APIs, external ERP/JobBOSS services, real data, or a Windows Explorer shell extension.
 
 The menu is deliberately *not* global. Native right-click is preserved on links, buttons, input fields, editable regions, and selected text. An unrecognized record is not substituted with another one, and no fictitious Part Entry or separate master-data module is promised. Only invented records and generic descriptions are used.
+
+## Main visitor experience and Request Desk
+
+GitHub repository README now opens with the live [Axiom ERP demonstration](https://danieloculus0-bot.github.io/Axiom_Beta/erp/). The legacy original browser lab remains accessible by its URL but is no longer promoted in the current ERP demo navigation. GitHub Pages root continues to redirect to `/erp/`.
+
+The live **Request Desk** is browser-only, using entirely invented material, equipment, owner codes, issue types, and event notes. It includes assigned purchasing requisitions, due dates, overdue status, action logs, approval, a linked in-demo PO, and follow-up. **A purchase request remains unresolved until the linked PO is received and its receipt is acknowledged**. Issuing or approving a PO alone is not completion. The existing PO receiving action updates inventory and linked request status in the same saved browser state.
+
+Maintenance requests reuse Axiom's existing PM request data model and are tracked in the same Request Desk with owner, due date, and follow-up history. **Closed means work completed**; a separate verification stage is deliberately not required for maintenance. Existing browser state is migrated without deleting jobs, PM schedules, or clocking data. Reporting includes the fictional purchase request follow-up register.
+
+This demo has no emails, active reminder service, external purchasing integration, approval permissions, actual personnel assignment, live uploads or BEAN connection. It is not appropriate for entering real business or employee records. Quality management remains a limited demonstration of holds, pending the deeper native Quality Forge representation.
