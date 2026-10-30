@@ -7,6 +7,8 @@ import {
 import {startSession,stopSession,durationSeconds,sessionsCsv} from "../ewi/engine.mjs";
 import {renderPm} from "./pm-view.mjs";
 import {renderRequestDesk} from "./request-view.mjs";
+import {WORKFORCE_KEY,seedWorkforce,validateWorkforce,addDemoPerson,assignDemoRole,recordDemoPulse,completeDemoTraining,nominateDemoRecognition,reviewDemoNomination,closeDemoAction} from "./workforce.mjs";
+import {renderHr,renderMorale} from "./workforce-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
@@ -25,8 +27,9 @@ const deep=v=>structuredClone(v);
 const stateViews={
  dashboard:"Command Center",jobs:"Work Orders",routing:"Routing & Planning",
  ewi:"EWI & Clocking",inventory:"Inventory",purchasing:"Purchasing",
- quality:"Quality Control",documents:"Drawing Control",pm:"PM Tracker",requests:"Request Desk",reports:"Report Center",bridge:"ERP Emulator",audit:"Event History"
+ quality:"Quality Control",documents:"Drawing Control",pm:"PM Tracker",requests:"Request Desk",hr:"Human Resources",morale:"Morale & Recognition",reports:"Report Center",bridge:"ERP Emulator",audit:"Event History"
 };
+let workforce=seedWorkforce();
 let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""},routeDraft=null;
 function load(){
   try{
@@ -46,13 +49,22 @@ function load(){
     const k=ERP_KEY+"_test";localStorage.setItem(k,"ok");localStorage.removeItem(k);
     stored=true;
   }catch{stored=false;state=seedState();sessions=[];}
+  try{
+    const raw=localStorage.getItem(WORKFORCE_KEY);
+    workforce=raw&&raw.length<800000?validateWorkforce(JSON.parse(raw)):seedWorkforce();
+  }catch{workforce=seedWorkforce();}
 }
 function persist(){
   if(!stored) return;
-  try{localStorage.setItem(ERP_KEY,JSON.stringify(state));localStorage.setItem(CLOCK_KEY,JSON.stringify(sessions));}
+  try{localStorage.setItem(ERP_KEY,JSON.stringify(state));localStorage.setItem(CLOCK_KEY,JSON.stringify(sessions));localStorage.setItem(WORKFORCE_KEY,JSON.stringify(workforce));}
   catch{stored=false;flash="Local storage unavailable. Export records before refreshing.";}
 }
 function transact(next,message){state=next;flash=message;persist();render();}
+function workforceTransact(next,type,detail,message){
+  workforce=next;
+  state=change(state,type,detail,()=>{});
+  flash=message;persist();render();
+}
 function pmTransact(nextPm,type,detail,message){
   transact(change(state,type,detail,n=>{n.pm=nextPm;}),message);
 }
@@ -150,6 +162,8 @@ function dashboard(){
     moduleLink("quality","Quality","Create and close holds")+
     moduleLink("pm","PM Tracker","Maintenance schedules & requests")+
     moduleLink("requests","Request Desk","Track assignments and follow-ups")+
+    moduleLink("hr","Human Resources","Demo roles and training")+
+    moduleLink("morale","Morale","Company pulse and recognition")+
     moduleLink("reports","Reports","Live synthetic operational reports")+
     moduleLink("purchasing","Purchasing","Receive demo inventory")+
     moduleLink("bridge","ERP Bridge","Emulated import and time receipt")+
@@ -408,7 +422,7 @@ function auditView(){
   return s;
 }
 const renderers={dashboard,jobs:jobsView,routing:routingView,ewi:clockView,inventory:inventoryView,
-  purchasing:purchasingView,quality:qualityView,documents:documentsView,pm:()=>renderPm(state.pm,selectedPmMachineId),requests:()=>renderRequestDesk(state,selectedRequest),reports:reportsView,bridge:bridgeView,audit:auditView};
+  purchasing:purchasingView,quality:qualityView,documents:documentsView,pm:()=>renderPm(state.pm,selectedPmMachineId),requests:()=>renderRequestDesk(state,selectedRequest),hr:()=>renderHr(workforce),morale:()=>renderMorale(workforce),reports:reportsView,bridge:bridgeView,audit:auditView};
 function rememberJob(id){
   if(!getJob(state,id))return;
   if(routeDraft&&routeDraft.jobId!==id)routeDraft=null;
@@ -474,6 +488,8 @@ document.addEventListener("click",event=>{
       else window.prompt("Copy demo machine link:",link);
     }
     if(action==="clear-record-context"){selectedContext=null;selectedIntent="";flash="Record context cleared.";render();}
+    if(action==="morale-close")workforceTransact(closeDemoAction(workforce,id),"morale.review.completed",id+" / FICTIONAL","Fictional workforce risk review marked complete.");
+    if(action==="morale-approve"||action==="morale-reject")workforceTransact(reviewDemoNomination(workforce,id,action==="morale-approve"?"APPROVED":"REJECTED"),"morale.recognition.reviewed",id+" / FICTIONAL","Demonstration recognition nomination reviewed.");
     if(action==="pm-csv") download(completionsCsv(state.pm),"text/csv;charset=utf-8","axiom-synthetic-pm-completions.csv");
     if(action==="download-report") download(reportCsv(reportWithContext(selectedReport)),"text/csv;charset=utf-8","axiom-demo-"+selectedReport+"-report.csv");
     if(action==="pm-close-request"||action==="close-maint-request")pmTransact(closeMaintenanceRequest(state.pm,id),"pm.request.closed",id+" / SIMULATED","Fictional maintenance request closed.");
@@ -509,10 +525,10 @@ document.addEventListener("click",event=>{
       flash="Clock OUT saved locally. Time ticket NOT posted to JobBOSS².";persist();render();
     }
     if(action==="export-json")download(JSON.stringify({demo:true,erp_connected:false,exportedAt:new Date().toISOString(),
-      state,sessions},null,2),"application/json","axiom-erp-synthetic-demo.json");
+      state,sessions,workforce},null,2),"application/json","axiom-erp-synthetic-demo.json");
     if(action==="export-csv")download(sessionsCsv(sessions),"text/csv;charset=utf-8","axiom-erp-demo-clock.csv");
     if(action==="reset" && confirm("Delete all fictional Axiom ERP and EWI clock records in this browser and reset the demo?")){
-      state=seedState();sessions=[];selectedContext=null;selectedIntent="";rememberJob(state.jobs[0].id);
+      state=seedState();sessions=[];workforce=seedWorkforce();selectedContext=null;selectedIntent="";rememberJob(state.jobs[0].id);
       flash="Local demo reset to fictional starter records.";persist();render();
     }
   }catch(e){flash=e.message;render();}
@@ -523,6 +539,16 @@ document.addEventListener("submit",event=>{
   const f=new FormData(form);
   try{
     switch(form.dataset.form){
+      case "hr-person":
+        workforceTransact(addDemoPerson(workforce,String(f.get("role"))),"hr.demo.person.created","Fictional employee code created","Added a synthetic employee code.");break;
+      case "hr-role":
+        workforceTransact(assignDemoRole(workforce,String(f.get("person")),String(f.get("role"))),"hr.demo.role.assigned",String(f.get("person"))+" / DEMO","Fictional role assignment updated.");break;
+      case "hr-training":
+        workforceTransact(completeDemoTraining(workforce,String(f.get("person")),String(f.get("requirement"))),"hr.training.completed",String(f.get("person"))+" / DEMO","Simulated training verification recorded. Fictional points credited.");break;
+      case "morale-pulse":
+        workforceTransact(recordDemoPulse(workforce,Object.fromEntries(f)),"morale.pulse.recorded","Synthetic aggregate workforce signal","Fictional company-pulse record added.");break;
+      case "morale-nominate":
+        workforceTransact(nominateDemoRecognition(workforce,String(f.get("person")),String(f.get("category")),String(f.get("reason")),Number(f.get("points"))),"morale.recognition.nominated","Fictional recognition nomination","Nomination added for demonstration review.");break;
       case "routing-save":{
         if(!routeDraft||routeDraft.jobId!==job().id)throw Error("No active routing edit for this job");
         const updated=saveRoutingDraft(state,routeDraft.jobId,readRoutingEditor(form),sessions);
@@ -601,7 +627,7 @@ document.addEventListener("change",e=>{
 });
 document.addEventListener("input",e=>{if(e.target.id==="operator-code")operator=e.target.value;});
 window.addEventListener("hashchange",()=>{flash="";render();});
-window.addEventListener("storage",e=>{if(e.key===ERP_KEY||e.key===CLOCK_KEY){load();render();}});
+window.addEventListener("storage",e=>{if(e.key===ERP_KEY||e.key===CLOCK_KEY||e.key===WORKFORCE_KEY){load();render();}});
 window.addEventListener("focus",()=>{if(stored){load();render();}});
 setInterval(()=>{
   document.querySelectorAll("[data-live-clock]").forEach(el=>{
