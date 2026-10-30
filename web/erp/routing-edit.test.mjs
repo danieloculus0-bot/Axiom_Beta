@@ -37,7 +37,7 @@ test("save edits the selected job, keeps other jobs unchanged, and blocks both E
  assert.equal(state.jobs[0].routing.source,"BROWSER-LOCAL ROUTING DRAFT");
  assert.deepEqual(state.jobs[1].routing,other,"Other work orders must not change");
  assert.match(packetIssues(state,job.id).join(" "),/Edited routing awaiting demo review/);
- assert.throws(()=>startSession([],{id:"clock-1",employee:"DEMO-01",job:getJob(state,job.id),step:"10",timestamp:reviewedAt}),/routing awaiting demo review/);
+ assert.throws(()=>startSession([],{id:"clock-1",employee:"DEMO-01",job:getJob(state,job.id),step:"10",timestamp:reviewedAt}),/Drawing and routing checks must pass/);
  assert.equal(state.jobs[0].routing.history.at(-1).kind,"DRAFT_EDIT");
  assert.equal(state.events.at(-1).type,"routing.draft_edited");
 });
