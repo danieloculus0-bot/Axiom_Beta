@@ -59,3 +59,13 @@ Menu entries are registered only for implemented browser screens. This deliberat
 Menu preferences are isolated from the demo's production data under `axiom_public_erp_menu_v1`. They are local to the viewer's browser; accounts, shared user profiles, permission-driven menus and backend search are not implemented.
 
 The report exports are demonstrations of ordinary browser state. None are official financial reports, production schedules, certified inspections or employee/payroll records.
+
+## Contextual Open with and searchable menus
+
+The public browser demo now adapts the record-aware right-click idea already implemented by Axiom's local Flask application. Right-click a **fictional record row** such as a job, stock item, purchase order, quality hold, document, machine, PM task, or maintenance request. A real in-page **Open with** menu offers only functioning browser demo modules, in relevant order. It can be searched where enough actions exist; **Shift+F10** or the keyboard Context Menu key also opens a focused record's menu. **Esc** closes it. Hold **Shift** and right-click to use the native browser context menu.
+
+Search the module sidebar with **Ctrl+K** or **/** and terms such as `PO Tracker`, `PO Entry`, `Job Entry`, or `Part Tracker`. These terms resolve to the actual currently implemented browser modules. They are not proof that dedicated desktop-level part-master editing exists in the static demo.
+
+Choosing a destination carries the selected fictional record, filters related records, switches the selected job or machine where appropriate, and preselects part/material on existing Work Order Entry and PO Entry forms. A current-context banner lets the viewer clear the filter. The selection is session-local UI state; the underlying fictional records remain stored in browser localStorage. The public menu never calls local Axiom Flask APIs, external ERP/JobBOSS services, real data, or a Windows Explorer shell extension.
+
+The menu is deliberately *not* global. Native right-click is preserved on links, buttons, input fields, editable regions, and selected text. An unrecognized record is not substituted with another one, and no fictitious Part Entry or separate master-data module is promised. Only invented records and generic descriptions are used.
