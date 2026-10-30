@@ -130,10 +130,11 @@ function dashboard(){
      metric("Active clocks",active,"Browser-local sessions")+
      metric("Open POs",ordered,"Simulated purchasing")+'</div>';
   s+='<div class="columns"><section class="panel"><div class="panel-head"><h2>Recent work orders</h2><a href="#jobs" class="action secondary">All work orders</a></div>';
-  s+=table(["Job","Part","Revision","Readiness","EWI"],state.jobs.slice().reverse().slice(0,7).map(j=>[
-    jobLink(j),h(j.partNumber),h(j.revision),jobState(j),
+  const recentJobs=state.jobs.slice().reverse().slice(0,7);
+  s+=table(["Job","Part","Revision","Readiness","EWI"],recentJobs.map(j=>[
+    jobLink(j),ctxSpan("part",j.partNumber,j.partNumber),h(j.revision),jobState(j),
     '<a href="#ewi" data-job="'+h(j.id)+'" class="action secondary">Open EWI</a>'
-  ]));
+  ]),"No fictional jobs yet.",recentJobs.map(j=>({type:"job",id:j.id})));
   s+='</section><section class="panel"><h2>Production modules</h2><div class="feature">'+
     moduleLink("jobs","Jobs","Create and select orders")+
     moduleLink("ewi","Clocking","Live local timers")+
@@ -158,12 +159,13 @@ function jobsView(){
     '<label>Generic catalog item<select name="part">'+CATALOG.map(c=>'<option value="'+h(c.partNumber)+'">'+h(c.partNumber)+' · Rev '+h(c.revision)+'</option>').join("")+'</select></label>'+
     '<label>Order quantity<input type="number" name="quantity" min="1" max="1000" value="12" required></label>'+
     '<button class="action" type="submit">Create work order</button></form></section>';
+  const shownJobs=contextSelection("jobs",state.jobs);
   s+='<section class="panel"><div class="panel-head"><h2>Shop order register</h2><a class="action secondary" href="#bridge">Import simulator job</a></div>'+
-    table(["Work order","Part","Rev","Qty","Reserved","Source","Readiness","EWI"],state.jobs.map(j=>[
-      jobLink(j,"routing"),h(j.partNumber)+" / "+h(j.revision),h(j.quantity),h(j.reserved||0),
+    table(["Work order","Part","Rev","Qty","Reserved","Source","Readiness","EWI"],shownJobs.map(j=>[
+      jobLink(j,"routing"),ctxSpan("part",j.partNumber,j.partNumber),h(j.revision),h(j.quantity),h(j.reserved||0),
       h(j.origin),jobState(j),
       '<a class="action secondary" href="#ewi" data-job="'+h(j.id)+'">Open</a>'
-    ]))+'</section>';
+    ]),"No related fictional jobs for this record.",shownJobs.map(j=>({type:"job",id:j.id})))+'</section>';
   return s;
 }
 function routingView(){
