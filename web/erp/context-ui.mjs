@@ -104,7 +104,7 @@ export function installContextMenu({getState,onNavigate}){
   if(openFor(target,{x:rect.left+14,y:rect.top+18,keyboard:true}))e.preventDefault();
  });
  document.addEventListener("pointerdown",e=>{if(!root.hidden&&!root.contains(e.target))close();});
- document.addEventListener("scroll",()=>close(),true);
+ document.addEventListener("scroll",event=>{if(!root.contains(event.target))close();},true);
  window.addEventListener("resize",()=>close());
  window.addEventListener("hashchange",()=>close());
  root.addEventListener("keydown",e=>{
