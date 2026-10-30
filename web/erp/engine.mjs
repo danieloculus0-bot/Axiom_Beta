@@ -69,7 +69,6 @@ export function packetIssues(state,jobId) {
   const job=getJob(state,jobId);
   if(!job) return ["Work order not found"];
   const issues=evaluatePacket(job);
-  if(job.routing?.reviewState==="REVIEW_REQUIRED")issues.push("Edited routing awaiting demo review");
   if(openQuality(state,jobId).length) issues.push("Open quality hold(s) on this job");
   if(job.reserved<job.quantity) issues.push("Material is not fully reserved for this job");
   return issues;
