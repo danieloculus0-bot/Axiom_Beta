@@ -115,7 +115,7 @@ export function renderPm(pm,selectedMachineId){
     h(r.id),h(getMachine(pm,r.machineId)?.name||"General"),h(r.type),
     label(r.priority,r.priority==="High"?"today":"soon"),h(dayStamp(r.submittedAt)),
     label(r.status,r.status==="CLOSED"?"clear":"today"),
-    r.status==="OPEN"?'<button class="action secondary" data-action="pm-close-request" data-id="'+h(r.id)+'">Close example</button>':
+    ["OPEN","IN PROGRESS"].includes(r.status)?'<button class="action secondary" data-action="pm-close-request" data-id="'+h(r.id)+'">Close example</button>':
     '<span class="small muted">'+h(dayStamp(r.closedAt))+'</span>'
    ]),"No fictional maintenance requests yet.",pm.requests.slice().reverse().map(r=>({type:"pm_request",id:r.id})))+'</section>';
  s+='<div class="notice"><b>MODULE BOUNDARY:</b> The full PM Tracker is still a separate Flask/SQLite/Excel-backed application. This GitHub Pages module reproduces its public-facing PM workflows using fictional local state. It does not connect to that server, sync workbooks, or perform actual QR scanning.</div>';
