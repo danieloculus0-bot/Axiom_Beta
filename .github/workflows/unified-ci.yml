@@ -18,6 +18,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test web/engine.test.mjs web/ewi/engine.test.mjs web/erp/engine.test.mjs
-      - run: node --check web/erp/app.mjs && node --check web/ewi/app.mjs
+      - run: node --test web/engine.test.mjs web/ewi/engine.test.mjs web/erp/engine.test.mjs web/erp/pm.test.mjs
+      - run: node --check web/erp/app.mjs && node --check web/ewi/app.mjs && node --check web/erp/pm-view.mjs
       - run: python -c "from superforge.app import create_app; a=create_app({'TESTING':True}); print(a.test_client().get('/health').get_json())"
