@@ -445,9 +445,17 @@ document.addEventListener("click",event=>{
     if(action==="clear-record-context"){selectedContext=null;selectedIntent="";flash="Record context cleared.";render();}
     if(action==="pm-csv") download(completionsCsv(state.pm),"text/csv;charset=utf-8","axiom-synthetic-pm-completions.csv");
     if(action==="download-report") download(reportCsv(reportWithContext(selectedReport)),"text/csv;charset=utf-8","axiom-demo-"+selectedReport+"-report.csv");
-    if(action==="pm-close-request") pmTransact(closeMaintenanceRequest(state.pm,id),"pm.request.closed",id+" / SIMULATED","Fictional maintenance request closed.");
+    if(action==="pm-close-request"||action==="close-maint-request")pmTransact(closeMaintenanceRequest(state.pm,id),"pm.request.closed",id+" / SIMULATED","Fictional maintenance request closed.");
+    if(action==="select-request"){selectedRequest={kind:button.dataset.kind,id};render();document.getElementById("request-detail")?.scrollIntoView({block:"start"});}
+    if(action==="approve-request")transact(approvePurchaseRequest(state,id),"Purchase request approved. Still awaiting an actual fictional PO receipt.");
+    if(action==="issue-request-po")transact(issueRequestPO(state,id),"Fictional PO issued for purchase request. Not completed until received.");
+    if(action==="verify-purchase-request")transact(verifyPurchaseRequest(state,id),"Purchase request verified after linked PO receipt.");
     if(action==="reserve")transact(reserve(state,selectedJobId),"Material reserved for the selected fictional job.");
-    if(action==="receive-po")transact(receivePurchaseOrder(state,id),"Simulated PO received into on-hand stock.");
+    if(action==="receive-po"){
+      let next=receivePurchaseOrder(state,id);
+      if(next.purchaseRequests.some(r=>r.linkedPoId===id&&r.status==="ORDERED"))next=syncReceivedRequests(next,id);
+      transact(next,"Simulated PO received. Linked purchase request awaits confirmation.");
+    }
     if(action==="close-ncr")transact(closeQuality(state,id),"Synthetic quality record closed. EWI interlock recalculated.");
     if(action==="sync"){
       const routing=emulatorFetchRouting(id);
@@ -509,6 +517,28 @@ document.addEventListener("submit",event=>{
         pmTransact(result.pm,"pm.request.opened",result.id+" / FICTIONAL","A fictional maintenance request was opened.");
         break;
       }
+      case "request-purchase":{
+        const result=createPurchaseRequest(state,{itemId:String(f.get("item")),quantity:Number(f.get("quantity")),
+          reason:String(f.get("reason")),priority:String(f.get("priority")),owner:String(f.get("owner")),dueDate:String(f.get("due"))});
+        selectedRequest={kind:"purchase",id:result.id};
+        transact(result.state,"Fictional purchase requisition submitted. Not yet ordered.");break;
+      }
+      case "request-maintenance":{
+        const result=requestMaintenance(state.pm,String(f.get("machine")),String(f.get("type")),String(f.get("priority")));
+        const pm=assignMaintenanceRequest(result.pm,result.id,String(f.get("owner")),String(f.get("due")));
+        selectedRequest={kind:"maintenance",id:result.id};
+        pmTransact(pm,"pm.request.opened",result.id+" / assigned","Fictional maintenance request assigned.");break;
+      }
+      case "request-assign":
+        transact(assignPurchaseRequest(state,String(f.get("id")),String(f.get("owner")),String(f.get("due"))),"Purchase request ownership and deadline updated.");break;
+      case "request-purchase-followup":
+        transact(followupPurchaseRequest(state,String(f.get("id")),String(f.get("note"))),"Purchase follow-up recorded.");break;
+      case "request-maint-assign":
+        pmTransact(assignMaintenanceRequest(state.pm,String(f.get("id")),String(f.get("owner")),String(f.get("due"))),
+          "pm.request.assigned",String(f.get("id")),"Maintenance owner and due date updated.");break;
+      case "request-maint-followup":
+        pmTransact(followupMaintenanceRequest(state.pm,String(f.get("id")),String(f.get("note"))),
+          "pm.request.followup",String(f.get("id")),"Maintenance follow-up recorded.");break;
       case "new-job":{
         const result=createJob(state,String(f.get("part")),Number(f.get("quantity")));
         state=result.state;rememberJob(result.jobId);flash="Created a fictional Axiom work order. Reserve material to enable clocking.";
