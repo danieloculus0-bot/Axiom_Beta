@@ -1,10 +1,13 @@
 import {
   ERP_KEY,CLOCK_KEY,CATALOG,EXTERNAL_FIXTURES,EMULATOR_CONTRACT,QUALITY_REASONS,
-  seedState,validateState,getJob,available,reservedTotal,openQuality,packetIssues,
+  seedState,validateState,getJob,available,reservedTotal,openQuality,packetIssues,change,
   createJob,reserve,makePurchaseOrder,receivePurchaseOrder,raiseQuality,closeQuality,
   setDrawingRevision,emulatorFetchJobs,emulatorFetchRouting,syncEmulatorJob,postEmulatorTicket
 } from "./engine.mjs";
 import {startSession,stopSession,durationSeconds,sessionsCsv} from "../ewi/engine.mjs";
+import {renderPm} from "./pm-view.mjs";
+import {getMachine,getTask,pmOverview,createMachine,addPmTask,completePmTask,requestMaintenance,
+  closeMaintenanceRequest,completionsCsv,localDay} from "./pm.mjs";
 
 const $=id=>document.getElementById(id);
 const h=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -12,9 +15,9 @@ const deep=v=>structuredClone(v);
 const stateViews={
  dashboard:"Command Center",jobs:"Work Orders",routing:"Routing & Planning",
  ewi:"EWI & Clocking",inventory:"Inventory",purchasing:"Purchasing",
- quality:"Quality Control",documents:"Drawing Control",bridge:"ERP Emulator",audit:"Event History"
+ quality:"Quality Control",documents:"Drawing Control",pm:"PM Tracker",bridge:"ERP Emulator",audit:"Event History"
 };
-let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="";
+let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="";
 function load(){
   try{
     const raw=localStorage.getItem(ERP_KEY);
@@ -40,6 +43,9 @@ function persist(){
   catch{stored=false;flash="Local storage unavailable. Export records before refreshing.";}
 }
 function transact(next,message){state=next;flash=message;persist();render();}
+function pmTransact(nextPm,type,detail,message){
+  transact(change(state,type,detail,n=>{n.pm=nextPm;}),message);
+}
 function job(){return getJob(state,selectedJobId)||state.jobs[0];}
 function stamp(t){if(!t)return "RUNNING";if(t==="DEMO SEED")return "Sample";const d=new Date(t);return Number.isFinite(d.getTime())?d.toLocaleString():"Sample";}
 function hours(seconds){const s=Math.floor(seconds);return [Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(v=>String(v).padStart(2,"0")).join(":");}
@@ -65,6 +71,7 @@ function jobState(j){return packetIssues(state,j.id).length?'<span class="tag wa
 function dashboard(){
   const active=sessions.filter(s=>!s.end).length,blocked=state.jobs.filter(j=>packetIssues(state,j.id).length).length;
   const ordered=state.purchaseOrders.filter(p=>p.status==="ORDERED").length;
+  const pm=pmOverview(state.pm);
   let s=heading("Overview / connected shop workflow","Manufacturing command center",
     "One fictional dataset drives the job tracker, material transactions, quality holds, routed work instructions and clocking.");
   s+='<div class="metrics">'+metric("Work orders",state.jobs.length,"Synthetic orders")+
@@ -81,9 +88,13 @@ function dashboard(){
     moduleLink("ewi","Clocking","Live local timers")+
     moduleLink("routing","Routing","Work centers and steps")+
     moduleLink("quality","Quality","Create and close holds")+
+    moduleLink("pm","PM Tracker","Maintenance schedules & requests")+
     moduleLink("purchasing","Purchasing","Receive demo inventory")+
     moduleLink("bridge","ERP Bridge","Emulated import and time receipt")+
     '</div></section></div>';
+  s+='<section class="panel"><div class="panel-head"><h2>Maintenance snapshot</h2><a href="#pm" class="action secondary">Open PM Tracker</a></div>'+
+    '<div class="pills">'+status(pm.overdue+" OVERDUE TASKS")+' '+status(pm.dueToday+" DUE TODAY")+' '+status(pm.openRequests+" OPEN REQUESTS")+'</div>'+
+    '<p class="small">'+h(pm.machines)+' generic machines · '+h(pm.tasks)+' recurring tasks. These are fictional maintenance records, not live equipment conditions.</p></section>';
   s+='<section class="panel"><div class="panel-head"><h2>Recent simulated transactions</h2><a href="#audit">Full event history</a></div>'+
     state.events.slice(-5).reverse().map(e=>'<div class="receipt"><b>'+h(e.type)+'</b> · '+h(e.detail)+' <span class="muted">('+h(stamp(e.at))+')</span></div>').join("")+'</section>';
   return s;
@@ -291,7 +302,7 @@ function auditView(){
   return s;
 }
 const renderers={dashboard,jobs:jobsView,routing:routingView,ewi:clockView,inventory:inventoryView,
-  purchasing:purchasingView,quality:qualityView,documents:documentsView,bridge:bridgeView,audit:auditView};
+  purchasing:purchasingView,quality:qualityView,documents:documentsView,pm:()=>renderPm(state.pm,selectedPmMachineId),bridge:bridgeView,audit:auditView};
 function rememberJob(id){
   if(!getJob(state,id))return;
   selectedJobId=id;selectedStep=job().routing.operations[0].step;
@@ -323,6 +334,16 @@ document.addEventListener("click",event=>{
   if(!button)return;
   const action=button.dataset.action,id=button.dataset.id;
   try{
+    if(action==="pm-select-machine") {selectedPmMachineId=id;flash="";render();document.getElementById("pm-machine-card")?.scrollIntoView({block:"start"});}
+    if(action==="pm-select-task") {const item=getTask(state.pm,id);if(!item)throw Error("Demo task missing");selectedPmMachineId=item.machineId;render();const picker=document.getElementById("pm-completion-task");if(picker)picker.value=id;picker?.scrollIntoView({block:"center"});}
+    if(action==="pm-open-requests") document.getElementById("pm-request-queue")?.scrollIntoView({block:"start"});
+    if(action==="pm-copy-link") {
+      const link=location.origin+location.pathname+"?machine="+encodeURIComponent(id)+"#pm";
+      if(navigator.clipboard?.writeText){navigator.clipboard.writeText(link).then(()=>{flash="Fictional machine link copied.";render();}).catch(()=>window.prompt("Copy demo machine link:",link));}
+      else window.prompt("Copy demo machine link:",link);
+    }
+    if(action==="pm-csv") download(completionsCsv(state.pm),"text/csv;charset=utf-8","axiom-synthetic-pm-completions.csv");
+    if(action==="pm-close-request") pmTransact(closeMaintenanceRequest(state.pm,id),"pm.request.closed",id+" / SIMULATED","Fictional maintenance request closed.");
     if(action==="reserve")transact(reserve(state,selectedJobId),"Material reserved for the selected fictional job.");
     if(action==="receive-po")transact(receivePurchaseOrder(state,id),"Simulated PO received into on-hand stock.");
     if(action==="close-ncr")transact(closeQuality(state,id),"Synthetic quality record closed. EWI interlock recalculated.");
@@ -361,6 +382,31 @@ document.addEventListener("submit",event=>{
   const f=new FormData(form);
   try{
     switch(form.dataset.form){
+      case "pm-new-machine": {
+        const result=createMachine(state.pm,String(f.get("machine-type")),String(f.get("criticality")));
+        selectedPmMachineId=result.id;
+        pmTransact(result.pm,"pm.asset.created",result.id+" / FICTIONAL","Added a generic demonstration machine.");
+        break;
+      }
+      case "pm-new-task": {
+        const result=addPmTask(state.pm,selectedPmMachineId,Number(f.get("task-template")),Number(f.get("frequency")),localDay());
+        pmTransact(result.pm,"pm.task.scheduled",result.id+" / FICTIONAL","Scheduled a recurring fictional PM task.");
+        break;
+      }
+      case "pm-complete": {
+        const taskId=String(f.get("task")),selected=getTask(state.pm,taskId);
+        if(!selected||selected.machineId!==selectedPmMachineId)throw Error("Select a task belonging to the current demo machine");
+        const result=completePmTask(state.pm,taskId,{operator:String(f.get("operator")).trim().toUpperCase(),
+          result:String(f.get("result")),notes:String(f.get("notes")),checklistConfirmed:f.get("confirmed")!==null});
+        pmTransact(result.pm,"pm.task.completed",result.id+" / "+taskId+" / FICTIONAL",
+          result.raisedRequest?"Simulated PM completed with attention required. A demo request was opened.":"Fictional PM completion recorded and next due date recalculated.");
+        break;
+      }
+      case "pm-request": {
+        const result=requestMaintenance(state.pm,String(f.get("machine")),String(f.get("type")),String(f.get("priority")));
+        pmTransact(result.pm,"pm.request.opened",result.id+" / FICTIONAL","A fictional maintenance request was opened.");
+        break;
+      }
       case "new-job":{
         const result=createJob(state,String(f.get("part")),Number(f.get("quantity")));
         state=result.state;rememberJob(result.jobId);flash="Created a fictional Axiom work order. Reserve material to enable clocking.";
@@ -396,5 +442,7 @@ setInterval(()=>{
 load();
 const requested=new URLSearchParams(location.search).get("job");
 selectedJobId=state.jobs.some(j=>j.id===requested)?requested:state.jobs[0].id;
+const requestedMachine=new URLSearchParams(location.search).get("machine");
+selectedPmMachineId=state.pm.machines.some(m=>m.id===requestedMachine)?requestedMachine:state.pm.machines[0]?.id||"";
 selectedStep=job().routing.operations[0].step;
 render();
