@@ -6,6 +6,8 @@ import {
 } from "./engine.mjs";
 import {startSession,stopSession,durationSeconds,sessionsCsv} from "../ewi/engine.mjs";
 import {renderPm} from "./pm-view.mjs";
+import {installMenu} from "./navigation-ui.mjs";
+import {REPORTS,makeReport,reportCsv} from "./reports.mjs";
 import {getMachine,getTask,pmOverview,createMachine,addPmTask,completePmTask,requestMaintenance,
   closeMaintenanceRequest,completionsCsv,localDay} from "./pm.mjs";
 
@@ -15,9 +17,9 @@ const deep=v=>structuredClone(v);
 const stateViews={
  dashboard:"Command Center",jobs:"Work Orders",routing:"Routing & Planning",
  ewi:"EWI & Clocking",inventory:"Inventory",purchasing:"Purchasing",
- quality:"Quality Control",documents:"Drawing Control",pm:"PM Tracker",bridge:"ERP Emulator",audit:"Event History"
+ quality:"Quality Control",documents:"Drawing Control",pm:"PM Tracker",reports:"Report Center",bridge:"ERP Emulator",audit:"Event History"
 };
-let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="";
+let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null;
 function load(){
   try{
     const raw=localStorage.getItem(ERP_KEY);
@@ -89,6 +91,7 @@ function dashboard(){
     moduleLink("routing","Routing","Work centers and steps")+
     moduleLink("quality","Quality","Create and close holds")+
     moduleLink("pm","PM Tracker","Maintenance schedules & requests")+
+    moduleLink("reports","Reports","Live synthetic operational reports")+
     moduleLink("purchasing","Purchasing","Receive demo inventory")+
     moduleLink("bridge","ERP Bridge","Emulated import and time receipt")+
     '</div></section></div>';
@@ -291,6 +294,29 @@ function bridgeView(){
     ]),"No simulated time tickets yet.")+'</section>';
   return s;
 }
+function reportsView(){
+  const selected=REPORTS.find(x=>x.id===selectedReport)||REPORTS[0];
+  const report=makeReport(state,sessions,selected.id);
+  let s=heading("Management / browser-local analytics","Operational report center",
+    "Seven cross-module operational reports and the event ledger, calculated from the same fictional jobs, stock, PM and clock events. No private ERP or external data.");
+  s+='<div class="metrics">'+metric("Available reports",REPORTS.length,"All functional")+
+    metric("Selected rows",report.rows.length,"Current fictional records")+
+    metric("Source systems","LOCAL","One Axiom demo state")+
+    metric("Export","CSV","Spreadsheet-friendly synthetic data")+'</div>';
+  s+='<section class="panel"><div class="panel-head"><h2>Report selection</h2>'+
+    '<button type="button" class="action" data-action="download-report">Download report CSV</button></div>'+
+    '<div class="controls"><label>Choose report<select id="report-select">'+REPORTS.map(x=>
+    '<option value="'+h(x.id)+'" '+(x.id===selected.id?"selected":"")+'>'+h(x.label)+'</option>').join("")+
+    '</select></label><span class="small muted">'+h(selected.description)+'</span></div></section>';
+  s+='<section class="panel"><div class="panel-head"><h2>'+h(report.title)+'</h2><span class="tag accent">'+
+    h(report.rows.length)+' rows</span></div>'+
+    table(report.columns,report.rows.slice(0,100).map(row=>row.map(value=>h(value))),
+      "This report has no records yet. Create a fictional transaction in its source module.")+
+    (report.rows.length>100?'<p class="small">Showing first 100 rows. CSV includes the full fictional report.</p>':'')+
+    '</section>';
+  s+='<div class="notice">This is a functional reporting view over browser-local synthetic state, not a live BI connector, financial ledger, secured reporting service or production approval.</div>';
+  return s;
+}
 function auditView(){
   let s=heading("Traceability / browser-only event history","Demonstration event ledger",
     "Transactions below are local browser actions. These are not secured, centrally audited, immutable or ERP-synchronized records.");
@@ -302,7 +328,7 @@ function auditView(){
   return s;
 }
 const renderers={dashboard,jobs:jobsView,routing:routingView,ewi:clockView,inventory:inventoryView,
-  purchasing:purchasingView,quality:qualityView,documents:documentsView,pm:()=>renderPm(state.pm,selectedPmMachineId),bridge:bridgeView,audit:auditView};
+  purchasing:purchasingView,quality:qualityView,documents:documentsView,pm:()=>renderPm(state.pm,selectedPmMachineId),reports:reportsView,bridge:bridgeView,audit:auditView};
 function rememberJob(id){
   if(!getJob(state,id))return;
   selectedJobId=id;selectedStep=job().routing.operations[0].step;
@@ -317,10 +343,7 @@ function render(){
   $("context-status").innerHTML=packetIssues(state,j.id).length?status("REVIEW"):status("READY");
   $("job-context").innerHTML=state.jobs.map(x=>'<option value="'+h(x.id)+'" '+(x.id===selectedJobId?"selected":"")+'>'+
     h(x.jobNumber+" · "+x.partNumber)+'</option>').join("");
-  document.querySelectorAll("[data-nav]").forEach(a=>{
-    const active=a.dataset.nav===view;a.classList.toggle("active",active);
-    if(active)a.setAttribute("aria-current","page");else a.removeAttribute("aria-current");
-  });
+  menu?.markActive(view);
   $("view").innerHTML='<div id="flash" role="status">'+h(flash)+'</div>'+renderers[view]();
 }
 function download(data,type,name){
@@ -344,6 +367,7 @@ document.addEventListener("click",event=>{
       else window.prompt("Copy demo machine link:",link);
     }
     if(action==="pm-csv") download(completionsCsv(state.pm),"text/csv;charset=utf-8","axiom-synthetic-pm-completions.csv");
+    if(action==="download-report") download(reportCsv(makeReport(state,sessions,selectedReport)),"text/csv;charset=utf-8","axiom-demo-"+selectedReport+"-report.csv");
     if(action==="pm-close-request") pmTransact(closeMaintenanceRequest(state.pm,id),"pm.request.closed",id+" / SIMULATED","Fictional maintenance request closed.");
     if(action==="reserve")transact(reserve(state,selectedJobId),"Material reserved for the selected fictional job.");
     if(action==="receive-po")transact(receivePurchaseOrder(state,id),"Simulated PO received into on-hand stock.");
@@ -429,6 +453,7 @@ document.addEventListener("submit",event=>{
 $("job-context").addEventListener("change",e=>{rememberJob(e.target.value);flash="";render();});
 document.addEventListener("change",e=>{
   if(e.target.id==="clock-step")selectedStep=e.target.value;
+  if(e.target.id==="report-select") {selectedReport=e.target.value;render();}
 });
 document.addEventListener("input",e=>{if(e.target.id==="operator-code")operator=e.target.value;});
 window.addEventListener("hashchange",()=>{flash="";render();});
@@ -446,4 +471,6 @@ selectedJobId=state.jobs.some(j=>j.id===requested)?requested:state.jobs[0].id;
 const requestedMachine=new URLSearchParams(location.search).get("machine");
 selectedPmMachineId=state.pm.machines.some(m=>m.id===requestedMachine)?requestedMachine:state.pm.machines[0]?.id||"";
 selectedStep=job().routing.operations[0].step;
+menu=installMenu({root:$("module-nav"),search:$("menu-search"),tabs:$("menu-tabs"),launch:$("menu-launch"),
+  getCurrent:currentView,onNavigate:id=>{if(location.hash==="#"+id)render();}});
 render();
