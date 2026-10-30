@@ -22,8 +22,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test web/engine.test.mjs web/ewi/engine.test.mjs web/erp/engine.test.mjs web/erp/pm.test.mjs
-      - run: node --check web/erp/app.mjs && node --check web/ewi/app.mjs && node --check web/erp/pm-view.mjs
+      - run: node --test web/engine.test.mjs web/ewi/engine.test.mjs web/erp/engine.test.mjs web/erp/pm.test.mjs web/erp/navigation.test.mjs web/erp/reports.test.mjs
+      - run: node --check web/erp/app.mjs && node --check web/ewi/app.mjs && node --check web/erp/pm-view.mjs && node --check web/erp/navigation-ui.mjs && node --check web/erp/reports.mjs
       - name: Assert source files and synthetic boundary are present
         run: |
           test -s web/index.html
@@ -36,6 +36,9 @@ jobs:
           test -s web/erp/engine.mjs
           test -s web/erp/pm.mjs
           test -s web/erp/pm-view.mjs
+          test -s web/erp/navigation.mjs
+          test -s web/erp/reports.mjs
+          grep -q 'menu-search' web/erp/index.html
           grep -q 'PM Tracker' web/erp/index.html
           test -s web/lab/index.html
           grep -q 'FUNCTIONAL LOCAL DEMO' web/ewi/index.html
