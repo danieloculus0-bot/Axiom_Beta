@@ -26,9 +26,8 @@ export function requestMetrics(state,today=localDay()){
  const purchase=state.purchaseRequests||[];
  const maintenance=state.pm.requests||[];
  const incomplete=purchase.filter(r=>!["VERIFIED","CANCELLED"].includes(r.status));
- const maintenancePending=maintenance.filter(r=>!["VERIFIED","CANCELLED"].includes(r.status));
- const verification=purchase.filter(r=>r.status==="RECEIVED").length+
-   maintenance.filter(r=>r.status==="CLOSED").length;
+ const maintenancePending=maintenance.filter(r=>!["CLOSED","CANCELLED"].includes(r.status));
+ const verification=purchase.filter(r=>r.status==="RECEIVED").length;
  const overdue=[...incomplete,...maintenancePending].filter(r=>r.dueDate&&dayDiff(r.dueDate,today)<0).length;
  return {openPurchases:incomplete.length,openMaintenance:maintenancePending.length,
    needsVerification:verification,overdue,followups:incomplete.length+maintenancePending.length};
