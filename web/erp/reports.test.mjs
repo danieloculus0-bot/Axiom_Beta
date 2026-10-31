@@ -82,7 +82,7 @@ test("quality register reports canonical NCR inspection, disposition and correct
  assert.ok(contextActions(state,"quality",id).some(action=>action.view==="quality"));
  assert.deepEqual(contextRelated(state,{type:"quality",id},"quality"),["sample-1001"]);
  const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
- assert.match(app,/data-action=\\"report-quality-case\\"/);
+ assert.ok(app.includes('data-action="report-quality-case"'));
  assert.match(app,/openContext\(\{type:"quality",id\},\{view:"quality",intent:"quality"\}\)/);
 });
 test("quality report retains legacy case records and chooses latest timestamped effectiveness evidence",()=>{
