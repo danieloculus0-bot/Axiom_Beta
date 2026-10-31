@@ -2,7 +2,7 @@
  * Reuses the existing advisor and PM snapshot. No invented hours, machine
  * qualification, live BEAN service, draft mutation, or production release.
  */
-import {getJob,packetIssues} from "./engine.mjs";
+import {getJob,packetIssues,reservedTotal} from "./engine.mjs";
 import {DEMO_CENTER_OPTIONS} from "./routing-edit.mjs";
 import {assessAlternateCenters} from "./routing-capacity-advice.mjs";
 
@@ -142,16 +142,27 @@ export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, sta
   // Browser-local reservations can contradict a claimed material READY state,
   // but even full reservation does not prove material is physically at the center.
   // There is no canonical dated production schedule in this ERP demo.
-  const materialKnown = state.items.some(item => item.id === job.materialId) &&
+  const materialItem = state.items.find(item => item.id === job.materialId);
+  const materialKnown = !!materialItem &&
     Number.isSafeInteger(job.quantity) && job.quantity > 0 &&
     Number.isSafeInteger(job.reserved) && job.reserved >= 0 &&
     job.reserved <= job.quantity;
   const materialConflict = center.material === "READY" &&
     (!materialKnown || job.reserved < job.quantity);
+  // Reuse the ERP's aggregate reservation calculation. A fully reserved job
+  // can still conflict with stock promised to other fictional jobs. Neither
+  // an on-hand number nor a reservation proves physical material readiness.
+  const stockKnown = materialKnown &&
+    typeof materialItem.onHand === "number" &&
+    Number.isFinite(materialItem.onHand) && materialItem.onHand >= 0 &&
+    state.jobs.filter(item => item.materialId === job.materialId)
+      .every(item => Number.isSafeInteger(item.reserved) && item.reserved >= 0);
+  const stockConflict = center.material === "READY" && materialKnown &&
+    (!stockKnown || reservedTotal(state,job.materialId) > materialItem.onHand);
   // Reuse the canonical EWI/job packet checks that gate clocking. Scenario
   // assertions cannot override drawing, quality, job status or draft review.
   const packetConcerns = packetIssues(state,jobId);
-  if (contradictedZero || materialConflict || packetConcerns.length || clockHistoryConflict) {
+  if (contradictedZero || materialConflict || stockConflict || packetConcerns.length || clockHistoryConflict) {
     const assessment = result.assessments.find(item => item.center === centerId);
     if (assessment) {
       if (contradictedZero) {
@@ -163,6 +174,12 @@ export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, sta
       if (materialConflict) {
         assessment.unknown.push("Scenario material READY conflicts with missing or incomplete canonical job material reservation; readiness is UNKNOWN.");
         assessment.notes.push("Browser-local reservation is not proof of physical material availability or operation-level readiness.");
+      }
+      if (stockConflict) {
+        assessment.unknown.push(stockKnown ?
+          "Scenario material READY conflicts with aggregate fictional reservations exceeding recorded on-hand stock; stock readiness is UNKNOWN." :
+          "Scenario material READY lacks valid fictional on-hand or aggregate reservation quantities; stock readiness is UNKNOWN.");
+        assessment.notes.push("Browser-local stock and reservations do not prove physical material availability or operation-level readiness.");
       }
       if (clockHistoryConflict) {
         assessment.unknown.push("This fictional job has browser-local EWI clock history; the existing routing editor blocks changes after any clock session.");
