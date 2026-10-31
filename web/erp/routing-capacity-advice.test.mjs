@@ -276,3 +276,69 @@ test("requests opened after the window do not block an earlier planning scenario
   assert.equal(r.assessments[0].pmEvidence.status,"NO_RECORDED_ALERTS");
   assert.equal(r.suggestions.length,1);
 });
+
+
+/* Synthetic human-review contract for optional canonical PM/work-center links. */
+const {reviewPmWorkCenterAssociation} = await import("./pm-work-center-link.mjs");
+const reviewLink = (pm,machineId="DEMO-M-001",centerId="LASER-01",overrides={}) =>
+  reviewPmWorkCenterAssociation(pm,{
+    machineId,centerId,sourceRef:"SYN-REVIEW-LINK-1",
+    reviewedBy:"DEMO-PLANNER",at:"2026-11-01T08:00:00Z",...overrides
+  });
+
+test("human-reviewed PM association persists only in cloned canonical PM record",()=>{
+  const pm=completePmTask(seedPm("2026-11-02"),"DEMO-PM-001",
+    {checklistConfirmed:true,result:"PASS",at:"2026-11-01T07:00:00Z"}).pm;
+  const before=structuredClone(pm);
+  const result=reviewLink(pm);
+  assert.deepEqual(pm,before);
+  assert.equal(result.pm.machines[0].workCenterLink.centerId,"LASER-01");
+  assert.equal(result.pm.machines[0].workCenterLink.reviewState,"DEMO_REVIEWED");
+  assert.equal(result.pm.workCenterLinkHistory.length,1);
+  assert.equal(result.pm.workCenterLinkHistory[0].previousCenterId,null);
+  assert.equal(result.canAutoRelease,false);
+  const s=scenario(center());s.pmContext={state:result.pm};
+  const assessed=assessAlternateCenters(job(),"10",s);
+  assert.equal(assessed.assessments[0].pmEvidence.machineId,"DEMO-M-001");
+  assert.equal(assessed.assessments[0].pmEvidence.status,"NO_RECORDED_ALERTS");
+  assert.equal(assessed.suggestions[0].canAutoApply,false);
+});
+
+test("reviewed association requires synthetic reviewer, source and explicit time",()=>{
+  const pm=seedPm("2026-11-02");
+  assert.throws(()=>reviewLink(pm,"DEMO-M-001","LASER-01",{reviewedBy:""}),/reviewer/);
+  assert.throws(()=>reviewLink(pm,"DEMO-M-001","LASER-01",{sourceRef:""}),/SYN-/);
+  assert.throws(()=>reviewLink(pm,"DEMO-M-001","LASER-01",{sourceRef:"REAL-REF"}),/SYN-/);
+  assert.throws(()=>reviewLink(pm,"DEMO-M-001","LASER-01",{at:"2026-11-01"}),/timestamp/);
+  assert.throws(()=>reviewLink(pm,"DEMO-M-999"),/existing fictional/);
+  assert.throws(()=>reviewLink(pm,"DEMO-M-001","UNREGISTERED"),/registered/);
+});
+
+test("duplicate PM machine claims for one work center are rejected",()=>{
+  const linked=reviewLink(seedPm("2026-11-02")).pm;
+  assert.throws(()=>reviewLink(linked,"DEMO-M-002","LASER-01"),/already associated/);
+  assert.equal(linked.machines[1].workCenterLink,undefined);
+});
+
+test("explicit reviewed unlink restores unmapped uncertainty and preserves history",()=>{
+  const linked=reviewLink(seedPm("2026-11-02")).pm;
+  const unlinked=reviewLink(linked,"DEMO-M-001",null,{
+    sourceRef:"SYN-UNLINK-1",at:"2026-11-01T09:00:00Z"}).pm;
+  assert.equal(unlinked.machines[0].workCenterLink,undefined);
+  assert.equal(linked.machines[0].workCenterLink.centerId,"LASER-01");
+  assert.equal(unlinked.workCenterLinkHistory.length,2);
+  assert.equal(unlinked.workCenterLinkHistory[1].kind,"DEMO_UNLINK");
+  const s=scenario(center());s.pmContext={state:unlinked};
+  const assessed=assessAlternateCenters(job(),"10",s);
+  assert.equal(assessed.assessments[0].pmEvidence.status,"UNMAPPED");
+  assert.equal(assessed.suggestions.length,0);
+});
+
+test("reassociation preserves the previous center in review history",()=>{
+  const first=reviewLink(seedPm("2026-11-02")).pm;
+  const next=reviewLink(first,"DEMO-M-001","PRESS-02",{
+    sourceRef:"SYN-REVIEW-LINK-2",at:"2026-11-01T10:00:00Z"}).pm;
+  assert.equal(next.machines[0].workCenterLink.centerId,"PRESS-02");
+  assert.equal(next.workCenterLinkHistory[1].previousCenterId,"LASER-01");
+  assert.throws(()=>reviewLink(next,"DEMO-M-001","PRESS-02"),/unchanged/);
+});
