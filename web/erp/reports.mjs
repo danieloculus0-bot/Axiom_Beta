@@ -8,7 +8,7 @@ export const REPORTS=[
  {id:"jobs",label:"Work order readiness",description:"Job revision, reservations and example hold reasons"},
  {id:"inventory",label:"Inventory position",description:"On hand, reserved and available by stock item"},
  {id:"purchasing",label:"Purchase order status",description:"Synthetic PO lifecycle and receiving"},
- {id:"quality",label:"Quality hold register",description:"Nonconformance status and job association"},
+ {id:"quality",label:"Quality hold register",description:"Linked fictional NCR dispositions, inspections, corrective actions, effectiveness and follow-up"},
  {id:"qcdsm",label:"QCDSM cross-domain evidence",description:"Morale, Quality, Cost, Delivery and Safety with explicit N/A baselines"},
  {id:"labor",label:"Operation clock sessions",description:"Genuine elapsed browser-local time events, not payroll"},
  {id:"pm",label:"PM schedule status",description:"Task due dates based on fictional machines"},
@@ -31,9 +31,19 @@ export function makeReport(state,sessions,id,today=localDay(),workforce=null){
   columns=["PO","Material","Quantity","Supplier","Status","Issued","Received"];
   rows=state.purchaseOrders.map(p=>[p.number,p.itemId,p.quantity,p.supplier,p.status,p.issuedAt,p.receivedAt||""]);break;
  case "quality":
-  columns=["NCR","Work order","Reason","Status","Opened","Closed"];
-  rows=state.quality.map(q=>[q.number,state.jobs.find(j=>j.id===q.jobId)?.jobNumber||"Unknown",
-    q.reason,q.status,q.openedAt,q.closedAt||""]);break;
+  columns=["NCR","Work order","Reason","Status","Opened","Closed","Disposition",
+    "Inspections","Corrective actions","Latest effectiveness","Follow-ups"];
+  rows=state.quality.map(q=>{
+    const actions=Array.isArray(q.correctiveActions)?q.correctiveActions:[];
+    const reviews=actions.flatMap(action=>Array.isArray(action.reviews)?action.reviews:[])
+      .filter(review=>typeof review.at==="string"&&typeof review.result==="string")
+      .sort((a,b)=>b.at.localeCompare(a.at));
+    return [q.number,state.jobs.find(j=>j.id===q.jobId)?.jobNumber||"Unknown",
+      q.reason,q.status,q.openedAt,q.closedAt||"",q.disposition?.decision||"NOT RECORDED",
+      Array.isArray(q.inspections)?q.inspections.length:0,actions.length,
+      reviews[0]?.result||(actions.length?"NOT REVIEWED":"NO ACTION"),
+      Array.isArray(q.followUps)?q.followUps.length:0];
+  });break;
  case "qcdsm":{
   columns=["Department","Morale risk / 100","Overtime hours","Overtime load %","Recent recordable examples","Safety review priority","Open quality NCR (plant)","Cost baseline","Delivery baseline"];
   rows=["Assembly","Machining","Quality","Maintenance","HR / Finance"].map(department=>{
