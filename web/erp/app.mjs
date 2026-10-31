@@ -530,6 +530,7 @@ document.addEventListener("click",event=>{
       const j=job();const clockIssues=packetIssues(state,j.id);if(clockIssues.length)throw Error("Clock start blocked: "+clockIssues.join("; "));
       const step=$("clock-step").value;operator=$("operator-code").value.trim().toUpperCase();
       sessions=startSession(sessions,{id:crypto.randomUUID(),employee:operator,job:deep(j),step,timestamp:new Date().toISOString()});
+      capacityReview=null; // Clock history changes the routing editor's eligibility.
       selectedStep=step;flash="Clock IN recorded locally. Nothing sent to a live ERP.";persist();render();
     }
     if(action==="clock-out"){
@@ -537,6 +538,7 @@ document.addEventListener("click",event=>{
       const active=sessions.find(s=>s.employee===operator&&!s.end);
       if(!active)throw Error("No active local clock for this demo operator");
       sessions=stopSession(sessions,{id:active.id,employee:operator,timestamp:new Date().toISOString()});
+      capacityReview=null; // Never display a review computed from older clock state.
       flash="Clock OUT saved locally. Time ticket NOT posted to JobBOSS².";persist();render();
     }
     if(action==="export-json")download(JSON.stringify({demo:true,erp_connected:false,exportedAt:new Date().toISOString(),
