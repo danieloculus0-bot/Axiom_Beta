@@ -425,8 +425,8 @@ test("closed NCR keeps historical inspection, linked corrective and chronology h
 });
 
 test("NCR inspection, corrective action and effectiveness evidence open only their actual work order",()=>{
-  let state=raiseQuality(seedState(),"sample-1001","Fictional process discrepancy",at);
-  state=raiseQuality(state,"sample-1002","Other fictional discrepancy",later);
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
+  state=raiseQuality(state,"sample-1002","Generic drawing revision conflict",later);
   const q=state.quality[0],other=state.quality[1];
   const step=state.jobs[0].routing.operations[0].step;
   state=recordQualityInspection(state,q.id,"FIRST_PIECE",step,"FAIL",
@@ -454,7 +454,7 @@ test("NCR inspection, corrective action and effectiveness evidence open only the
 });
 
 test("NCR evidence work-order actions are guarded for legacy, missing and unrelated records",()=>{
-  let state=raiseQuality(seedState(),"sample-1001","Fictional discrepancy",at);
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
   const q=state.quality[0],step=state.jobs[0].routing.operations[0].step;
   state=recordQualityInspection(state,q.id,"FINAL",step,"PASS",
     "Fictional final observation",later);
