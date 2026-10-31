@@ -543,7 +543,7 @@ document.addEventListener("click",event=>{
       state,sessions,workforce},null,2),"application/json","axiom-erp-synthetic-demo.json");
     if(action==="export-csv")download(sessionsCsv(sessions),"text/csv;charset=utf-8","axiom-erp-demo-clock.csv");
     if(action==="reset" && confirm("Delete all fictional Axiom ERP and EWI clock records in this browser and reset the demo?")){
-      state=seedState();sessions=[];workforce=seedWorkforce();selectedContext=null;selectedIntent="";rememberJob(state.jobs[0].id);
+      state=seedState();sessions=[];workforce=seedWorkforce();capacityReview=null;selectedContext=null;selectedIntent="";rememberJob(state.jobs[0].id);
       flash="Local demo reset to fictional starter records.";persist();render();
     }
   }catch(e){flash=e.message;render();}
@@ -678,8 +678,8 @@ document.addEventListener("change",e=>{
 });
 document.addEventListener("input",e=>{if(e.target.id==="operator-code")operator=e.target.value;});
 window.addEventListener("hashchange",()=>{flash="";render();});
-window.addEventListener("storage",e=>{if(e.key===ERP_KEY||e.key===CLOCK_KEY||e.key===WORKFORCE_KEY){load();render();}});
-window.addEventListener("focus",()=>{if(stored){load();render();}});
+window.addEventListener("storage",e=>{if(e.key===ERP_KEY||e.key===CLOCK_KEY||e.key===WORKFORCE_KEY){capacityReview=null;load();render();}});
+window.addEventListener("focus",()=>{if(stored){capacityReview=null;load();render();}});
 setInterval(()=>{
   document.querySelectorAll("[data-live-clock]").forEach(el=>{
     const active=sessions.find(s=>s.employee===operator&&!s.end);
