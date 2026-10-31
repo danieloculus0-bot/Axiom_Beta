@@ -146,3 +146,10 @@ export function qualityJobSummary(state,jobId){
     latestEffectiveness:reviews[0]?.result||(actions.length?"NOT REVIEWED":"NO ACTION")
   };
 }
+/* Resolve a real job-linked case for any dashboard, register or report entry. */
+export function jobQualityTarget(state,jobId){
+  if(!state.jobs.some(job=>job.id===jobId))return null;
+  const cases=qualityJobSummary(state,jobId).cases;
+  const selected=cases.find(q=>q.status==="OPEN")||cases[0];
+  return selected?{jobId,caseId:selected.id}:null;
+}
