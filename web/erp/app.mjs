@@ -13,7 +13,7 @@ import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction,qualityJobSummary,jobQualityTarget} from "./quality-case.mjs";
-import {renderQualityCase} from "./quality-case-view.mjs";
+import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary} from "./quality-case-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
@@ -232,7 +232,7 @@ function routingView(){
     moduleLink("inventory","Materials","Reserve generic stock")+
     moduleLink("quality","Quality","Review holds")+
     moduleLink("ewi","EWI","Clock operation")+'</div>'+
-    '<h3>Linked quality cases</h3>'+jobQualityCell(j)+
+    '<h3>Linked quality cases</h3>'+jobQualityCell(j)+renderJobQualityEvidence(state,j.id)+
     '<h3 style="margin-top:20px">Source labels</h3><p>Routing: '+h(j.routing.source)+'<br>Drawing: '+h(j.drawing.number)+' / Rev '+h(j.drawing.revision)+'</p></section></div>';
   s+=routingEditorHtml(j,routeDraft?.jobId===j.id?routeDraft.operations:null,sessions.some(session=>session.jobId===j.id));
   return s;
@@ -348,9 +348,10 @@ function qualityView(){
     '</select></label><button class="action danger" type="submit">Create quality hold</button></form></section>';
   const shownQuality=contextSelection("quality",state.quality);
   s+='<section class="panel"><h2>Nonconformance register</h2>'+
-    table(["Record","Work order","Reason","State","Action"],shownQuality.map(q=>{
-      const record=getJob(state,q.jobId);
+    table(["Record","Work order","Reason","State","Evidence","Action"],shownQuality.map(q=>{
+      const record=getJob(state,q.jobId),evidence=qualityCaseEvidenceSummary(q);
       return [h(q.number),jobLink(record,"ewi"),h(q.reason),status(q.status),
+        '<span class="small">'+h(evidence.inspections)+' inspections · '+h(evidence.correctiveActions)+' actions · '+h(evidence.latestEffectiveness)+'</span>',
         '<button class="action secondary" data-action="select-quality" data-id="'+h(q.id)+'">Review case</button>']
     }),"No matching fictional quality holds.",shownQuality.map(q=>({type:"quality",id:q.id})))+'</section>';
   const selected=shownQuality.find(record=>record.id===selectedQualityId)||shownQuality[0];
