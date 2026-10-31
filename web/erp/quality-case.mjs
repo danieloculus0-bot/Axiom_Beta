@@ -42,5 +42,7 @@ export function closeReviewedQuality(state,id,at=new Date().toISOString()){
   if(!record||record.status!=="OPEN")throw Error("Select an open fictional quality case");
   if(!record.disposition||!QUALITY_DISPOSITIONS.some(item=>item.id===record.disposition.decision))
     throw Error("Record a fictional disposition before closing this case");
+  if(record.disposition.decision==="RETURN_FOR_REVIEW")
+    throw Error("Return for review keeps this fictional quality case open");
   return closeQuality(state,id,timestamp(at));
 }
