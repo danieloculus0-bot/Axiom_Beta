@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {seedState,makePurchaseOrder,receivePurchaseOrder,raiseQuality,createJob} from "./engine.mjs";
 import {makeReport,reportCsv,REPORTS} from "./reports.mjs";
 import {qualityCaseTimeline} from "./quality-timeline.mjs";
-import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary} from "./quality-case-view.mjs";
+import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget} from "./quality-case-view.mjs";
 import {startSession,stopSession} from "../ewi/engine.mjs";
 import {completePmTask} from "./pm.mjs";
 import {qualityJobSummary,jobQualityTarget,recordQualityInspection,recordQualityDisposition,closeReviewedQuality,
@@ -242,4 +242,54 @@ test("quality evidence links escape legacy text and use existing record-aware na
  assert.ok(app.includes("qualityCaseEvidenceSummary(q)"));
  assert.ok(app.includes('if(action==="report-quality-case")'));
  assert.ok(app.includes('openContext({type:"quality",id},{view:"quality",intent:"quality"})'));
+});
+
+test("quality evidence links resolve exact inspection, corrective action and effectiveness receipts",()=>{
+ let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
+ state=raiseQuality(state,"sample-1002","Generic drawing revision conflict",later);
+ const [q,other]=state.quality,step=state.jobs[0].routing.operations[0].step;
+ state=recordQualityInspection(state,q.id,"FIRST_PIECE",step,"FAIL","Fictional inspection evidence","2026-10-30T12:01:00Z");
+ const inspectionId=state.quality[0].inspections[0].id;
+ state=recordQualityCorrectiveAction(state,q.id,"QUALITY","Review fictional setup",inspectionId,"2026-10-30T12:02:00Z");
+ const actionId=state.quality[0].correctiveActions[0].id;
+ state=reviewQualityCorrectiveAction(state,q.id,actionId,"MORE_EVIDENCE","More fictional checking needed","2026-10-30T12:03:00Z");
+ const reviewId=state.quality[0].correctiveActions[0].reviews[0].id;
+ const record=state.quality[0],before=JSON.stringify(state);
+ for(const [kind,id] of [["inspection",inspectionId],["corrective",actionId],["effectiveness",reviewId]]){
+   assert.deepEqual(qualityEvidenceTarget(record,kind,id),{kind,id});
+   assert.equal(qualityEvidenceTarget(other,kind,id),null);
+ }
+ assert.equal(qualityEvidenceTarget(record,"inspection","missing"),null);
+ assert.equal(qualityEvidenceTarget(record,"followup",inspectionId),null);
+ assert.equal(qualityEvidenceTarget(record,"corrective",inspectionId),null);
+ const html=renderQualityCase(state,q.id);
+ assert.ok(html.includes('data-case-id="'+q.id+'"'));
+ for(const [kind,id] of [["inspection",inspectionId],["corrective",actionId],["effectiveness",reviewId]]){
+   assert.ok(html.includes('data-evidence-kind="'+kind+'" data-evidence-id="'+id+'"'));
+   assert.ok(html.includes('data-case="'+q.id+'" data-kind="'+kind+'" data-id="'+id+'"'));
+ }
+ assert.match(html,/View observation/);
+ assert.match(html,/View corrective action/);
+ assert.match(html,/View evidence/);
+ assert.ok(!html.includes('data-case="'+other.id+'"'));
+ assert.equal(JSON.stringify(state),before);
+ const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
+ assert.ok(app.includes('if(action==="quality-evidence-focus")'));
+ assert.ok(app.includes('panel?.dataset.caseId!==caseId'));
+ assert.ok(app.includes('!qualityEvidenceTarget(record,kind,id)'));
+ assert.ok(app.includes('target.focus({preventScroll:true})'));
+});
+test("legacy evidence without stable IDs offers no dead-end links and escapes text",()=>{
+ const record={id:"legacy",inspections:[{observation:"<script>bad</script>",at:"2026-10-30T12:00:00Z"}],
+   correctiveActions:[{description:"Legacy action",reviews:[{result:"EFFECTIVE",at:"2026-10-30T12:01:00Z"}]}]};
+ assert.equal(qualityEvidenceTarget(record,"inspection",""),null);
+ assert.equal(qualityEvidenceTarget(record,"effectiveness","missing"),null);
+ assert.equal(qualityEvidenceTarget(record,"inspection",null),null);
+ let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
+ state.quality[0].inspections=record.inspections;
+ state.quality[0].correctiveActions=record.correctiveActions;
+ const html=renderQualityCase(state,state.quality[0].id);
+ assert.ok(html.includes("&lt;script&gt;bad&lt;/script&gt;"));
+ assert.ok(!html.includes("<script>"));
+ assert.ok(!html.includes('data-action="quality-evidence-focus"'));
 });
