@@ -12,7 +12,7 @@ import {renderHr,renderMorale} from "./workforce-view.mjs";
 import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
-import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction,qualityJobSummary} from "./quality-case.mjs";
+import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction,qualityJobSummary,jobQualityTarget} from "./quality-case.mjs";
 import {renderQualityCase} from "./quality-case-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
@@ -545,13 +545,12 @@ document.addEventListener("click",event=>{
       openContext({type:"quality",id},{view:"quality",intent:"quality"});
     }
     if(action==="job-quality-cases"){
-      if(!getJob(state,id))throw Error("Fictional work order not found");
-      const cases=qualityJobSummary(state,id).cases;
-      if(!cases.length)throw Error("No fictional NCRs on this work order");
-      selectedContext={type:"job",id};
+      const target=jobQualityTarget(state,id);
+      if(!target)throw Error("No fictional NCRs on this work order");
+      selectedContext={type:"job",id:target.jobId};
       selectedIntent="quality";
-      selectedQualityId=(cases.find(q=>q.status==="OPEN")||cases[0]).id;
-      rememberJob(id);
+      selectedQualityId=target.caseId;
+      rememberJob(target.jobId);
       if(location.hash==="#quality"){
         render();
         document.getElementById("quality-case-detail")?.scrollIntoView({block:"start"});
