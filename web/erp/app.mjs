@@ -669,7 +669,15 @@ document.addEventListener("submit",event=>{
         transact(postEmulatorTicket(state,session),"Fictional time ticket accepted by the in-browser emulator ONLY.");break;
       }
     }
-  }catch(e){flash=e.message;render();}
+  }catch(e){
+    flash=e.message;
+    if(form.dataset.form==="routing-capacity-review"){
+      // A rejected read-only scenario must retain the user's unsaved inputs.
+      // Re-rendering replaces the form and silently discards every field.
+      const banner=document.getElementById("flash");
+      if(banner){banner.textContent=flash;banner.setAttribute("role","alert");}
+    }else render();
+  }
 });
 $("job-context").addEventListener("change",e=>{rememberJob(e.target.value);flash="";render();});
 document.addEventListener("change",e=>{
