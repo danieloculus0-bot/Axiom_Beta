@@ -342,3 +342,40 @@ test("reassociation preserves the previous center in review history",()=>{
   assert.equal(next.workCenterLinkHistory[1].previousCenterId,"LASER-01");
   assert.throws(()=>reviewLink(next,"DEMO-M-001","PRESS-02"),/unchanged/);
 });
+
+/* renderPm association UI: synthetic records, no browser or live equipment. */
+const {renderPm} = await import("./pm-view.mjs");
+
+test("renderPm association UI exposes optional center selection and explicit review",()=>{
+  const pm=seedPm("2026-11-02"),before=structuredClone(pm);
+  const html=renderPm(pm,"DEMO-M-001");
+  assert.match(html,/data-form="pm-work-center-link"/);
+  assert.match(html,/name="machine" value="DEMO-M-001"/);
+  assert.match(html,/name="center"/);
+  assert.match(html,/value="LASER-01"/);
+  assert.match(html,/name="confirmed" required/);
+  assert.match(html,/not production authorization/);
+  assert.match(html,/UNMAPPED/);
+  assert.deepEqual(pm,before);
+});
+
+test("renderPm association UI displays reviewed mapping and history in same PM state",()=>{
+  const pm=reviewLink(seedPm("2026-11-02")).pm;
+  const html=renderPm(pm,"DEMO-M-001");
+  assert.match(html,/value="LASER-01" selected/);
+  assert.match(html,/SYN-REVIEW-LINK-1/);
+  assert.match(html,/DEMO-PLANNER/);
+  assert.match(html,/Recent association history/);
+  assert.match(html,/DEMO REVIEWED/);
+});
+
+test("renderPm association UI escapes untrusted legacy association history",()=>{
+  const pm=reviewLink(seedPm("2026-11-02")).pm;
+  pm.workCenterLinkHistory[0].sourceRef='<img src=x onerror=alert(1)>';
+  pm.workCenterLinkHistory[0].reviewedBy='<script>alert(1)</script>';
+  const html=renderPm(pm,"DEMO-M-001");
+  assert.ok(!html.includes('<img src=x'));
+  assert.ok(!html.includes('<script>'));
+  assert.match(html,/&lt;img src=x/);
+  assert.match(html,/&lt;script&gt;/);
+});
