@@ -38,19 +38,34 @@ function pmEvidenceFor(context, centerId, window) {
     concerns:["Linked PM machine record is invalid; clearance is UNKNOWN."]}; }
   if (!machine) return {...base,status:"UNRESOLVED",
     concerns:["Linked PM machine does not exist in the supplied snapshot."]};
+  // Evaluate PM tasks as they stood at the window start. A later passing
+  // completion cannot retroactively clear an earlier planning window.
+  const startMs = Date.parse(window.start), endMs = Date.parse(window.end);
+  const asOfStart = {...context.state,completions:context.state.completions.filter(c =>
+    Number.isFinite(Date.parse(c?.completedAt)) && Date.parse(c.completedAt) <= startMs)};
   let summary;
-  try { summary = machineSummary(context.state,link.machineId,window.start.slice(0,10)); }
+  try { summary = machineSummary(asOfStart,link.machineId,new Date(startMs).toISOString().slice(0,10)); }
   catch { return {...base,status:"UNKNOWN",
     concerns:["PM task evidence could not be evaluated; maintenance clearance is UNKNOWN."]}; }
-  base.openRequestIds = context.state.requests
-    .filter(r => r?.machineId === link.machineId && !["CLOSED","CANCELLED"].includes(r.status))
-    .map(r => r.id);
+  // Requests overlapping any part of the window still need review even if
+  // the present-day snapshot records closure after that window. Incomplete
+  // timestamps stay reviewable rather than silently implying clearance.
+  base.openRequestIds = context.state.requests.filter(r => {
+    if (r?.machineId !== link.machineId) return false;
+    const submitted = Date.parse(r.submittedAt);
+    if (!Number.isFinite(submitted)) return true;
+    if (submitted > endMs) return false;
+    const closed = Date.parse(r.closedAt);
+    if (["CLOSED","CANCELLED"].includes(r.status) &&
+        Number.isFinite(closed) && closed >= submitted && closed < startMs) return false;
+    return true;
+  }).map(r => r.id);
   base.dueTaskIds = summary.tasks
     .filter(t => t.due && t.due <= window.end.slice(0,10)).map(t => t.id);
   if (!base.linkSourceRef) base.concerns.push("PM asset mapping evidence reference missing.");
   if (machine.active !== true) base.concerns.push("Linked PM machine is inactive or its status is UNKNOWN.");
   if (base.openRequestIds.length)
-    base.concerns.push("Open PM requests require independent machine-availability review.");
+    base.concerns.push("PM requests overlapping the planning window require independent availability review.");
   if (base.dueTaskIds.length)
     base.concerns.push("PM tasks due within the planning window require downtime review.");
   return {...base,status:base.concerns.length ? "NEEDS_REVIEW" : "NO_RECORDED_ALERTS"};
