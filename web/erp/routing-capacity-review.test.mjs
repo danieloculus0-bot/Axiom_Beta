@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {seedState} from "./engine.mjs";
 import {reviewPmWorkCenterAssociation} from "./pm-work-center-link.mjs";
-import {inspectRoutingCapacityEvidence,routingCapacityEvidenceHtml} from "./routing-capacity-review.mjs";
+import {inspectRoutingCapacityEvidence,routingCapacityEvidenceHtml,readRoutingCapacityScenario} from "./routing-capacity-review.mjs";
 
 const START="2026-11-02T08:00", END="2026-11-02T16:00";
 test("canonical routing and PM snapshot produce review-only UNKNOWN evidence without mutations",()=>{
@@ -98,4 +98,50 @@ test("unsourced, invalid and unsupported scenario fields fail closed",()=>{
   assert.throws(run,/supported states/);e.center.maintenanceState="CLEAR";
   e.center.programLink={programId:"SYN-OTHER"};
   assert.throws(run,/unsupported or missing evidence/);
+});
+
+const browserScenarioFields=()=>{
+  const f=new FormData();
+  for(const [k,v] of Object.entries({
+    capability:"supported","capability-ref":"SYN-UI-CAP-001",
+    calendarHours:"8",bookedHours:"1",queuedHours:"1",maintenanceHours:"0",
+    setupHours:"1",runHours:"2","capacity-ref":"SYN-UI-CAL-001",
+    "readiness-ref":"SYN-UI-READY-001",maintenanceState:"CLEAR",
+    tooling:"READY",fixture:"READY",material:"READY",
+    deliveryState:"ON_TIME",routedOperationCount:"0"
+  }))f.set("scenario-"+k,v);
+  return f;
+};
+test("browser scenario opt-in rejects missing or unsourced values",()=>{
+  const state=seedState(),job=state.jobs[0],f=browserScenarioFields();
+  assert.equal(readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END),null);
+  f.set("scenario-enabled","yes");f.delete("scenario-calendarHours");
+  assert.throws(()=>readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END),/six scenario hour/);
+  f.set("scenario-calendarHours","8");f.set("scenario-capacity-ref","REAL-ASSET");
+  assert.throws(()=>readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END),/fictional SYN-/);
+});
+test("browser scenario produces traceable estimates but no clearance or writes",()=>{
+  const state=seedState(),job=state.jobs[0],before=structuredClone(state),f=browserScenarioFields();
+  f.set("scenario-enabled","yes");
+  const e=readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END);
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e);
+  assert.equal(review.assessment.availableHours,6);
+  assert.equal(review.assessment.utilizationPercent,25);
+  assert.equal(review.assessment.pmEvidence.status,"UNMAPPED");
+  assert.equal(review.assessment.status,"NEEDS_REVIEW");
+  assert.equal(review.result.canAutoApply,false);
+  assert.deepEqual(state,before);
+  const html=routingCapacityEvidenceHtml(job,review);
+  assert.match(html,/scenario-enabled" value="yes" checked/);
+  assert.match(html,/SYN-UI-CAL-001/);
+  assert.match(html,/Scenario estimates, not verified/);
+});
+test("unsupported fictional capability is excluded",()=>{
+  const state=seedState(),job=state.jobs[0],f=browserScenarioFields();
+  f.set("scenario-enabled","yes");f.set("scenario-capability","unsupported");
+  const e=readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END);
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e);
+  assert.equal(review.assessment.status,"EXCLUDED");
+  assert.equal(review.result.suggestions.length,0);
+  assert.equal(review.result.canAutoApply,false);
 });

@@ -14,7 +14,7 @@ import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
-import {inspectRoutingCapacityEvidence,routingCapacityEvidenceHtml} from "./routing-capacity-review.mjs";
+import {inspectRoutingCapacityEvidence,routingCapacityEvidenceHtml,readRoutingCapacityScenario} from "./routing-capacity-review.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
  issueRequestPO,syncReceivedRequests,verifyPurchaseRequest,followupPurchaseRequest} from "./requests.mjs";
@@ -577,11 +577,11 @@ document.addEventListener("submit",event=>{
       case "morale-nominate":
         workforceTransact(nominateDemoRecognition(workforce,String(f.get("person")),String(f.get("category")),String(f.get("reason")),Number(f.get("points"))),"morale.recognition.nominated","Fictional recognition nomination","Nomination added for demonstration review.");break;
       case "routing-capacity-review": {
-        const j=job();
-        capacityReview=inspectRoutingCapacityEvidence(state,j.id,
-          String(f.get("step")||""),String(f.get("center")||""),
-          String(f.get("window-start")||""),String(f.get("window-end")||""));
-        flash="Evidence gaps reviewed for the saved fictional routing. No capacity or routing changes made.";
+        const j=job(),step=String(f.get("step")||""),center=String(f.get("center")||""),
+          start=String(f.get("window-start")||""),end=String(f.get("window-end")||"");
+        const evidence=readRoutingCapacityScenario(f,j,step,center,start,end);
+        capacityReview=inspectRoutingCapacityEvidence(state,j.id,step,center,start,end,evidence);
+        flash="Fictional estimates reviewed, not verified or saved. No routing changed.";
         render();break;
       }
       case "routing-save":{

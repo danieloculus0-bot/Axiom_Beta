@@ -53,6 +53,53 @@ function scopedScenarioCenter(e,job,op,id,startLocal,endLocal){
   return {id,...structuredClone(c)};
 }
 
+
+/** Only explicitly opted-in fictional scenario values are evaluated. */
+export function readRoutingCapacityScenario(fields,job,step,centerId,startLocal,endLocal){
+  if(!fields.has("scenario-enabled"))return null;
+  const operation=job?.routing?.operations?.find(op=>op.step===step);
+  if(!operation)fail("Select a routed operation before scenario review.");
+  const get=k=>String(fields.get("scenario-"+k)??"").trim();
+  const source=k=>{
+    const s=get(k);
+    if(!syntheticRef(s))fail("Scenario sources require fictional SYN- references.");
+    return s;
+  };
+  const hour=k=>{
+    const raw=get(k);
+    if(!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(raw))
+      fail("All six scenario hour estimates must be explicitly supplied.");
+    const n=Number(raw);
+    if(!Number.isFinite(n)||n<0||n>100000)
+      fail("Scenario hours must be finite, nonnegative estimates.");
+    return n;
+  };
+  const capability=get("capability");
+  if(!["supported","unsupported"].includes(capability))
+    fail("Select supported or unsupported fictional capability.");
+  const choices={maintenanceState:["UNKNOWN","CLEAR","DOWN"],
+    tooling:["UNKNOWN","READY","BLOCKED"],fixture:["UNKNOWN","READY","BLOCKED"],
+    material:["UNKNOWN","READY","BLOCKED"],deliveryState:["UNKNOWN","ON_TIME","LATE"]};
+  const readiness={};
+  for(const [k,options] of Object.entries(choices)){
+    if(!options.includes(get(k)))fail("Choose explicit scenario readiness states.");
+    readiness[k]=get(k);
+  }
+  const count=get("routedOperationCount");
+  if(count!==""&&(!/^\d+$/.test(count)||!Number.isSafeInteger(Number(count))))
+    fail("Routed-operation count must be nonnegative or UNKNOWN.");
+  const center={
+    capability:{operation:operation.name,supported:capability==="supported",sourceRef:source("capability-ref")},
+    calendarHours:hour("calendarHours"),bookedHours:hour("bookedHours"),
+    queuedHours:hour("queuedHours"),maintenanceHours:hour("maintenanceHours"),
+    setupHours:hour("setupHours"),runHours:hour("runHours"),
+    capacitySourceRef:source("capacity-ref"),readinessSourceRef:source("readiness-ref"),...readiness
+  };
+  if(count!=="")center.routedOperationCount=Number(count);
+  return {scope:{jobId:job.id,partNumber:job.partNumber,revision:job.revision,
+    step,centerId,startLocal,endLocal},center};
+}
+
 /** No supplied capacity/capability evidence means UNKNOWN, not an idle machine.
  * Browser datetime-local values are interpreted in the user's local timezone.
  * Results are ephemeral and never saved to job, PM, or ERP event records.
@@ -81,6 +128,7 @@ export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, sta
   });
   return {jobId,partNumber:job.partNumber,revision:job.revision,step,centerId,
     startLocal,endLocal,evidenceSupplied:scenarioEvidence !== null,
+    scenarioEvidence:scenarioEvidence===null?null:structuredClone(scenarioEvidence),
     result,assessment:result.assessments[0] || null};
 }
 
@@ -92,6 +140,30 @@ export function routingCapacityEvidenceHtml(job, review = null) {
     DEMO_CENTER_OPTIONS.find(id => id !== operation?.center);
   const option = (id,label,selected) =>
     '<option value="'+h(id)+'"'+(id === selected?' selected':'')+'>'+h(label)+'</option>';
+
+  const scenario=review?.jobId===job.id?review.scenarioEvidence?.center:null;
+  const num=(k,label)=>'<label>'+h(label)+'<input type="number" min="0" max="100000" step="any" name="scenario-'+k+'" value="'+h(scenario?.[k]??"")+'"></label>';
+  const ref=(k,label,value)=>'<label>'+h(label)+'<input name="scenario-'+k+'" maxlength="64" pattern="SYN-[A-Z0-9-]{1,60}" placeholder="SYN-EXAMPLE-001" value="'+h(value??"")+'"></label>';
+  const pick=(k,label,choices,value)=>'<label>'+h(label)+'<select name="scenario-'+k+'">'+choices.map(x=>option(x,x,x===value)).join('')+'</select></label>';
+  const scenarioFields='<details'+(scenario?' open':'')+'><summary>Optional fictional capacity scenario</summary>'+
+    '<p class="small">Manually asserted estimates only. No live machine, schedule, BEAN, or qualification connection. Leave unchecked for UNKNOWN. Nothing saved.</p>'+
+    '<label><input type="checkbox" name="scenario-enabled" value="yes"'+(scenario?' checked':'')+'> Evaluate fictional estimates</label>'+
+    '<div class="controls">'+
+    pick("capability","Operation capability",["","supported","unsupported"],
+      scenario?.capability?.supported===true?"supported":scenario?.capability?.supported===false?"unsupported":"")+
+    ref("capability-ref","Capability source",scenario?.capability?.sourceRef)+
+    num("calendarHours","Calendar hours")+num("bookedHours","Booked hours")+
+    num("queuedHours","Queued hours")+num("maintenanceHours","PM downtime hours")+
+    num("setupHours","Setup hours")+num("runHours","Run hours")+
+    ref("capacity-ref","Capacity source",scenario?.capacitySourceRef)+
+    ref("readiness-ref","Readiness source",scenario?.readinessSourceRef)+
+    pick("maintenanceState","Maintenance",["UNKNOWN","CLEAR","DOWN"],scenario?.maintenanceState??"UNKNOWN")+
+    pick("tooling","Tooling",["UNKNOWN","READY","BLOCKED"],scenario?.tooling??"UNKNOWN")+
+    pick("fixture","Fixture",["UNKNOWN","READY","BLOCKED"],scenario?.fixture??"UNKNOWN")+
+    pick("material","Material",["UNKNOWN","READY","BLOCKED"],scenario?.material??"UNKNOWN")+
+    pick("deliveryState","Delivery",["UNKNOWN","ON_TIME","LATE"],scenario?.deliveryState??"UNKNOWN")+
+    num("routedOperationCount","Routed operations (blank = UNKNOWN)")+
+    '</div><p class="small">SYN- references are unverified. Zero routed operations does not establish availability or suitability.</p></details>';
   let html = '<section class="panel" id="routing-capacity-review">'+
     '<div class="panel-head"><h2>Alternate work-center evidence</h2>'+
     '<span class="tag warn">REVIEW ONLY</span></div>'+
@@ -109,7 +181,8 @@ export function routingCapacityEvidenceHtml(job, review = null) {
     h(review?.startLocal || '')+'"></label>'+
     '<label>Planning end (local)<input type="datetime-local" name="window-end" required value="'+
     h(review?.endLocal || '')+'"></label>'+
-    '<button class="action secondary" type="submit">Review evidence gaps</button></form>';
+    scenarioFields+
+    '<button class="action secondary" type="submit">Review scenario evidence</button></form>';
   if (review?.jobId === job.id) {
     const a = review.assessment;
     const messages = [...(a?.blocked || []),...(a?.unknown || [])];
