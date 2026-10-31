@@ -13,7 +13,7 @@ import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction,qualityJobSummary,jobQualityTarget} from "./quality-case.mjs";
-import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary} from "./quality-case-view.mjs";
+import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget} from "./quality-case-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
@@ -544,6 +544,20 @@ document.addEventListener("click",event=>{
       if(!record)throw Error("Fictional quality case not found");
       selectedQualityId=id;
       openContext({type:"quality",id},{view:"quality",intent:"quality"});
+    }
+    if(action==="quality-evidence-focus"){
+      const caseId=button.dataset.case,kind=button.dataset.kind;
+      const record=state.quality.find(q=>q.id===caseId);
+      const panel=document.getElementById("quality-case-detail");
+      if(currentView()!=="quality"||!record||panel?.dataset.caseId!==caseId||
+         !qualityEvidenceTarget(record,kind,id))
+        throw Error("Selected fictional quality evidence is unavailable");
+      const target=[...panel.querySelectorAll("[data-evidence-kind][data-evidence-id]")]
+        .find(element=>element.dataset.evidenceKind===kind&&element.dataset.evidenceId===id);
+      if(!target)throw Error("Fictional quality evidence is not visible");
+      target.setAttribute("tabindex","-1");
+      target.scrollIntoView({block:"center"});
+      target.focus({preventScroll:true});
     }
     if(action==="job-quality-cases"){
       const target=jobQualityTarget(state,id);

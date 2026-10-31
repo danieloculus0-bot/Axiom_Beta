@@ -4,6 +4,24 @@ import {qualityCaseTimeline} from "./quality-timeline.mjs";
 const h=value=>String(value??"").replace(/[&<>"']/g,c=>({
   "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
 })[c]);
+/* Resolve evidence from this canonical fictional NCR before offering a jump. */
+export function qualityEvidenceTarget(record,kind,id){
+  if(!record||typeof record!=="object"||typeof id!=="string"||!id)return null;
+  const inspections=Array.isArray(record.inspections)?record.inspections:[];
+  const actions=Array.isArray(record.correctiveActions)?record.correctiveActions:[];
+  if(kind==="inspection"&&inspections.some(item=>item?.id===id))return {kind,id};
+  if(kind==="corrective"&&actions.some(item=>item?.id===id))return {kind,id};
+  if(kind==="effectiveness"&&actions.some(action=>
+    Array.isArray(action?.reviews)&&action.reviews.some(review=>review?.id===id)))return {kind,id};
+  return null;
+}
+const evidenceAttrs=(kind,id)=>typeof id==="string"&&id?
+  ' data-evidence-kind="'+h(kind)+'" data-evidence-id="'+h(id)+'"':"";
+const evidenceButton=(record,kind,id,label)=>{
+  const target=qualityEvidenceTarget(record,kind,id);
+  return target?'<button type="button" class="action secondary" data-action="quality-evidence-focus" data-case="'+
+    h(record.id)+'" data-kind="'+h(target.kind)+'" data-id="'+h(target.id)+'">'+h(label)+'</button>':"";
+};
 /* Compact, read-only evidence projection for a real fictional NCR.
  * Reuses the same chronology shown in the case itself, not a second store.
  */
@@ -43,7 +61,7 @@ export function renderQualityCase(state,id){
   const inspections=Array.isArray(q.inspections)?q.inspections:[];
   const actions=Array.isArray(q.correctiveActions)?q.correctiveActions:[];
   const operations=Array.isArray(j?.routing?.operations)?j.routing.operations:[];
-  let html='<section class="panel" id="quality-case-detail"><div class="panel-head"><h2>Quality Forge case · '+h(q.number)+'</h2><span class="tag">'+h(q.status)+'</span></div>'+
+  let html='<section class="panel" id="quality-case-detail" data-case-id="'+h(q.id)+'"><div class="panel-head"><h2>Quality Forge case · '+h(q.number)+'</h2><span class="tag">'+h(q.status)+'</span></div>'+
     '<p class="small">Linked work order: <b>'+h(j?.jobNumber||"Missing fictional job")+'</b> · '+h(q.reason)+
     '. Browser-local demonstration only. No production disposition or release authority.</p>'+
     '<div class="controls">'+links+'</div>'+
@@ -95,14 +113,14 @@ export function renderQualityCase(state,id){
     (actions.length?actions.map(action=>{
       const linked=inspections.find(item=>item.id===action.sourceInspectionId);
       const reviews=Array.isArray(action.reviews)?action.reviews:[];
-      return '<div class="receipt"><b>'+h(action.id)+'</b> · '+
+      return '<div class="receipt"'+evidenceAttrs("corrective",action.id)+'><b>'+h(action.id)+'</b> · '+
         h(QUALITY_ACTION_ROLES.find(role=>role.id===action.ownerRole)?.label||action.ownerRole)+
         ' · '+h(action.createdAt)+
         '<div>'+h(action.description)+'</div>'+
         '<div class="small">Linked observation: '+h(action.sourceInspectionId?(linked?
-          linked.stage+' / step '+linked.step+' / '+linked.result:'Missing fictional observation'):'None (case-level)')+'</div>'+
+          linked.stage+' / step '+linked.step+' / '+linked.result:'Missing fictional observation'):'None (case-level)')+'</div>'+(linked?evidenceButton(q,"inspection",linked.id,"View observation"):"")+
         (reviews.length?reviews.map(review=>
-          '<div class="receipt"><b>Effectiveness review:</b> '+h(review.result)+' · '+h(review.at)+
+          '<div class="receipt"'+evidenceAttrs("effectiveness",review.id)+'><b>Effectiveness review:</b> '+h(review.result)+' · '+h(review.at)+
           '<div>'+h(review.note)+'</div></div>').join(""):
           '<p class="small">Effectiveness not yet reviewed.</p>')+
         '<form class="controls" data-form="quality-effectiveness">'+
@@ -119,15 +137,17 @@ export function renderQualityCase(state,id){
     '<label>Case follow-up (also available after closing)<textarea name="note" minlength="5" maxlength="500" required placeholder="Record a fictional follow-up or effectiveness check."></textarea></label>'+
     '<button class="action secondary" type="submit">Record follow-up</button></form>'+
     '<h3>Inspection observations</h3>'+
-    (inspections.length?inspections.map(item=>'<div class="receipt"><b>'+h(item.at)+'</b> · '+
+    (inspections.length?inspections.map(item=>'<div class="receipt"'+evidenceAttrs("inspection",item.id)+'><b>'+h(item.at)+'</b> · '+
       h(QUALITY_INSPECTION_STAGES.find(stage=>stage.id===item.stage)?.label||item.stage)+' · '+
       h(item.result)+' · step '+h(item.step)+' / '+h(item.operation)+' ('+h(item.center)+')'+
       '<div class="small">Job rev '+h(item.jobRevision)+' · drawing rev '+h(item.drawingRevision??"unknown")+'</div>'+
-      '<div>'+h(item.observation)+'</div></div>').join(""):
+      '<div>'+h(item.observation)+'</div>'+actions.filter(action=>action.sourceInspectionId===item.id).map(action=>
+        evidenceButton(q,"corrective",action.id,"View corrective action")).join(" ")+'</div>').join(""):
       '<p class="small">No fictional inspection observations recorded for this case.</p>')+
     '<h3>Case chronology</h3><p class="small">One read-only timeline of this NCR, its inspection evidence, dispositions, corrective actions, effectiveness reviews and follow-ups. Post-closure reviews do not reopen a case.</p>'+
     (timeline.length?timeline.map(entry=>'<div class="receipt"><b>'+h(entry.at||"Date unknown")+'</b> · '+h(entry.title)+
       (entry.sourceId?'<span class="small"> · '+h(entry.sourceId)+'</span>':"")+
+      evidenceButton(q,entry.kind,entry.sourceId,"View evidence")+
       '<div>'+h(entry.detail)+'</div></div>').join(""):
       '<p class="small">No dated case evidence recorded for this fictional case.</p>')+
     '</section>';
