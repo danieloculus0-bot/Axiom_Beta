@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {assessAlternateCenters} from "./routing-capacity-advice.mjs";
+import {seedPm,completePmTask,requestMaintenance,closeMaintenanceRequest} from "./pm.mjs";
 
 const job = () => ({jobNumber:"SYN-JOB-1",partNumber:"SYN-PART-1",revision:"A",
   routing:{revision:"A",operations:[
@@ -135,4 +136,66 @@ test("two-operation alternate-center suggestion rejects unrelated CNC program ev
  assert.equal(result.suggestions[0].routingReview.programAssociations[0].status,"MISMATCH_OR_INCOMPLETE");
  assert.match(result.suggestions[0].routingReview.issues.join(" "),/do not match/);
  assert.equal(result.suggestions[0].canAutoApply,false);
+});
+
+const mappedPmScenario = (pm, links=[{centerId:"LASER-01",machineId:"DEMO-M-001",sourceRef:"SYN-PM-MAPPING-1"}]) => {
+  const s=scenario(center());
+  s.pmContext={state:pm,links};
+  return s;
+};
+test("optional PM snapshot without explicit asset mapping cannot assert clearance",()=>{
+  const r=assessAlternateCenters(job(),"10",mappedPmScenario(seedPm("2026-11-02"),[]));
+  assert.equal(r.assessments[0].status,"NEEDS_REVIEW");
+  assert.equal(r.assessments[0].pmEvidence.status,"UNMAPPED");
+  assert.equal(r.suggestions.length,0);
+});
+test("existing PM overdue work produces a review signal, not automatic machine-down claim",()=>{
+  const r=assessAlternateCenters(job(),"10",mappedPmScenario(seedPm("2026-11-02")));
+  const a=r.assessments[0];
+  assert.equal(a.status,"NEEDS_REVIEW");
+  assert.equal(a.pmEvidence.status,"NEEDS_REVIEW");
+  assert.ok(a.pmEvidence.dueTaskIds.includes("DEMO-PM-001"));
+  assert.equal(a.blocked.length,0);
+  assert.equal(r.suggestions.length,0);
+});
+test("completed PM and no recorded alerts preserve independent scenario clearance",()=>{
+  const pm=completePmTask(seedPm("2026-11-02"),"DEMO-PM-001",
+    {checklistConfirmed:true,result:"PASS",at:"2026-11-02T09:00:00Z"}).pm;
+  const r=assessAlternateCenters(job(),"10",mappedPmScenario(pm));
+  assert.equal(r.suggestions.length,1);
+  assert.equal(r.assessments[0].pmEvidence.status,"NO_RECORDED_ALERTS");
+  assert.ok(r.suggestions[0].evidenceRefs.includes("SYN-PM-MAPPING-1"));
+  assert.equal(r.suggestions[0].canAutoApply,false);
+});
+test("open PM request flags uncertainty; closing it restores only scenario eligibility",()=>{
+  let pm=completePmTask(seedPm("2026-11-02"),"DEMO-PM-001",
+    {checklistConfirmed:true,result:"PASS",at:"2026-11-02T09:00:00Z"}).pm;
+  const request=requestMaintenance(pm,"DEMO-M-001","Illustrative abnormal noise","Medium","DEMO-01","2026-11-02T10:00:00Z");
+  pm=request.pm;
+  const before=structuredClone(pm);
+  const r=assessAlternateCenters(job(),"10",mappedPmScenario(pm));
+  assert.equal(r.assessments[0].status,"NEEDS_REVIEW");
+  assert.ok(r.assessments[0].pmEvidence.openRequestIds.includes(request.id));
+  assert.equal(r.assessments[0].blocked.length,0);
+  assert.deepEqual(pm,before);
+  pm=closeMaintenanceRequest(pm,request.id,"Example resolved","2026-11-02T11:00:00Z");
+  const cleared=assessAlternateCenters(job(),"10",mappedPmScenario(pm));
+  assert.equal(cleared.assessments[0].pmEvidence.status,"NO_RECORDED_ALERTS");
+  assert.equal(cleared.suggestions.length,1);
+});
+test("unresolved or ambiguous PM mapping never fabricates a work-center link",()=>{
+  let s=mappedPmScenario(seedPm("2026-11-02"),[{centerId:"LASER-01",machineId:"DEMO-M-999",sourceRef:"SYN-LINK"}]);
+  const unresolved=assessAlternateCenters(job(),"10",s);
+  assert.equal(unresolved.assessments[0].pmEvidence.status,"UNRESOLVED");
+  assert.equal(unresolved.suggestions.length,0);
+  s=mappedPmScenario(seedPm("2026-11-02"),[
+    {centerId:"LASER-01",machineId:"DEMO-M-001",sourceRef:"SYN-1"},
+    {centerId:"LASER-01",machineId:"DEMO-M-002",sourceRef:"SYN-2"}]);
+  assert.equal(assessAlternateCenters(job(),"10",s).status,"INVALID_SCENARIO");
+});
+test("malformed PM asset record does not crash advisory review",()=>{
+  const pm=seedPm("2026-11-02");pm.machines=[null];
+  const r=assessAlternateCenters(job(),"10",mappedPmScenario(pm));
+  assert.equal(r.assessments[0].pmEvidence.status,"UNKNOWN");
+  assert.equal(r.suggestions.length,0);
 });
