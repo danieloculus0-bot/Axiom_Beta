@@ -411,3 +411,24 @@ test("undated legacy PM association is unknown, not historical clearance",()=>{
   assert.equal(r.assessments[0].pmEvidence.status,"UNMAPPED");
   assert.equal(r.suggestions.length,0);
 });
+
+test("offset-aware reviewed PM links match equivalent UTC instants without backdating",()=>{
+  const base=completePmTask(seedPm("2026-11-02"),"DEMO-PM-001",
+    {checklistConfirmed:true,result:"PASS",at:"2026-11-01T07:00:00Z"}).pm;
+  const utc=reviewLink(base,"DEMO-M-001","LASER-01",
+    {at:"2026-11-01T08:00:00Z"}).pm;
+  const offset=reviewLink(base,"DEMO-M-001","LASER-01",
+    {at:"2026-11-01T03:00:00-05:00"}).pm;
+  const assessPm=pm=>{
+    const s=scenario(center());s.pmContext={state:pm};
+    return assessAlternateCenters(job(),"10",s);
+  };
+  const utcResult=assessPm(utc),offsetResult=assessPm(offset);
+  assert.equal(offsetResult.assessments[0].pmEvidence.machineId,"DEMO-M-001");
+  assert.deepEqual(offsetResult.assessments[0].pmEvidence,utcResult.assessments[0].pmEvidence);
+  assert.equal(offsetResult.assessments[0].pmEvidence.status,"NO_RECORDED_ALERTS");
+  assert.equal(offsetResult.suggestions.length,1);
+  const future=reviewLink(base,"DEMO-M-001","LASER-01",
+    {at:"2026-11-07T03:00:00-05:00"}).pm;
+  assert.equal(assessPm(future).assessments[0].pmEvidence.status,"UNMAPPED");
+});
