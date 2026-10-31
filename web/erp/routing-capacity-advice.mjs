@@ -105,6 +105,8 @@ export function assessAlternateCenters(job, step, scenario) {
     operations.find(op => op.step === step).center = center.id;
     const candidate = {partNumber:job.partNumber,revision:job.revision,operations,
       evidence:[{step,sourceRef:cap.sourceRef}]};
+    // Preserve optional program evidence for the existing reviewer; never infer a link.
+    if (center.programLink != null) candidate.programLinks = [structuredClone(center.programLink)];
     const routingReview = reviewRoutingCandidate(job,candidate);
     if (routingReview.status !== "REVIEW_REQUIRED") continue;
     suggestions.push({center:center.id,idleCandidate,availableHours,requiredHours,
