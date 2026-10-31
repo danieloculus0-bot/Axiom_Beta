@@ -199,3 +199,47 @@ test("malformed PM asset record does not crash advisory review",()=>{
   assert.equal(r.assessments[0].pmEvidence.status,"UNKNOWN");
   assert.equal(r.suggestions.length,0);
 });
+
+test("canonical PM machine association resolves without a caller link",()=>{
+  const pm=completePmTask(seedPm("2026-11-02"),"DEMO-PM-001",
+    {checklistConfirmed:true,result:"PASS",at:"2026-11-02T09:00:00Z"}).pm;
+  pm.machines[0].workCenterLink={centerId:"LASER-01",sourceRef:"SYN-CANONICAL-PM-LINK"};
+  const before=structuredClone(pm),s=scenario(center());
+  s.pmContext={state:pm};
+  const r=assessAlternateCenters(job(),"10",s);
+  assert.equal(r.assessments[0].pmEvidence.status,"NO_RECORDED_ALERTS");
+  assert.equal(r.assessments[0].pmEvidence.machineId,"DEMO-M-001");
+  assert.equal(r.suggestions.length,1);
+  assert.ok(r.suggestions[0].evidenceRefs.includes("SYN-CANONICAL-PM-LINK"));
+  assert.equal(r.suggestions[0].canAutoApply,false);
+  assert.deepEqual(pm,before);
+});
+test("canonical PM link without source evidence cannot assert a relationship",()=>{
+  const pm=seedPm("2026-11-02");
+  pm.machines[0].workCenterLink={centerId:"LASER-01"};
+  const s=scenario(center());s.pmContext={state:pm};
+  const r=assessAlternateCenters(job(),"10",s);
+  assert.equal(r.status,"INVALID_SCENARIO");
+  assert.equal(r.suggestions.length,0);
+});
+test("canonical PM link to unregistered center is rejected",()=>{
+  const pm=seedPm("2026-11-02");
+  pm.machines[0].workCenterLink={centerId:"NOT-A-CENTER",sourceRef:"SYN-UNVERIFIED"};
+  const s=scenario(center());s.pmContext={state:pm};
+  assert.equal(assessAlternateCenters(job(),"10",s).status,"INVALID_SCENARIO");
+});
+test("conflicting PM machine and caller links fail rather than guessing",()=>{
+  const pm=seedPm("2026-11-02");
+  pm.machines[0].workCenterLink={centerId:"LASER-01",sourceRef:"SYN-CANONICAL"};
+  const s=mappedPmScenario(pm,[{centerId:"LASER-01",machineId:"DEMO-M-002",sourceRef:"SYN-LEGACY"}]);
+  const r=assessAlternateCenters(job(),"10",s);
+  assert.equal(r.status,"INVALID_SCENARIO");
+  assert.equal(r.suggestions.length,0);
+});
+test("two PM machines claiming the same center are ambiguous",()=>{
+  const pm=seedPm("2026-11-02");
+  pm.machines[0].workCenterLink={centerId:"LASER-01",sourceRef:"SYN-LINK-1"};
+  pm.machines[1].workCenterLink={centerId:"LASER-01",sourceRef:"SYN-LINK-2"};
+  const s=scenario(center());s.pmContext={state:pm};
+  assert.equal(assessAlternateCenters(job(),"10",s).status,"INVALID_SCENARIO");
+});
