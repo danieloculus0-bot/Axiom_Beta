@@ -117,6 +117,9 @@ test("Quality Forge case review stays linked to the canonical fictional job and 
   assert.match(renderQualityCase(state,id),/data-form="quality-disposition"/);
   assert.match(renderQualityCase(state,id),/disabled>Close reviewed demo case/);
   assert.throws(()=>closeReviewedQuality(state,id,t),/disposition/);
+  state=recordQualityDisposition(state,id,"RETURN_FOR_REVIEW","Further fictional review required",t);
+  assert.throws(()=>closeReviewedQuality(state,id,t),/keeps this fictional quality case open/);
+  assert.match(renderQualityCase(state,id),/disabled>Close reviewed demo case/);
   state=recordQualityDisposition(state,id,"REWORK","Fictional rework review needed",t);
   assert.equal(state.quality[0].disposition.decision,"REWORK");
   assert.match(packetIssues(state,"sample-1001").join(" "),/quality hold/);
