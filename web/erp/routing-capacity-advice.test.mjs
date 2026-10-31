@@ -203,7 +203,7 @@ test("malformed PM asset record does not crash advisory review",()=>{
 test("canonical PM machine association resolves without a caller link",()=>{
   const pm=completePmTask(seedPm("2026-11-02"),"DEMO-PM-001",
     {checklistConfirmed:true,result:"PASS",at:"2026-11-01T09:00:00Z"}).pm;
-  pm.machines[0].workCenterLink={centerId:"LASER-01",sourceRef:"SYN-CANONICAL-PM-LINK"};
+  pm.machines[0].workCenterLink={centerId:"LASER-01",sourceRef:"SYN-CANONICAL-PM-LINK",reviewedAt:"2026-11-01T08:00:00Z",reviewState:"DEMO_REVIEWED"};
   const before=structuredClone(pm),s=scenario(center());
   s.pmContext={state:pm};
   const r=assessAlternateCenters(job(),"10",s);
@@ -230,7 +230,7 @@ test("canonical PM link to unregistered center is rejected",()=>{
 });
 test("conflicting PM machine and caller links fail rather than guessing",()=>{
   const pm=seedPm("2026-11-02");
-  pm.machines[0].workCenterLink={centerId:"LASER-01",sourceRef:"SYN-CANONICAL"};
+  pm.machines[0].workCenterLink={centerId:"LASER-01",sourceRef:"SYN-CANONICAL",reviewedAt:"2026-11-01T08:00:00Z",reviewState:"DEMO_REVIEWED"};
   const s=mappedPmScenario(pm,[{centerId:"LASER-01",machineId:"DEMO-M-002",sourceRef:"SYN-LEGACY"}]);
   const r=assessAlternateCenters(job(),"10",s);
   assert.equal(r.status,"INVALID_SCENARIO");
@@ -238,8 +238,8 @@ test("conflicting PM machine and caller links fail rather than guessing",()=>{
 });
 test("two PM machines claiming the same center are ambiguous",()=>{
   const pm=seedPm("2026-11-02");
-  pm.machines[0].workCenterLink={centerId:"LASER-01",sourceRef:"SYN-LINK-1"};
-  pm.machines[1].workCenterLink={centerId:"LASER-01",sourceRef:"SYN-LINK-2"};
+  pm.machines[0].workCenterLink={centerId:"LASER-01",sourceRef:"SYN-LINK-1",reviewedAt:"2026-11-01T08:00:00Z",reviewState:"DEMO_REVIEWED"};
+  pm.machines[1].workCenterLink={centerId:"LASER-01",sourceRef:"SYN-LINK-2",reviewedAt:"2026-11-01T08:00:00Z",reviewState:"DEMO_REVIEWED"};
   const s=scenario(center());s.pmContext={state:pm};
   assert.equal(assessAlternateCenters(job(),"10",s).status,"INVALID_SCENARIO");
 });
@@ -378,4 +378,36 @@ test("renderPm association UI escapes untrusted legacy association history",()=>
   assert.ok(!html.includes('<script>'));
   assert.match(html,/&lt;img src=x/);
   assert.match(html,/&lt;script&gt;/);
+});
+
+test("future first PM association cannot clear an earlier planning window",()=>{
+  let pm=completePmTask(seedPm("2026-11-02"),"DEMO-PM-001",
+    {checklistConfirmed:true,result:"PASS",at:"2026-11-01T07:00:00Z"}).pm;
+  pm=reviewLink(pm,"DEMO-M-001","LASER-01",{at:"2026-11-07T08:00:00Z"}).pm;
+  const s=scenario(center());s.pmContext={state:pm};
+  const r=assessAlternateCenters(job(),"10",s);
+  assert.equal(r.assessments[0].pmEvidence.status,"UNMAPPED");
+  assert.equal(r.assessments[0].status,"NEEDS_REVIEW");
+  assert.equal(r.suggestions.length,0);
+});
+
+test("future PM reassignment cannot replace an earlier window mapping",()=>{
+  let pm=reviewLink(seedPm("2026-11-02")).pm;
+  pm=reviewLink(pm,"DEMO-M-001","PRESS-02",{
+    at:"2026-11-07T09:00:00Z",sourceRef:"SYN-FUTURE-REASSIGN"}).pm;
+  const s=scenario(center("PRESS-02"));s.pmContext={state:pm};
+  const r=assessAlternateCenters(job(),"10",s);
+  assert.equal(r.assessments[0].pmEvidence.status,"UNMAPPED");
+  assert.equal(r.suggestions.length,0);
+  assert.equal(r.canAutoApply,false);
+});
+
+test("undated legacy PM association is unknown, not historical clearance",()=>{
+  const pm=completePmTask(seedPm("2026-11-02"),"DEMO-PM-001",
+    {checklistConfirmed:true,result:"PASS",at:"2026-11-01T07:00:00Z"}).pm;
+  pm.machines[0].workCenterLink={centerId:"LASER-01",sourceRef:"SYN-UNDATED-LINK"};
+  const s=scenario(center());s.pmContext={state:pm};
+  const r=assessAlternateCenters(job(),"10",s);
+  assert.equal(r.assessments[0].pmEvidence.status,"UNMAPPED");
+  assert.equal(r.suggestions.length,0);
 });
