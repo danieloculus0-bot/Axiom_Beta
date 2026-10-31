@@ -133,7 +133,7 @@ export function renderQualityCase(state,id){
   const inspections=Array.isArray(q.inspections)?q.inspections:[];
   const actions=Array.isArray(q.correctiveActions)?q.correctiveActions:[];
   const operations=Array.isArray(j?.routing?.operations)?j.routing.operations:[];
-  let html='<section class="panel" id="quality-case-detail" data-case-id="'+h(q.id)+'"><div class="panel-head"><h2>Quality Forge case · '+h(q.number)+'</h2><span class="tag">'+h(q.status)+'</span></div>'+
+  let html='<section class="panel" id="quality-case-detail" data-case-id="'+h(q.id)+'"><div class="panel-head"><h2 class="context-record" data-ctx-type="quality" data-ctx-id="'+h(q.id)+'" tabindex="0" title="Right-click for Open with">Quality Forge case · '+h(q.number)+'</h2><span class="tag">'+h(q.status)+'</span></div>'+
     '<p class="small">Linked work order: <b>'+h(j?.jobNumber||"Missing fictional job")+'</b> · '+h(q.reason)+
     '. Browser-local demonstration only. No production disposition or release authority.</p>'+
     '<div class="controls">'+links+'</div>'+
