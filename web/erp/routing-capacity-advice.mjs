@@ -108,11 +108,24 @@ export function assessAlternateCenters(job, step, scenario) {
     const legacy = pmContext.links ?? [];
     if (!Array.isArray(legacy) || legacy.length > 100)
       return invalid("PM center-to-machine links must be an optional array.");
-    const embedded = pmContext.state.machines
+    // A present-day reviewed link is not historical evidence for a window
+    // preceding its review. If the link was created/reassigned later (or its
+    // timestamp is missing), leave that window UNMAPPED and request review.
+    // Historical unlinks/reassignments are deliberately NOT reconstructed
+    // from partial history, so no earlier relationship is silently asserted.
+    const embeddedCurrent = pmContext.state.machines
       .filter(machine => machine?.workCenterLink != null)
       .map(machine => ({centerId:machine.workCenterLink?.centerId,
-        machineId:machine.id,sourceRef:machine.workCenterLink?.sourceRef}));
-    if (embedded.some(link => !DEMO_CENTER_OPTIONS.includes(str(link.centerId)) ||
+        machineId:machine.id,sourceRef:machine.workCenterLink?.sourceRef,
+        reviewedAt:machine.workCenterLink?.reviewedAt,
+        reviewState:machine.workCenterLink?.reviewState}));
+    const embedded = embeddedCurrent.filter(link =>
+      link.reviewState === "DEMO_REVIEWED" &&
+      typeof link.reviewedAt === "string" &&
+      /(?:Z|[+-]\\d{2}:\\d{2})$/.test(link.reviewedAt) &&
+      Number.isFinite(Date.parse(link.reviewedAt)) &&
+      Date.parse(link.reviewedAt) <= start);
+    if (embeddedCurrent.some(link => !DEMO_CENTER_OPTIONS.includes(str(link.centerId)) ||
         !str(link.sourceRef)))
       return invalid("PM machine work-center associations require a registered center and source reference.");
     const links = [...legacy,...embedded];
