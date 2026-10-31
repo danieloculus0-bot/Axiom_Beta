@@ -312,6 +312,43 @@ def browser_test() -> None:
                 assert capacity_form.locator('input[name="scenario-calendarHours"]').input_value() == ""
                 assert capacity_form.locator('input[name="scenario-capability-ref"]').input_value() == ""
 
+                # An unsaved routing draft must invalidate the prior saved-route
+                # assessment. A new review must not use canonical operations while
+                # the visible editor is working on a different unsaved sequence.
+                capacity_form.locator('select[name="step"]').select_option("10")
+                capacity_form.locator('select[name="center"]').select_option("DEMO-CUT")
+                capacity_form.locator('input[name="window-start"]').fill("2026-11-02T08:00")
+                capacity_form.locator('input[name="window-end"]').fill("2026-11-02T16:00")
+                capacity_form.locator('button[type="submit"]').click()
+                assert page.locator("#routing-capacity-result").count() == 1
+                draft_before = page.evaluate("""async () => {
+                    const {ERP_KEY} = await import('./engine.mjs');
+                    return localStorage.getItem(ERP_KEY);
+                }""")
+                page.locator('[data-action="routing-start"]').click()
+                assert page.locator("#routing-editor-form").count() == 1
+                assert page.locator("#routing-capacity-result").count() == 0, (
+                    "Opening an unsaved routing draft must invalidate prior capacity evidence"
+                )
+                capacity_form = page.locator('form[data-form="routing-capacity-review"]')
+                capacity_form.locator('select[name="step"]').select_option("10")
+                capacity_form.locator('select[name="center"]').select_option("DEMO-CUT")
+                capacity_form.locator('input[name="window-start"]').fill("2026-11-02T08:00")
+                capacity_form.locator('input[name="window-end"]').fill("2026-11-02T16:00")
+                capacity_form.locator('button[type="submit"]').click()
+                assert "Save or cancel unsaved routing edits" in page.locator("#flash").inner_text()
+                assert page.locator("#routing-capacity-result").count() == 0
+                # A real unsaved reorder remains in the draft editor only.
+                page.locator('[data-action="routing-down"][data-index="0"]').click()
+                assert page.locator("#routing-capacity-result").count() == 0
+                page.locator('[data-action="routing-cancel"]').click()
+                assert page.locator("#routing-editor-form").count() == 0
+                assert page.locator("#routing-capacity-result").count() == 0
+                assert draft_before == page.evaluate("""async () => {
+                    const {ERP_KEY} = await import('./engine.mjs');
+                    return localStorage.getItem(ERP_KEY);
+                }"""), "Unsaved draft review and cancellation must not write ERP state"
+
                 # Capacity reviews are ephemeral. A same-job clock session changes
                 # routing-editor eligibility and must invalidate an older review,
                 # even when navigating between screens without a page reload.
