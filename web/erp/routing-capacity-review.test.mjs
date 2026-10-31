@@ -329,3 +329,39 @@ test("malformed EWI session collection is rejected rather than assumed empty",()
   assert.throws(()=>inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e,{}),
     /EWI sessions must be an array/);
 });
+
+test("aggregate fictional reservations exceeding on-hand stock suppress otherwise eligible alternate",()=>{
+  const {state,job,e}=packetReadyAlternate();
+  const item=state.items.find(item=>item.id===job.materialId);
+  assert.equal(item.onHand,70);
+  assert.equal(inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e).result.suggestions.length,1);
+  item.onHand=47; // Two fictional jobs reserve 36 + 12 = 48 units.
+  const before=structuredClone(state),eBefore=structuredClone(e);
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e);
+  assert.equal(review.assessment.status,"NEEDS_REVIEW");
+  assert.equal(review.result.suggestions.length,0);
+  assert.equal(review.result.canAutoApply,false);
+  assert.match(review.assessment.unknown.join(" "),/aggregate fictional reservations exceeding recorded on-hand stock/);
+  assert.deepEqual(state,before);
+  assert.deepEqual(e,eBefore);
+  item.onHand=48;
+  assert.equal(inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e).result.suggestions.length,1);
+});
+test("missing or invalid fictional stock quantities stay UNKNOWN rather than implying readiness",()=>{
+  const {state,job,e}=packetReadyAlternate();
+  const item=state.items.find(item=>item.id===job.materialId);
+  for(const bad of [null,-1,"70"]){
+    item.onHand=bad;
+    const review=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e);
+    assert.equal(review.assessment.status,"NEEDS_REVIEW");
+    assert.equal(review.result.suggestions.length,0);
+    assert.match(review.assessment.unknown.join(" "),/lacks valid fictional on-hand/);
+  }
+});
+test("shortage of unrelated fictional material does not block selected job",()=>{
+  const {state,job,e}=packetReadyAlternate();
+  state.items.find(item=>item.id==="MAT-BAR").onHand=0;
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e);
+  assert.equal(review.result.suggestions.length,1);
+  assert.equal(review.result.canAutoApply,false);
+});
