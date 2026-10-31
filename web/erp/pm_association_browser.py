@@ -224,8 +224,80 @@ def browser_test() -> None:
                 assert page.locator("#routing-capacity-result").count() == 0, (
                     "Ephemeral evidence review must not be misrepresented as saved"
                 )
+                # Exercise the new optional scenario through real Chromium inputs.
+                # These are entirely fictional, manually asserted estimates.
+                capacity_form = page.locator('form[data-form="routing-capacity-review"]')
+                capacity_form.locator('details summary').click()
+                capacity_form.locator('input[name="scenario-enabled"]').check()
+                capacity_form.locator('select[name="scenario-capability"]').select_option("supported")
+                for name, value in {
+                    "capability-ref": "SYN-BROWSER-CAP-001",
+                    "calendarHours": "8",
+                    "bookedHours": "1",
+                    "queuedHours": "1",
+                    "maintenanceHours": "0",
+                    "setupHours": "1",
+                    "runHours": "2",
+                    "capacity-ref": "SYN-BROWSER-CALENDAR-001",
+                    "readiness-ref": "SYN-BROWSER-READY-001",
+                    "routedOperationCount": "0",
+                }.items():
+                    capacity_form.locator(f'input[name="scenario-{name}"]').fill(value)
+                for name, value in {
+                    "maintenanceState": "CLEAR",
+                    "tooling": "READY",
+                    "fixture": "READY",
+                    "material": "READY",
+                    "deliveryState": "ON_TIME",
+                }.items():
+                    capacity_form.locator(f'select[name="scenario-{name}"]').select_option(value)
+                capacity_form.locator('select[name="step"]').select_option("10")
+                capacity_form.locator('select[name="center"]').select_option("DEMO-CUT")
+                capacity_form.locator('input[name="window-start"]').fill("2026-11-02T08:00")
+                capacity_form.locator('input[name="window-end"]').fill("2026-11-02T16:00")
+                assert capacity_form.evaluate("element => element.checkValidity()")
+                scenario_before = page.evaluate("""async () => {
+                    const {ERP_KEY} = await import('./engine.mjs');
+                    return localStorage.getItem(ERP_KEY);
+                }""")
+                capacity_form.locator('button[type="submit"]').click()
+                scenario_result = page.locator("#routing-capacity-result")
+                scenario_result.wait_for(state="visible")
+                scenario_text = scenario_result.inner_text()
+                for expected in (
+                    "NEEDS_REVIEW", "UNMAPPED", "available 6 hours",
+                    "required 3 hours", "utilization 25%",
+                    "SYN-BROWSER-CAP-001", "SYN-BROWSER-CALENDAR-001",
+                    "SYN-BROWSER-READY-001", "No alternate routing proposed or saved",
+                ):
+                    assert expected in scenario_text, (expected, scenario_text)
+                assert capacity_form.locator('input[name="scenario-enabled"]').is_checked()
+                assert capacity_form.locator('input[name="scenario-calendarHours"]').input_value() == "8"
+                scenario_after = page.evaluate("""async () => {
+                    const {ERP_KEY} = await import('./engine.mjs');
+                    return localStorage.getItem(ERP_KEY);
+                }""")
+                assert scenario_before == scenario_after, "Scenario review must not write ERP state"
+
+                # An empty hour is UNKNOWN, never silently interpreted as zero.
+                capacity_form.locator('input[name="scenario-calendarHours"]').fill("")
+                capacity_form.locator('button[type="submit"]').click()
+                assert "All six scenario hour estimates must be explicitly supplied" in (
+                    page.locator("#flash").inner_text()
+                )
+                assert scenario_before == page.evaluate("""async () => {
+                    const {ERP_KEY} = await import('./engine.mjs');
+                    return localStorage.getItem(ERP_KEY);
+                }"""), "Rejected scenario must not write ERP state"
+
+                page.reload(wait_until="domcontentloaded")
+                assert page.locator("#routing-capacity-result").count() == 0
+                capacity_form = page.locator('form[data-form="routing-capacity-review"]')
+                assert not capacity_form.locator('input[name="scenario-enabled"]').is_checked()
+                assert capacity_form.locator('input[name="scenario-calendarHours"]').input_value() == ""
+                assert capacity_form.locator('input[name="scenario-capability-ref"]').input_value() == ""
                 context.close()
-                print("PASS: Chromium PM lifecycle and read-only routing capacity preflight")
+                print("PASS: Chromium PM lifecycle and read-only routing capacity scenario")
             finally:
                 browser.close()
     finally:
