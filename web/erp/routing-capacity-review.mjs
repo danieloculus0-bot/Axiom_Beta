@@ -2,7 +2,7 @@
  * Reuses the existing advisor and PM snapshot. No invented hours, machine
  * qualification, live BEAN service, draft mutation, or production release.
  */
-import {getJob} from "./engine.mjs";
+import {getJob,packetIssues} from "./engine.mjs";
 import {DEMO_CENTER_OPTIONS} from "./routing-edit.mjs";
 import {assessAlternateCenters} from "./routing-capacity-advice.mjs";
 
@@ -141,7 +141,10 @@ export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, sta
     job.reserved <= job.quantity;
   const materialConflict = center.material === "READY" &&
     (!materialKnown || job.reserved < job.quantity);
-  if (contradictedZero || materialConflict) {
+  // Reuse the canonical EWI/job packet checks that gate clocking. Scenario
+  // assertions cannot override drawing, quality, job status or draft review.
+  const packetConcerns = packetIssues(state,jobId);
+  if (contradictedZero || materialConflict || packetConcerns.length) {
     const assessment = result.assessments.find(item => item.center === centerId);
     if (assessment) {
       if (contradictedZero) {
@@ -153,6 +156,11 @@ export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, sta
       if (materialConflict) {
         assessment.unknown.push("Scenario material READY conflicts with missing or incomplete canonical job material reservation; readiness is UNKNOWN.");
         assessment.notes.push("Browser-local reservation is not proof of physical material availability or operation-level readiness.");
+      }
+      if (packetConcerns.length) {
+        assessment.unknown.push(...packetConcerns.map(issue =>
+          "Canonical job packet requires review: " + issue));
+        assessment.notes.push("Existing EWI/job checks do not prove machine capacity or qualification.");
       }
       if (assessment.status !== "EXCLUDED") assessment.status = "NEEDS_REVIEW";
     }
