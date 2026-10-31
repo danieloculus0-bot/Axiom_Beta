@@ -75,6 +75,28 @@ test("missing program is nonblocking; asserted program is not proof",()=>{
   const r=assess(c);
   assert.equal(r.suggestions.length,1);
   assert.match(r.assessments[0].notes.join(" "),/asserted only/);
+  assert.equal(r.suggestions[0].routingReview.programAssociations[0].status,"MISMATCH_OR_INCOMPLETE");
+});
+test("complete optional program reference reaches existing reviewer without proving qualification",()=>{
+  const c=center();c.programLink={step:"10",partNumber:"SYN-PART-1",revision:"A",center:"LASER-01",
+    programId:"SYN-PROGRAM-1",sourceRef:"SYN-PROGRAM-METADATA-1"};
+  const original=structuredClone(c);
+  const r=assess(c);
+  assert.equal(r.suggestions.length,1);
+  assert.deepEqual(r.suggestions[0].candidate.programLinks,[c.programLink]);
+  assert.equal(r.suggestions[0].routingReview.programAssociations[0].status,"ASSERTED_REFERENCE_ONLY");
+  assert.equal(r.suggestions[0].routingReview.changes[0].capabilityUnverified,true);
+  assert.equal(r.suggestions[0].canAutoApply,false);
+  assert.deepEqual(c,original);
+});
+test("mismatched optional program revision stays flagged and does not block routing proposal",()=>{
+  const c=center();c.programLink={step:"10",partNumber:"SYN-PART-1",revision:"B",center:"LASER-01",
+    programId:"SYN-PROGRAM-2",sourceRef:"SYN-PROGRAM-METADATA-2"};
+  const r=assess(c);
+  assert.equal(r.suggestions.length,1);
+  assert.equal(r.suggestions[0].routingReview.programAssociations[0].status,"MISMATCH_OR_INCOMPLETE");
+  assert.match(r.suggestions[0].routingReview.issues.join(" "),/program associations/);
+  assert.equal(r.suggestions[0].canAutoApply,false);
 });
 test("invalid revision, duplicate IDs and invalid planning windows are rejected",()=>{
   const j=job();j.routing.revision="B";
