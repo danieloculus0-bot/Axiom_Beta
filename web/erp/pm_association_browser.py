@@ -100,8 +100,102 @@ def browser_test() -> None:
                     "past": "UNMAPPED", "pastSuggestions": 0,
                     "futureMachine": "DEMO-M-001", "canAutoApply": False,
                 }, evidence
+                # Reassign using the actual form, not a direct state mutation.
+                form = page.locator(FORM)
+                form.locator('select[name="center"]').select_option("DEMO-CUT")
+                form.locator('input[name="source"]').fill("SYN-BROWSER-002")
+                form.locator('input[name="confirmed"]').check()
+                form.locator('button[type="submit"]').click()
+                page.wait_for_function("""async () => {
+                    const {ERP_KEY} = await import('./engine.mjs');
+                    return JSON.parse(localStorage.getItem(ERP_KEY) || 'null')
+                        ?.pm?.workCenterLinkHistory?.length === 2;
+                }""")
+                reassigned = page.evaluate("""async () => {
+                    const {ERP_KEY} = await import('./engine.mjs');
+                    const {assessAlternateCenters} = await import('./routing-capacity-advice.mjs');
+                    const state = JSON.parse(localStorage.getItem(ERP_KEY));
+                    const assess = center => assessAlternateCenters(state.jobs[0], '10', {
+                        window:{start:'2099-11-02T08:00:00Z', end:'2099-11-02T16:00:00Z'},
+                        pmContext:{state:state.pm}, centers:[{
+                            id:center,routedOperationCount:0,
+                            capability:{operation:'Laser cut blank',supported:true,sourceRef:'SYN-CAP-001'},
+                            calendarHours:8,bookedHours:0,queuedHours:0,maintenanceHours:0,
+                            setupHours:1,runHours:1,capacitySourceRef:'SYN-CALENDAR-001',
+                            readinessSourceRef:'SYN-READY-001',maintenanceState:'CLEAR',
+                            tooling:'READY',fixture:'READY',material:'READY',deliveryState:'ON_TIME'
+                        }]
+                    }).assessments[0].pmEvidence;
+                    return {
+                        center:state.pm.machines[0].workCenterLink?.centerId,
+                        previous:state.pm.workCenterLinkHistory[1].previousCenterId,
+                        event:state.events.at(-1).type,
+                        oldStatus:assess('PRESS-02').status,
+                        newMachine:assess('DEMO-CUT').machineId
+                    };
+                }""")
+                assert reassigned == {
+                    "center": "DEMO-CUT", "previous": "PRESS-02",
+                    "event": "pm.work_center.demo_link_reviewed",
+                    "oldStatus": "UNMAPPED", "newMachine": "DEMO-M-001",
+                }, reassigned
+                page.reload(wait_until="domcontentloaded")
+                form = page.locator(FORM)
+                form.wait_for(state="visible")
+                assert form.locator('select[name="center"]').input_value() == "DEMO-CUT"
+                assert "SYN-BROWSER-002" in page.locator("#view").inner_text()
+
+                # Explicit unlink must persist, retain both previous reviews,
+                # and remove current PM mapping evidence from routing proposals.
+                form.locator('select[name="center"]').select_option("")
+                form.locator('input[name="source"]').fill("SYN-BROWSER-003")
+                form.locator('input[name="confirmed"]').check()
+                form.locator('button[type="submit"]').click()
+                page.wait_for_function("""async () => {
+                    const {ERP_KEY} = await import('./engine.mjs');
+                    return JSON.parse(localStorage.getItem(ERP_KEY) || 'null')
+                        ?.pm?.workCenterLinkHistory?.length === 3;
+                }""")
+                unlinked = page.evaluate("""async () => {
+                    const {ERP_KEY} = await import('./engine.mjs');
+                    const {assessAlternateCenters} = await import('./routing-capacity-advice.mjs');
+                    const state = JSON.parse(localStorage.getItem(ERP_KEY));
+                    const result = assessAlternateCenters(state.jobs[0], '10', {
+                        window:{start:'2099-11-02T08:00:00Z',end:'2099-11-02T16:00:00Z'},
+                        pmContext:{state:state.pm},centers:[{
+                            id:'DEMO-CUT',routedOperationCount:0,
+                            capability:{operation:'Laser cut blank',supported:true,sourceRef:'SYN-CAP-001'},
+                            calendarHours:8,bookedHours:0,queuedHours:0,maintenanceHours:0,
+                            setupHours:1,runHours:1,capacitySourceRef:'SYN-CALENDAR-001',
+                            readinessSourceRef:'SYN-READY-001',maintenanceState:'CLEAR',
+                            tooling:'READY',fixture:'READY',material:'READY',deliveryState:'ON_TIME'
+                        }]
+                    });
+                    return {
+                        linked:'workCenterLink' in state.pm.machines[0],
+                        previous:state.pm.workCenterLinkHistory[2].previousCenterId,
+                        current:state.pm.workCenterLinkHistory[2].centerId,
+                        kind:state.pm.workCenterLinkHistory[2].kind,
+                        event:state.events.at(-1).type,
+                        pmStatus:result.assessments[0].pmEvidence.status,
+                        suggestions:result.suggestions.length
+                    };
+                }""")
+                assert unlinked == {
+                    "linked": False, "previous": "DEMO-CUT", "current": None,
+                    "kind": "DEMO_UNLINK", "event": "pm.work_center.demo_unlinked",
+                    "pmStatus": "UNMAPPED", "suggestions": 0,
+                }, unlinked
+                page.reload(wait_until="domcontentloaded")
+                form = page.locator(FORM)
+                form.wait_for(state="visible")
+                assert form.locator('select[name="center"]').input_value() == ""
+                assert "UNMAPPED" in page.locator("#view").inner_text()
+                assert all(ref in page.locator("#view").inner_text() for ref in (
+                    "SYN-BROWSER-001", "SYN-BROWSER-002", "SYN-BROWSER-003"
+                ))
                 context.close()
-                print("PASS: Chromium form confirmation, save, reload and historical routing review")
+                print("PASS: Chromium form, reassignment, unlink, reload and historical routing review")
             finally:
                 browser.close()
     finally:
