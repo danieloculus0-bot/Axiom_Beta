@@ -1,4 +1,4 @@
-import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality} from "./quality-case.mjs";
+import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection} from "./quality-case.mjs";
 import {renderQualityCase} from "./quality-case-view.mjs";
 import {contextActions,contextRelated} from "./context-actions.mjs";
 import {readFileSync} from "node:fs";
@@ -169,4 +169,50 @@ test("quality case is reachable through register, contextual Open with, and link
   assert.ok(actions.some(a=>a.view==="quality"));
   assert.ok(actions.some(a=>a.view==="jobs"));
   assert.ok(actions.some(a=>a.view==="ewi"));
+});
+
+test("Quality Forge inspection evidence uses the existing NCR, job and routed operation",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
+  const id=state.quality[0].id,job=state.jobs.find(j=>j.id==="sample-1001");
+  const op=job.routing.operations[0],before=state;
+  assert.match(renderQualityCase(state,id),/data-form="quality-inspection"/);
+  assert.match(renderQualityCase(state,id),/name="step"/);
+  assert.throws(()=>recordQualityInspection(state,id,"FIRST_PIECE","999","PASS","Sample check",t),/routed operation/);
+  assert.throws(()=>recordQualityInspection(state,id,"INVALID",op.step,"PASS","Sample check",t),/listed fictional inspection stage/);
+  assert.throws(()=>recordQualityInspection(state,id,"FIRST_PIECE",op.step,"ACCEPTED","Sample check",t),/listed fictional inspection result/);
+  assert.throws(()=>recordQualityInspection(state,id,"FIRST_PIECE",op.step,"FAIL","x",t),/5 to 500/);
+  assert.throws(()=>recordQualityInspection(state,id,"FIRST_PIECE",op.step,"FAIL","Sample check","invalid"),/timestamp/);
+  assert.strictEqual(state,before);
+  state=recordQualityInspection(state,id,"FIRST_PIECE",op.step,"FAIL",
+    'Fictional <img src=x onerror=alert(1)> observation',u);
+  const evidence=state.quality[0].inspections[0];
+  assert.equal(evidence.id,id+"-inspection-1");
+  assert.equal(evidence.step,String(op.step));
+  assert.equal(evidence.operation,op.name);
+  assert.equal(evidence.center,op.center);
+  assert.equal(evidence.jobRevision,job.revision);
+  assert.equal(evidence.drawingRevision,job.drawing.revision);
+  assert.equal(state.events.at(-1).type,"quality.inspection.recorded");
+  assert.match(packetIssues(state,"sample-1001").join(" "),/quality hold/);
+  assert.ok(!packetIssues(state,"sample-1002").some(issue=>issue.includes("quality hold")));
+  const html=renderQualityCase(state,id);
+  assert.match(html,/href="#routing" data-job="sample-1001"/);
+  assert.match(html,/&lt;img src=x onerror=alert\(1\)&gt;/);
+  assert.doesNotMatch(html,/<img src=x/);
+  assert.match(html,/drawing rev/);
+  assert.match(html,/FAIL/);
+  assert.match(readFileSync(new URL("./app.mjs",import.meta.url),"utf8"),/case "quality-inspection"/);
+});
+test("inspection observations survive case closure without claiming automatic approval",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
+  const id=state.quality[0].id,step=state.jobs[0].routing.operations[0].step;
+  state=recordQualityInspection(state,id,"IN_PROCESS",step,"REVIEW_REQUIRED","Further sample review needed",t);
+  state=recordQualityDisposition(state,id,"SCRAP","Fictional disposition documented",u);
+  assert.match(packetIssues(state,"sample-1001").join(" "),/quality hold/);
+  state=closeReviewedQuality(state,id,u);
+  assert.equal(state.quality[0].inspections.length,1);
+  assert.equal(state.quality[0].inspections[0].result,"REVIEW_REQUIRED");
+  assert.doesNotMatch(renderQualityCase(state,id),/data-form="quality-inspection"/);
+  assert.match(renderQualityCase(state,id),/Further sample review needed/);
+  assert.throws(()=>recordQualityInspection(state,id,"FINAL_REVIEW",step,"PASS","Late inspection",u),/open fictional quality case/);
 });
