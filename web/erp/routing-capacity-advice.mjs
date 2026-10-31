@@ -122,7 +122,7 @@ export function assessAlternateCenters(job, step, scenario) {
     const embedded = embeddedCurrent.filter(link =>
       link.reviewState === "DEMO_REVIEWED" &&
       typeof link.reviewedAt === "string" &&
-      /(?:Z|[+-]\\d{2}:\\d{2})$/.test(link.reviewedAt) &&
+      /(?:Z|[+-]\d{2}:\d{2})$/.test(link.reviewedAt) &&
       Number.isFinite(Date.parse(link.reviewedAt)) &&
       Date.parse(link.reviewedAt) <= start);
     if (embeddedCurrent.some(link => !DEMO_CENTER_OPTIONS.includes(str(link.centerId)) ||
