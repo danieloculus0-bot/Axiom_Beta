@@ -139,7 +139,7 @@ export function routingCapacityEvidenceHtml(job, review = null) {
   const centerId = review?.jobId === job.id ? review.centerId :
     DEMO_CENTER_OPTIONS.find(id => id !== operation?.center);
   const option = (id,label,selected) =>
-    '<option value="'+h(id)+'"'+(id === selected?' selected':'')+'>'+h(label)+'</option>';
+    '<option value="'+h(id)+'"'+(selected?' selected':'')+'>'+h(label)+'</option>';
 
   const scenario=review?.jobId===job.id?review.scenarioEvidence?.center:null;
   const num=(k,label)=>'<label>'+h(label)+'<input type="number" min="0" max="100000" step="any" name="scenario-'+k+'" value="'+h(scenario?.[k]??"")+'"></label>';
