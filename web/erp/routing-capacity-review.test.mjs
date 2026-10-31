@@ -185,3 +185,35 @@ test("nonzero asserted routed count remains reviewable without inferring a sched
   assert.ok(!review.assessment.unknown.some(x=>x.includes("zero routed operations conflicts")));
   assert.equal(review.result.canAutoApply,false);
 });
+
+test("partial fictional job material reservation prevents READY scenario from qualifying",()=>{
+  const state=seedState(),job=state.jobs[0],e=scopedEvidence(job);
+  state.jobs[0].reserved=job.quantity-1;
+  e.center.routedOperationCount=1; // Avoid the separate idle-count contradiction.
+  const before=structuredClone(state);
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e);
+  assert.equal(review.assessment.status,"NEEDS_REVIEW");
+  assert.match(review.assessment.unknown.join(" "),/material READY conflicts with missing or incomplete canonical job material reservation/);
+  assert.equal(review.result.suggestions.length,0);
+  assert.equal(review.result.canAutoApply,false);
+  assert.deepEqual(state,before);
+});
+test("missing canonical material item leaves asserted READY unresolved",()=>{
+  const state=seedState(),job=state.jobs[0],e=scopedEvidence(job);
+  state.items=state.items.filter(item=>item.id!==job.materialId);
+  e.center.routedOperationCount=1;
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e);
+  assert.match(review.assessment.unknown.join(" "),/material READY conflicts/);
+  assert.equal(review.assessment.status,"NEEDS_REVIEW");
+  assert.equal(review.result.suggestions.length,0);
+});
+test("full fictional material reservation does not imply physical readiness",()=>{
+  const state=seedState(),job=state.jobs[0],e=scopedEvidence(job);
+  e.center.routedOperationCount=1;
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e);
+  assert.equal(job.reserved,job.quantity);
+  assert.ok(!review.assessment.unknown.some(s=>s.includes("material READY conflicts")));
+  assert.equal(review.assessment.pmEvidence.status,"UNMAPPED");
+  assert.equal(review.assessment.status,"NEEDS_REVIEW");
+  assert.equal(review.result.canAutoApply,false);
+});
