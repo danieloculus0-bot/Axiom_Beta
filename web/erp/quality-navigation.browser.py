@@ -45,6 +45,7 @@ def main():
                 page.locator('form[data-form="quality-inspection"] textarea[name="observation"]').fill(
                     "Synthetic first-piece inspection observation"
                 )
+                inspection_step = page.locator('form[data-form="quality-inspection"] select[name="step"]').input_value()
                 page.locator('form[data-form="quality-inspection"] button[type="submit"]').click()
                 inspection_id = panel.locator('[data-evidence-kind="inspection"]').first.get_attribute("data-evidence-id")
                 assert inspection_id
@@ -234,6 +235,65 @@ def main():
                 assert page.locator('#view [data-action="select-quality"][data-id="' + case_id + '"]').count() == 1, (
                     "Related-workflow links must not duplicate the canonical NCR"
                 )
+
+                # An inspection's routed-step action must resolve the exact
+                # current operation, even when another job was selected.
+                route_action = panel.locator(
+                    f'button[data-action="quality-routing-step"][data-id="{inspection_id}"]'
+                )
+                expect(route_action.first).to_be_visible()
+                page.locator("#job-context").select_option(other_job)
+                route_action.first.click()
+                page.wait_for_function("location.hash === '#routing'")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                route_card = page.locator("#view [data-route-step]:focus")
+                expect(route_card).to_have_count(1)
+                routed_step = route_card.get_attribute("data-route-step")
+                assert routed_step == inspection_step, "Routing jump must focus the recorded operation"
+                page.locator('#module-nav a[data-nav="quality"]').click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+
+                # A simulated drawing revision change makes the historical
+                # inspection ineligible for a CURRENT routing-step jump.
+                # The evidence and work-order link must remain available.
+                page.locator('#module-nav a[data-nav="documents"]').click()
+                page.wait_for_function("location.hash === '#documents'")
+                revision_select = page.locator('form[data-form="drawing-rev"] select[name="revision"]')
+                original_revision = revision_select.input_value()
+                other_revision = revision_select.locator("option").evaluate_all(
+                    "(options, current) => options.map(o => o.value).find(v => v !== current)",
+                    original_revision,
+                )
+                assert other_revision, "Fictional drawing needs an alternate revision"
+                revision_select.select_option(other_revision)
+                page.locator('form[data-form="drawing-rev"] button[type="submit"]').click()
+                page.locator('#module-nav a[data-nav="quality"]').click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                expect(route_action).to_have_count(0)
+                expect(panel.locator('[role="note"]').filter(
+                    has_text="Recorded drawing revision differs"
+                ).first).to_be_visible()
+                expect(panel.locator(
+                    f'button[data-action="quality-evidence-work-order"][data-kind="inspection"][data-id="{inspection_id}"]'
+                ).first).to_be_visible()
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+
+                # Restoring the fictional drawing revision restores only the
+                # valid navigation action; it never reopens the closed NCR.
+                page.locator('#module-nav a[data-nav="documents"]').click()
+                page.wait_for_function("location.hash === '#documents'")
+                page.locator('form[data-form="drawing-rev"] select[name="revision"]').select_option(
+                    original_revision
+                )
+                page.locator('form[data-form="drawing-rev"] button[type="submit"]').click()
+                page.locator('#module-nav a[data-nav="quality"]').click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(route_action.first).to_be_visible()
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
 
                 # Existing inline part records provide a real Open with entry
                 # point even while the separate record-row fix remains in #48.
