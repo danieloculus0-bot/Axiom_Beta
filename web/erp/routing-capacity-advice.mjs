@@ -83,15 +83,30 @@ export function assessAlternateCenters(job, step, scenario) {
   // This optional link reads the existing browser-local PM state, not a second
   // machine registry. Invalid or ambiguous mappings fail closed.
   const pmContext = scenario.pmContext ?? null;
+  let resolvedPmContext = null;
   if (pmContext !== null) {
     try { validatePm(pmContext.state); }
     catch { return invalid("A valid synthetic PM Tracker snapshot is required."); }
-    const links = pmContext.links;
-    if (!Array.isArray(links) || links.length > 100 ||
+    // Prefer an explicit association on the existing PM machine record when
+    // supplied. Legacy caller-provided links remain optional and supported.
+    // Neither source authorizes a machine or certifies a work center.
+    const legacy = pmContext.links ?? [];
+    if (!Array.isArray(legacy) || legacy.length > 100)
+      return invalid("PM center-to-machine links must be an optional array.");
+    const embedded = pmContext.state.machines
+      .filter(machine => machine?.workCenterLink != null)
+      .map(machine => ({centerId:machine.workCenterLink?.centerId,
+        machineId:machine.id,sourceRef:machine.workCenterLink?.sourceRef}));
+    if (embedded.some(link => !DEMO_CENTER_OPTIONS.includes(str(link.centerId)) ||
+        !str(link.sourceRef)))
+      return invalid("PM machine work-center associations require a registered center and source reference.");
+    const links = [...legacy,...embedded];
+    if (links.length > 100 ||
         links.some(link => !str(link?.centerId) || !str(link?.machineId)) ||
         new Set(links.map(link => str(link.centerId))).size !== links.length ||
         new Set(links.map(link => str(link.machineId))).size !== links.length)
       return invalid("PM center-to-machine links must be explicit, unique and unambiguous.");
+    resolvedPmContext = {state:pmContext.state,links};
   }
   const assessments = [], suggestions = [];
   for (const center of scenario.centers) {
@@ -112,7 +127,7 @@ export function assessAlternateCenters(job, step, scenario) {
     }
     if (center.maintenanceState === "DOWN") blocked.push("Machine is down for maintenance.");
     else if (center.maintenanceState !== "CLEAR") unknown.push("Maintenance clearance is UNKNOWN.");
-    const pmEvidence = pmContext ? pmEvidenceFor(pmContext,center.id,window) : null;
+    const pmEvidence = resolvedPmContext ? pmEvidenceFor(resolvedPmContext,center.id,window) : null;
     if (pmEvidence) {
       unknown.push(...pmEvidence.concerns);
       notes.push("PM evidence is an asserted synthetic snapshot, not certified clearance.");
