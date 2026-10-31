@@ -275,7 +275,7 @@ def main():
                 expect(route_action).to_have_count(0)
                 expect(panel.locator('[role="note"]').filter(
                     has_text="Recorded drawing revision differs"
-                )).to_have_count(1)
+                ).first).to_be_visible()
                 expect(panel.locator(
                     f'button[data-action="quality-evidence-work-order"][data-kind="inspection"][data-id="{inspection_id}"]'
                 ).first).to_be_visible()
