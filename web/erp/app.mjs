@@ -13,7 +13,7 @@ import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction,qualityJobSummary,jobQualityTarget} from "./quality-case.mjs";
-import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget} from "./quality-case-view.mjs";
+import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget} from "./quality-case-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
@@ -36,7 +36,7 @@ const stateViews={
 };
 let workforce=seedWorkforce();
 let qcdsmDepartment="Assembly";
-let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""},routeDraft=null,selectedQualityId="";
+let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""},routeDraft=null,selectedQualityId="",pendingRoutingStep=null;
 function load(){
   try{
     const raw=localStorage.getItem(ERP_KEY);
@@ -225,7 +225,7 @@ function routingView(){
   if(issues.length)s+='<div class="alert"><b>Work packet is not ready:</b> '+issues.map(h).join("; ")+'</div>';
   else s+='<div class="success"><b>Sample source checks passed.</b> This does not constitute manufacturing approval.</div>';
   s+='<div class="columns"><section class="panel"><h2>Routed operations</h2><div class="steps">'+j.routing.operations.map(op=>
-    '<div class="step-card"><div class="panel-head"><h3>STEP '+h(op.step)+' · '+h(op.name)+'</h3>'+status(op.center)+'</div>'+
+    '<div class="step-card" data-route-step="'+h(op.step)+'"><div class="panel-head"><h3>STEP '+h(op.step)+' · '+h(op.name)+'</h3>'+status(op.center)+'</div>'+
     '<ol>'+op.instructions.map(x=>'<li>'+h(x)+'</li>').join("")+'</ol><small>EXAMPLE CHECK: '+h(op.check)+'</small></div>'
   ).join("")+'</div></section><section class="panel"><h2>Work order links</h2><p>All modules use the same selected job context.</p>'+
     '<div class="feature">'+moduleLink("documents","Drawing","View / change sample revision")+
@@ -477,6 +477,19 @@ function render(){
   menu?.markActive(view);
   $("view").innerHTML='<div id="flash" role="status">'+h(flash)+'</div>'+contextBanner()+renderers[view]();
   applyContextFocus();
+  if(view==="routing"&&pendingRoutingStep){
+    const focus=pendingRoutingStep;
+    pendingRoutingStep=null;
+    if(focus.jobId===j.id){
+      const card=[...document.querySelectorAll("[data-route-step]")]
+        .find(element=>element.dataset.routeStep===focus.step);
+      if(card){
+        card.setAttribute("tabindex","-1");
+        card.scrollIntoView({block:"center"});
+        card.focus({preventScroll:true});
+      }
+    }
+  }
 }
 function download(data,type,name){
   const url=URL.createObjectURL(new Blob([data],{type}));
@@ -558,6 +571,19 @@ document.addEventListener("click",event=>{
       target.setAttribute("tabindex","-1");
       target.scrollIntoView({block:"center"});
       target.focus({preventScroll:true});
+    }
+    if(action==="quality-routing-step"){
+      const target=qualityInspectionRoutingTarget(state,button.dataset.case,id);
+      const panel=document.getElementById("quality-case-detail");
+      if(currentView()!=="quality"||!target||panel?.dataset.caseId!==target.caseId)
+        throw Error("The selected inspection no longer matches the current fictional routing");
+      selectedContext={type:"quality",id:target.caseId};
+      selectedIntent="route";
+      rememberJob(target.jobId);
+      selectedStep=target.step;
+      pendingRoutingStep={jobId:target.jobId,step:target.step};
+      if(location.hash==="#routing")render();
+      else location.hash="#routing";
     }
     if(action==="job-quality-cases"){
       const target=jobQualityTarget(state,id);
