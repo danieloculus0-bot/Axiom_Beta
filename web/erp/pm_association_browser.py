@@ -282,9 +282,8 @@ def browser_test() -> None:
                 # An empty hour is UNKNOWN, never silently interpreted as zero.
                 capacity_form.locator('input[name="scenario-calendarHours"]').fill("")
                 capacity_form.locator('button[type="submit"]').click()
-                assert "All six scenario hour estimates must be explicitly supplied" in (
-                    page.locator("#flash").inner_text()
-                )
+                rejected_message = page.locator("#flash").inner_text()
+                assert "All six scenario hour estimates must be explicitly supplied" in rejected_message, rejected_message
                 assert scenario_before == page.evaluate("""async () => {
                     const {ERP_KEY} = await import('./engine.mjs');
                     return localStorage.getItem(ERP_KEY);
