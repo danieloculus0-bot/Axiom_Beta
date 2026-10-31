@@ -18,18 +18,35 @@ export function qualityEvidenceTarget(record,kind,id){
 /* Link only to the current, matching routed operation for this inspection.
  * Historical evidence remains readable when a routing or revision has changed.
  */
-export function qualityInspectionRoutingTarget(state,caseId,inspectionId){
+/* Explain why a historical observation cannot open a CURRENT routing step.
+ * This is a read-only projection, not an inference about why a route changed.
+ */
+export function qualityInspectionRoutingStatus(state,caseId,inspectionId){
   if(!Array.isArray(state?.quality)||!Array.isArray(state?.jobs))return null;
   const record=state.quality.find(item=>item?.id===caseId);
   const inspection=(Array.isArray(record?.inspections)?record.inspections:[])
     .find(item=>item?.id===inspectionId&&typeof inspectionId==="string"&&inspectionId.length>0);
+  if(!inspection)return null;
+  const unavailable=reason=>({target:null,reason});
   const job=state.jobs.find(item=>item?.id===record?.jobId);
-  if(!inspection||!job)return null;
+  if(!job)return unavailable("Linked fictional work order is unavailable.");
+  if(typeof inspection.jobRevision!=="string"||!inspection.jobRevision||
+     typeof inspection.drawingRevision!=="string"||!inspection.drawingRevision)
+    return unavailable("Recorded revision evidence is incomplete.");
+  if(inspection.jobRevision!==job.revision)
+    return unavailable("Recorded job revision differs from the current work order.");
+  if(inspection.drawingRevision!==job.drawing?.revision)
+    return unavailable("Recorded drawing revision differs from the current drawing.");
   const operation=job.routing?.operations?.find(op=>String(op.step)===String(inspection.step));
-  if(!operation||inspection.jobRevision!==job.revision||
-     inspection.drawingRevision!==job.drawing?.revision||
-     inspection.operation!==operation.name||inspection.center!==operation.center)return null;
-  return {caseId:record.id,inspectionId:inspection.id,jobId:job.id,step:String(operation.step)};
+  if(!operation)return unavailable("Recorded step is absent from the current routing.");
+  if(!inspection.operation||!inspection.center)
+    return unavailable("Recorded operation details are incomplete.");
+  if(inspection.operation!==operation.name||inspection.center!==operation.center)
+    return unavailable("Recorded operation or work center differs from the current routing.");
+  return {target:{caseId:record.id,inspectionId:inspection.id,jobId:job.id,step:String(operation.step)},reason:null};
+}
+export function qualityInspectionRoutingTarget(state,caseId,inspectionId){
+  return qualityInspectionRoutingStatus(state,caseId,inspectionId)?.target??null;
 }
 const evidenceAttrs=(kind,id)=>typeof id==="string"&&id?
   ' data-evidence-kind="'+h(kind)+'" data-evidence-id="'+h(id)+'"':"";
@@ -39,9 +56,12 @@ const evidenceButton=(record,kind,id,label)=>{
     h(record.id)+'" data-kind="'+h(target.kind)+'" data-id="'+h(target.id)+'">'+h(label)+'</button>':"";
 };
 const routingStepButton=(state,record,inspection)=>{
-  const target=qualityInspectionRoutingTarget(state,record?.id,inspection?.id);
-  return target?'<button type="button" class="action secondary" data-action="quality-routing-step" data-case="'+
-    h(target.caseId)+'" data-id="'+h(target.inspectionId)+'">Open routed step '+h(target.step)+'</button>':"";
+  const status=qualityInspectionRoutingStatus(state,record?.id,inspection?.id);
+  const target=status?.target;
+  if(target)return '<button type="button" class="action secondary" data-action="quality-routing-step" data-case="'+
+    h(target.caseId)+'" data-id="'+h(target.inspectionId)+'">Open routed step '+h(target.step)+'</button>';
+  return status?.reason?'<span class="small" role="note">Historical route: '+
+    h(status.reason)+' Current step link unavailable.</span>':"";
 };
 /* Compact, read-only evidence projection for a real fictional NCR.
  * Reuses the same chronology shown in the case itself, not a second store.

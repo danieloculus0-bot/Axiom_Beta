@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {seedState,makePurchaseOrder,receivePurchaseOrder,raiseQuality,createJob} from "./engine.mjs";
 import {makeReport,reportCsv,REPORTS} from "./reports.mjs";
 import {qualityCaseTimeline} from "./quality-timeline.mjs";
-import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget} from "./quality-case-view.mjs";
+import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionRoutingStatus} from "./quality-case-view.mjs";
 import {startSession,stopSession} from "../ewi/engine.mjs";
 import {completePmTask} from "./pm.mjs";
 import {qualityJobSummary,jobQualityTarget,recordQualityInspection,recordQualityDisposition,closeReviewedQuality,
@@ -362,5 +362,64 @@ test("closed fictional NCR retains read-only routing link without changing case 
  assert.equal(state.quality[0].status,"CLOSED");
  assert.equal(qualityInspectionRoutingTarget(state,id,inspectionId)?.jobId,"sample-1001");
  assert.match(renderQualityCase(state,id),/data-action="quality-routing-step"/);
+ assert.equal(JSON.stringify(state),before);
+});
+
+
+test("historical routing hints explain stale evidence without offering a misleading current-step link",()=>{
+ let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
+ const q=state.quality[0],job=state.jobs[0],step=job.routing.operations[0].step;
+ state=recordQualityInspection(state,q.id,"IN_PROCESS",step,"REVIEW_REQUIRED",
+   "Fictional historical inspection observation","2026-10-30T12:01:00Z");
+ const inspectionId=state.quality[0].inspections[0].id;
+ assert.deepEqual(qualityInspectionRoutingStatus(state,q.id,inspectionId),{
+   target:{caseId:q.id,inspectionId,jobId:job.id,step:String(step)},reason:null
+ });
+ assert.equal(qualityInspectionRoutingStatus(state,q.id,"unknown"),null);
+ assert.equal(qualityInspectionRoutingStatus(state,"other-case",inspectionId),null);
+ assert.ok(!renderQualityCase(state,q.id).includes("Historical route:"));
+ const cases=[
+   [s=>{s.jobs[0].revision="B";},"Recorded job revision differs from the current work order."],
+   [s=>{s.jobs[0].drawing.revision="B";},"Recorded drawing revision differs from the current drawing."],
+   [s=>{s.jobs[0].routing.operations[0].step="99";},"Recorded step is absent from the current routing."],
+   [s=>{s.jobs[0].routing.operations[0].name="Changed operation";},"Recorded operation or work center differs from the current routing."],
+   [s=>{s.jobs[0].routing.operations[0].center="OTHER";},"Recorded operation or work center differs from the current routing."],
+   [s=>{delete s.quality[0].inspections[0].drawingRevision;},"Recorded revision evidence is incomplete."],
+   [s=>{delete s.quality[0].inspections[0].operation;},"Recorded operation details are incomplete."],
+   [s=>{s.quality[0].jobId="missing-job";},"Linked fictional work order is unavailable."]
+ ];
+ for(const [mutate,reason] of cases){
+   const stale=structuredClone(state);
+   mutate(stale);
+   const before=JSON.stringify(stale);
+   assert.deepEqual(qualityInspectionRoutingStatus(stale,q.id,inspectionId),{target:null,reason});
+   assert.equal(qualityInspectionRoutingTarget(stale,q.id,inspectionId),null);
+   const html=renderQualityCase(stale,q.id);
+   assert.ok(html.includes("Historical route: "+reason+" Current step link unavailable."));
+   assert.ok(html.includes("Fictional historical inspection observation"));
+   assert.ok(!html.includes('data-action="quality-routing-step"'));
+   assert.equal(JSON.stringify(stale),before);
+ }
+});
+
+test("closed NCR keeps historical inspection, linked corrective and chronology hints read-only",()=>{
+ let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
+ const id=state.quality[0].id,step=state.jobs[0].routing.operations[0].step;
+ state=recordQualityInspection(state,id,"FINAL_REVIEW",step,"FAIL",
+   "Fictional final check evidence","2026-10-30T12:01:00Z");
+ const inspectionId=state.quality[0].inspections[0].id;
+ state=recordQualityCorrectiveAction(state,id,"QUALITY","Review sample setup",
+   inspectionId,"2026-10-30T12:02:00Z");
+ state=recordQualityDisposition(state,id,"SCRAP","Fictional disposition","2026-10-30T12:03:00Z");
+ state=closeReviewedQuality(state,id,"2026-10-30T12:04:00Z");
+ state.jobs[0].routing.operations[0].center="OTHER";
+ const before=JSON.stringify(state),html=renderQualityCase(state,id);
+ assert.equal(state.quality[0].status,"CLOSED");
+ assert.equal((html.match(/Historical route:/g)||[]).length,3);
+ assert.equal((html.match(/Current step link unavailable\./g)||[]).length,3);
+ assert.ok(html.includes("Fictional final check evidence"));
+ assert.ok(html.includes("Case chronology"));
+ assert.ok(html.includes('href="#jobs" data-job="sample-1001"'));
+ assert.ok(!html.includes('data-action="quality-routing-step"'));
  assert.equal(JSON.stringify(state),before);
 });
