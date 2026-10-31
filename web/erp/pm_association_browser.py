@@ -194,8 +194,38 @@ def browser_test() -> None:
                 assert all(ref in page.locator("#view").inner_text() for ref in (
                     "SYN-BROWSER-001", "SYN-BROWSER-002", "SYN-BROWSER-003"
                 ))
+                # The routing screen now calls the existing capacity reviewer
+                # without supplying fictional availability or capability facts.
+                page.goto(url.replace("#pm", "#routing"), wait_until="domcontentloaded")
+                capacity_form = page.locator('form[data-form="routing-capacity-review"]')
+                capacity_form.wait_for(state="visible")
+                capacity_form.locator('select[name="step"]').select_option("10")
+                capacity_form.locator('select[name="center"]').select_option("DEMO-CUT")
+                capacity_form.locator('input[name="window-start"]').fill("2026-11-02T08:00")
+                capacity_form.locator('input[name="window-end"]').fill("2026-11-02T16:00")
+                before = page.evaluate("""async () => {
+                    const {ERP_KEY} = await import('./engine.mjs');
+                    return localStorage.getItem(ERP_KEY);
+                }""")
+                capacity_form.locator('button[type="submit"]').click()
+                result = page.locator("#routing-capacity-result")
+                result.wait_for(state="visible")
+                review_text = result.inner_text()
+                assert "NEEDS_REVIEW" in review_text, review_text
+                assert "UNMAPPED" in review_text, review_text
+                assert "Planning-window hours are UNKNOWN" in review_text, review_text
+                assert "No alternate routing proposed or saved" in review_text, review_text
+                after = page.evaluate("""async () => {
+                    const {ERP_KEY} = await import('./engine.mjs');
+                    return localStorage.getItem(ERP_KEY);
+                }""")
+                assert before == after, "Read-only review must not persist or mutate the ERP"
+                page.reload(wait_until="domcontentloaded")
+                assert page.locator("#routing-capacity-result").count() == 0, (
+                    "Ephemeral evidence review must not be misrepresented as saved"
+                )
                 context.close()
-                print("PASS: Chromium form, reassignment, unlink, reload and historical routing review")
+                print("PASS: Chromium PM lifecycle and read-only routing capacity preflight")
             finally:
                 browser.close()
     finally:
