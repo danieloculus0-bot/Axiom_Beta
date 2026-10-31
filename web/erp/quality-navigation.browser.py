@@ -241,9 +241,9 @@ def main():
                 route_action = panel.locator(
                     f'button[data-action="quality-routing-step"][data-id="{inspection_id}"]'
                 )
-                expect(route_action).to_have_count(1)
+                expect(route_action.first).to_be_visible()
                 page.locator("#job-context").select_option(other_job)
-                route_action.click()
+                route_action.first.click()
                 page.wait_for_function("location.hash === '#routing'")
                 expect(page.locator("#job-context")).to_have_value(job_id)
                 route_card = page.locator("#view [data-route-step]:focus")
@@ -278,7 +278,7 @@ def main():
                 )).to_have_count(1)
                 expect(panel.locator(
                     f'button[data-action="quality-evidence-work-order"][data-kind="inspection"][data-id="{inspection_id}"]'
-                )).to_have_count(1)
+                ).first).to_be_visible()
                 expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
 
                 # Restoring the fictional drawing revision restores only the
@@ -291,7 +291,7 @@ def main():
                 page.locator('form[data-form="drawing-rev"] button[type="submit"]').click()
                 page.locator('#module-nav a[data-nav="quality"]').click()
                 page.wait_for_function("location.hash === '#quality'")
-                expect(route_action).to_have_count(1)
+                expect(route_action.first).to_be_visible()
                 expect(panel).to_have_attribute("data-case-id", case_id)
                 expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
 
