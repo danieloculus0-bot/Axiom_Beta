@@ -164,7 +164,10 @@ def main():
 
                 # Report Center is a third independent path to the same
                 # fictional NCR, including its post-closure evidence.
-                page.locator('#module-nav a[data-nav="reports"]').click()
+                report_search = page.locator("#menu-search")
+                report_search.fill("report center")
+                expect(page.locator('#module-nav a[data-nav="reports"]')).to_be_visible()
+                report_search.press("Enter")
                 page.wait_for_function("location.hash === '#reports'")
                 page.locator("#report-select").select_option("quality")
                 report_case = page.locator(
