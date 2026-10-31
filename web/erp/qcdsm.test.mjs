@@ -22,6 +22,15 @@ test("QCDSM uses factual ERP signals and missing baselines remain N/A",()=>{
  assert.match(wheelHtml(e),/MORALE/);
  assert.match(wheelHtml(e),/Quality/);
  assert.match(wheelHtml(e),/N\/A/);
+ const wheel=wheelHtml(e);
+ assert.equal((wheel.match(/data-qcdsm-domain=/g)||[]).length,5);
+ assert.deepEqual([...wheel.matchAll(/data-qcdsm-domain="([^"]+)"/g)].map(x=>x[1]),
+  ["Quality","Cost","Delivery","Safety","Morale"]);
+ assert.equal((wheel.match(/data-driver="true"/g)||[]).length,1);
+ assert.match(wheel,/data-qcdsm-domain="Morale" data-driver="true"/);
+ assert.match(wheel,/>QCDSM<\/text>/);
+ assert.doesNotMatch(wheel,/>MORALE<\/text>/);
+ assert.doesNotMatch(renderQcdsm(s,w,"Machining",today),/Morale: the five structural levers|Purpose|Mastery|Autonomy|Belonging/);
 });
 test("overtime and 50+ hour pressure feed RCA investigation signals, no individual rating",()=>{
  const w=recordDemoPulse(seedWorkforce(),pulse);
