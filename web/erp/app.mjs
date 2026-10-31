@@ -6,6 +6,7 @@ import {
 } from "./engine.mjs";
 import {startSession,stopSession,durationSeconds,sessionsCsv} from "../ewi/engine.mjs";
 import {renderPm} from "./pm-view.mjs";
+import {reviewPmWorkCenterAssociation} from "./pm-work-center-link.mjs";
 import {renderRequestDesk} from "./request-view.mjs";
 import {WORKFORCE_KEY,seedWorkforce,validateWorkforce,addDemoPerson,assignDemoRole,recordDemoPulse,completeDemoTraining,nominateDemoRecognition,reviewDemoNomination,closeDemoAction} from "./workforce.mjs";
 import {renderHr,renderMorale} from "./workforce-view.mjs";
@@ -582,6 +583,22 @@ document.addEventListener("submit",event=>{
         const result=createMachine(state.pm,String(f.get("machine-type")),String(f.get("criticality")));
         selectedPmMachineId=result.id;
         pmTransact(result.pm,"pm.asset.created",result.id+" / FICTIONAL","Added a generic demonstration machine.");
+        break;
+      }
+      case "pm-work-center-link": {
+        const machineId=String(f.get("machine")||"");
+        if(!getMachine(state.pm,machineId))throw Error("Select an existing fictional PM machine.");
+        if(f.get("confirmed")===null)throw Error("Explicit fictional association review is required.");
+        const centerId=String(f.get("center")||"")||null;
+        const result=reviewPmWorkCenterAssociation(state.pm,{
+          machineId,centerId,sourceRef:String(f.get("source")||"").trim(),
+          reviewedBy:String(f.get("reviewer")||"").trim().toUpperCase(),
+          at:new Date().toISOString()
+        });
+        selectedPmMachineId=machineId;
+        pmTransact(result.pm,centerId?"pm.work_center.demo_link_reviewed":"pm.work_center.demo_unlinked",
+          machineId+" / "+(centerId||"UNMAPPED")+" / "+result.change.sourceRef+" / FICTIONAL",
+          "Fictional work-center association review recorded. No machine qualification or release.");
         break;
       }
       case "pm-new-task": {
