@@ -48,7 +48,11 @@ jobs:
           test -s web/erp/workforce-view.mjs
           test -s web/erp/qcdsm.mjs
           test -s web/erp/qcdsm-view.mjs
-          grep -q 'QCDSM Wheel' web/erp/navigation.mjs
+          grep -q 'id:"qcdsm"' web/erp/navigation.mjs
+          grep -q 'id:"cost"' web/erp/navigation.mjs
+          grep -q 'id:"delivery"' web/erp/navigation.mjs
+          grep -q 'id:"safety"' web/erp/navigation.mjs
+          grep -q 'class="wheel-sector"' web/erp/qcdsm-view.mjs
           grep -q 'Morale & Recognition' web/erp/navigation.mjs
           grep -q 'routingEditorHtml' web/erp/app.mjs
           grep -q 'Request Desk' web/erp/navigation.mjs
