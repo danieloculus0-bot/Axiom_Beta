@@ -19,7 +19,7 @@ test("QCDSM uses factual ERP signals and missing baselines remain N/A",()=>{
  assert.equal(e.recordables,0);
  assert.ok(e.possibleFactors.length===0);
  assert.equal(e.quality.openHolds,0);
- assert.match(wheelHtml(e),/MORALE/);
+ assert.match(wheelHtml(e),/Morale/);
  assert.match(wheelHtml(e),/Quality/);
  assert.match(wheelHtml(e),/N\/A/);
  const wheel=wheelHtml(e);
