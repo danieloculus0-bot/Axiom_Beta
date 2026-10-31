@@ -6,6 +6,7 @@ import {
  MACHINE_TYPES,PM_TEMPLATES,REQUEST_TYPES,PRIORITIES,COMPLETION_NOTES,
  pmOverview,machineSummary,getMachine,getTask,taskDue,localDay
 } from "./pm.mjs";
+import {DEMO_CENTER_OPTIONS} from "./routing-edit.mjs";
 
 const h=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const label=(name,kind="")=>{
@@ -68,6 +69,30 @@ export function renderPm(pm,selectedMachineId){
     '<div><div class="eyebrow">Link to demo machine</div>'+
     '<p class="small">Machine page: use the URL below to reopen this fictional asset. This is not a QR scan or a connected site machine.</p>'+
     '<button class="action secondary" type="button" data-action="pm-copy-link" data-id="'+h(machine.id)+'">Copy machine link</button></div></div></section>';
+  // The canonical PM machine remains the only association store. These
+  // browser-local review controls are illustrative, not authenticated approval.
+  const linkedCenter=machine.workCenterLink?.centerId ?? null;
+  const associationHistory=Array.isArray(pm.workCenterLinkHistory)?
+    pm.workCenterLinkHistory.filter(item=>item.machineId===machine.id).slice(-5).reverse():[];
+  s+=section("Work-center association / review only",
+    '<p class="small">Optional link to an existing fictional routing work center. A match is not proof of capacity, machine qualification, or maintenance clearance. No live BEAN or ERP connection.</p>'+
+    '<p><b>Current link:</b> '+h(linkedCenter||"UNMAPPED")+
+    (linkedCenter?' <span class="tag">DEMO REVIEWED</span>':' <span class="tag warn">UNKNOWN</span>')+'</p>'+
+    '<form class="controls" data-form="pm-work-center-link">'+
+    '<input type="hidden" name="machine" value="'+h(machine.id)+'">'+
+    '<label>Fictional work center<select name="center">'+
+    '<option value="">Unlink / unknown</option>'+
+    DEMO_CENTER_OPTIONS.map(id=>'<option value="'+h(id)+'"'+(id===linkedCenter?' selected':'')+'>'+h(id)+'</option>').join("")+
+    '</select></label>'+
+    '<label>Demo reviewer code<input name="reviewer" value="DEMO-PLANNER" pattern="DEMO-[A-Z0-9-]{1,20}" maxlength="25" required></label>'+
+    '<label>Fictional evidence reference<input name="source" placeholder="SYN-LINK-001" pattern="SYN-[A-Z0-9-]{1,60}" maxlength="64" required></label>'+
+    '<label style="flex-basis:100%"><input type="checkbox" name="confirmed" required style="width:auto;min-height:auto;display:inline-block;margin-right:8px">I reviewed this fictional association. This is not production authorization.</label>'+
+    '<button class="action secondary" type="submit">Record demo association review</button></form>'+
+    '<h3>Recent association history</h3>'+
+    (associationHistory.length?table(["Recorded","Previous","Current","Reviewer","Evidence"],
+      associationHistory.map(item=>[h(item.at),h(item.previousCenterId||"UNMAPPED"),
+        h(item.centerId||"UNMAPPED"),h(item.reviewedBy),h(item.sourceRef)]),
+      "No association history."):'<p class="small muted">No fictional association reviews recorded.</p>'));
   s+=section("Scheduled tasks for "+machine.id,
    table(["Task & safety note","Interval / role","Next due","Status","Log"],
     summary.tasks.map(task=>[
