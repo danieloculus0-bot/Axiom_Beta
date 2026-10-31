@@ -473,6 +473,7 @@ document.addEventListener("click",event=>{
       const j=job();
       if(sessions.some(s=>s.jobId===j.id))throw Error("Clocking history exists for this job. Use another fictional job for routing changes.");
       routeDraft={jobId:j.id,operations:editableRouting(j)};
+      capacityReview=null; // A saved-route assessment cannot describe an unsaved draft.
       flash="Edit fictional routing, then save for demo review.";
       render();
       document.getElementById("routing-editor")?.scrollIntoView({block:"start"});
@@ -485,11 +486,12 @@ document.addEventListener("click",event=>{
       if(action==="routing-down")routeDraft.operations=moveRouteStep(routeDraft.operations,index,1);
       if(action==="routing-remove")routeDraft.operations=removeRouteStep(routeDraft.operations,index);
       if(action==="routing-add")routeDraft.operations=addRouteStep(routeDraft.operations);
+      capacityReview=null; // Reordered/added/removed operations invalidate prior evidence.
       flash="";
       render();
       document.getElementById("routing-editor")?.scrollIntoView({block:"start"});
     }
-    if(action==="routing-cancel"){routeDraft=null;flash="Routing edit cancelled, no changes saved.";render();}
+    if(action==="routing-cancel"){routeDraft=null;capacityReview=null;flash="Routing edit cancelled, no changes saved.";render();}
     if(action==="routing-review"){
       if(routeDraft)throw Error("Save or cancel draft edits before review");
       transact(reviewRoutingDraft(state,job().id,sessions),"Sample routing reviewed. This is not a production release.");
@@ -579,7 +581,10 @@ document.addEventListener("submit",event=>{
       case "morale-nominate":
         workforceTransact(nominateDemoRecognition(workforce,String(f.get("person")),String(f.get("category")),String(f.get("reason")),Number(f.get("points"))),"morale.recognition.nominated","Fictional recognition nomination","Nomination added for demonstration review.");break;
       case "routing-capacity-review": {
-        const j=job(),step=String(f.get("step")||""),center=String(f.get("center")||""),
+        const j=job();
+        if(routeDraft?.jobId===j.id)
+          throw Error("Save or cancel unsaved routing edits before capacity review.");
+        const step=String(f.get("step")||""),center=String(f.get("center")||""),
           start=String(f.get("window-start")||""),end=String(f.get("window-end")||"");
         const evidence=readRoutingCapacityScenario(f,j,step,center,start,end);
         capacityReview=inspectRoutingCapacityEvidence(state,j.id,step,center,start,end,evidence,sessions);
