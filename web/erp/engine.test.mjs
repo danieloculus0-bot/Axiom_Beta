@@ -129,8 +129,9 @@ test("Quality Forge case review stays linked to the canonical fictional job and 
   assert.equal(state.quality[0].status,"CLOSED");
   assert.equal(state.quality[0].followUps.length,1);
   assert.deepEqual(packetIssues(state,"sample-1001"),[]);
-  assert.deepEqual(state.events.slice(-4).map(e=>e.type),[
-    "quality.hold","quality.disposition.recorded","quality.followup.recorded","quality.closed"
+  assert.deepEqual(state.events.slice(-5).map(e=>e.type),[
+    "quality.hold","quality.disposition.recorded","quality.disposition.recorded",
+    "quality.followup.recorded","quality.closed"
   ]);
   state=recordQualityFollowup(state,id,"Effectiveness still requires human review","2026-10-31T12:00:00Z");
   assert.equal(state.quality[0].followUps.length,2);
