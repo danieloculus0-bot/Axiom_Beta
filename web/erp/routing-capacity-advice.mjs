@@ -7,7 +7,11 @@ import {DEMO_CENTER_OPTIONS} from "./routing-edit.mjs";
 
 const str = value => typeof value === "string" ? value.trim() : "";
 const hours = value => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100000;
-const round = value => Math.round(value * 100) / 100;
+// Keep display rounding distinct from raw eligibility; normalize -0 for strict consumers.
+const round = value => {
+  const rounded = Math.round(value * 100) / 100;
+  return Object.is(rounded, -0) ? 0 : rounded;
+};
 const limitations = [
   "Planning-window, capacity, readiness and evidence inputs are caller-supplied, not live or verified.",
   "Zero routed operations is not proof of free machine time, capability or qualification.",
