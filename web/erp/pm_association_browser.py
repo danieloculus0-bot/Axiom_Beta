@@ -278,6 +278,28 @@ def browser_test() -> None:
                     return localStorage.getItem(ERP_KEY);
                 }""")
                 assert scenario_before == scenario_after, "Scenario review must not write ERP state"
+                # A changed scenario input must clear its old assessment without losing
+                # unsaved values or modifying canonical fictional ERP records.
+                capacity_form.locator('input[name="scenario-bookedHours"]').fill("2")
+                assert page.locator("#routing-capacity-result").count() == 0
+                assert "Submit again" in page.locator("#routing-capacity-stale").inner_text()
+                assert capacity_form.locator('input[name="scenario-bookedHours"]').input_value() == "2"
+                capacity_form.locator('button[type="submit"]').click()
+                assert "available 5 hours" in page.locator("#routing-capacity-result").inner_text()
+                # Select changes must invalidate the prior assessment too.
+                capacity_form.locator('select[name="scenario-tooling"]').select_option("BLOCKED")
+                assert page.locator("#routing-capacity-result").count() == 0
+                capacity_form.locator('button[type="submit"]').click()
+                assert "EXCLUDED" in page.locator("#routing-capacity-result").inner_text()
+                capacity_form.locator('select[name="scenario-tooling"]').select_option("READY")
+                assert page.locator("#routing-capacity-result").count() == 0
+                capacity_form.locator('input[name="scenario-bookedHours"]').fill("1")
+                capacity_form.locator('button[type="submit"]').click()
+                assert "available 6 hours" in page.locator("#routing-capacity-result").inner_text()
+                assert scenario_before == page.evaluate("""async () => {
+                    const {ERP_KEY} = await import('./engine.mjs');
+                    return localStorage.getItem(ERP_KEY);
+                }"""), "Scenario edits must not write fictional ERP records"
 
                 # An empty hour is UNKNOWN, never silently interpreted as zero.
                 capacity_form.locator('input[name="scenario-calendarHours"]').fill("")
