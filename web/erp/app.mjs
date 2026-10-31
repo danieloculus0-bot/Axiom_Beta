@@ -168,7 +168,7 @@ function dashboard(){
     moduleLink("requests","Request Desk","Track assignments and follow-ups")+
     moduleLink("hr","Human Resources","Demo roles and training")+
     moduleLink("morale","Morale","Company pulse and recognition")+
-    moduleLink("qcdsm","QCDSM Wheel","Morale, Quality, Cost, Delivery & Safety")+
+    moduleLink("qcdsm","QCDSM Wheel","Quality, Cost, Delivery, Safety & Morale")+
     moduleLink("reports","Reports","Live synthetic operational reports")+
     moduleLink("purchasing","Purchasing","Receive demo inventory")+
     moduleLink("bridge","ERP Bridge","Emulated import and time receipt")+
