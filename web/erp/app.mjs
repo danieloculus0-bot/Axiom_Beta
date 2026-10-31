@@ -419,7 +419,13 @@ function reportsView(){
     '</select></label><span class="small muted">'+h(selected.description)+'</span></div></section>';
   s+='<section class="panel"><div class="panel-head"><h2>'+h(report.title)+'</h2><span class="tag accent">'+
     h(report.rows.length)+' rows</span></div>'+
-    table(report.columns,report.rows.slice(0,100).map(row=>row.map(value=>h(value))),
+    table(report.columns,report.rows.slice(0,100).map(row=>row.map((value,col)=>{
+      if(selected.id==="quality"&&col===0){
+        const record=state.quality.find(q=>q.number===value);
+        if(record)return '<button type="button" class="action secondary" data-action="report-quality-case" data-id="'+h(record.id)+'">'+h(value)+'</button>';
+      }
+      return h(value);
+    })),
       "This report has no records yet. Create a fictional transaction in its source module.")+
     (report.rows.length>100?'<p class="small">Showing first 100 rows. CSV includes the full fictional report.</p>':'')+
     '</section>';
@@ -517,6 +523,12 @@ document.addEventListener("click",event=>{
       let next=receivePurchaseOrder(state,id);
       if(next.purchaseRequests.some(r=>r.linkedPoId===id&&r.status==="ORDERED"))next=syncReceivedRequests(next,id);
       transact(next,"Simulated PO received. Linked purchase request awaits confirmation.");
+    }
+    if(action==="report-quality-case"){
+      const record=state.quality.find(q=>q.id===id);
+      if(!record)throw Error("Fictional quality case not found");
+      selectedQualityId=id;
+      openContext({type:"quality",id},{view:"quality",intent:"quality"});
     }
     if(action==="select-quality"){
       const record=state.quality.find(q=>q.id===id);
