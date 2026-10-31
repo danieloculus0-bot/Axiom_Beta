@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {seedState} from "./engine.mjs";
 import {reviewPmWorkCenterAssociation} from "./pm-work-center-link.mjs";
+import {seedPm,completePmTask} from "./pm.mjs";
 import {inspectRoutingCapacityEvidence,routingCapacityEvidenceHtml,readRoutingCapacityScenario} from "./routing-capacity-review.mjs";
 
 const START="2026-11-02T08:00", END="2026-11-02T16:00";
@@ -216,4 +217,28 @@ test("full fictional material reservation does not imply physical readiness",()=
   assert.equal(review.assessment.pmEvidence.status,"UNMAPPED");
   assert.equal(review.assessment.status,"NEEDS_REVIEW");
   assert.equal(review.result.canAutoApply,false);
+});
+
+test("incomplete reservation suppresses an otherwise eligible fictional alternate",()=>{
+  const state=seedState(),job=state.jobs[0],e=scopedEvidence(job);
+  state.pm=completePmTask(seedPm("2026-11-02"),"DEMO-PM-001",{
+    checklistConfirmed:true,result:"PASS",at:"2026-11-01T09:00:00Z"
+  }).pm;
+  state.pm=reviewPmWorkCenterAssociation(state.pm,{
+    machineId:state.pm.machines[0].id,centerId:"DEMO-CUT",
+    sourceRef:"SYN-PM-REVIEW-001",reviewedBy:"DEMO-PLANNER",
+    at:"2026-11-01T10:00:00Z"
+  }).pm;
+  e.scope.centerId="DEMO-CUT";
+  const baseline=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e);
+  assert.equal(baseline.assessment.pmEvidence.status,"NO_RECORDED_ALERTS");
+  assert.equal(baseline.result.suggestions.length,1);
+  state.jobs[0].reserved=job.quantity-1;
+  const before=structuredClone(state);
+  const guarded=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e);
+  assert.equal(guarded.assessment.status,"NEEDS_REVIEW");
+  assert.match(guarded.assessment.unknown.join(" "),/material READY conflicts/);
+  assert.equal(guarded.result.suggestions.length,0);
+  assert.equal(guarded.result.canAutoApply,false);
+  assert.deepEqual(state,before);
 });
