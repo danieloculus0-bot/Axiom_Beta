@@ -25,9 +25,11 @@ export function renderHr(w){
   metric("Recognition points",earned,"Not cash or payroll")+'</div>';
  html+='<div class="columns"><section class="panel"><div class="panel-head"><h2>Organization & role assignments</h2>'+
   '<span class="tag">DEMO identities</span></div>'+
-  table(["Employee code","Department","Assigned role","Change role"],w.people.map(p=>{
+  table(["Employee code","Department","Assigned role","Training","PTO requests","Recognition","Change role"],w.people.map(p=>{
    const role=ROLES.find(r=>r.id===p.role)||ROLES[0];
-   return [h(p.id),h(role.department),h(role.title),
+   const training=w.completions.filter(c=>c.personId===p.id).length;
+   const pto=(w.ptoRequests||[]).filter(r=>r.personId===p.id).length;
+   return [h(p.id),h(role.department),h(role.title),h(training),h(pto),h(demoBalance(w,p.id))+" points",
     '<form class="controls" data-form="hr-role"><input type="hidden" name="person" value="'+h(p.id)+'">'+
     '<label><span class="small">Role</span><select name="role" aria-label="Role for '+h(p.id)+'">'+roleOptions(role.id)+'</select></label>'+
     '<button class="action secondary" type="submit">Assign</button></form>'];
@@ -35,7 +37,7 @@ export function renderHr(w){
   '<p class="small">Generate a DEMO code. No names, emails, birthdates or personal records are collected.</p>'+
   '<form class="controls" data-form="hr-person"><label>Generic role<select name="role">'+roleOptions("operator")+
   '</select></label><button class="action" type="submit">Add demo code</button></form>'+
-  '<h3 style="margin-top:22px">HR workflow boundary</h3>'+
+  '<p class="small">Employee snapshots show only fictional training, PTO request counts and positive recognition. Morale remains an aggregate department signal, not an employee score.</p><h3 style="margin-top:22px">HR workflow boundary</h3>'+
   '<p class="small">Actual employment records, qualifications, time-off approvals, pay profiles and role permissions belong to Axiom’s authenticated local backend. None are loaded here.</p>'+
   '<div class="actions"><a class="action secondary" href="#morale">Open Morale & Recognition</a> <a class="action secondary" href="#pto">Sample PTO requests</a> <a class="action secondary" href="#payroll">Payroll preview</a> <a class="action secondary" href="#modules">All workbenches</a></div></section></div>';
  html+='<section class="panel"><div class="panel-head"><h2>Training requirements and verification</h2><span class="tag">Synthetic completions</span></div>'+
