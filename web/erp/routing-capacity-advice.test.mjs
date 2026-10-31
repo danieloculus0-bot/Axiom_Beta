@@ -160,7 +160,7 @@ test("existing PM overdue work produces a review signal, not automatic machine-d
 });
 test("completed PM and no recorded alerts preserve independent scenario clearance",()=>{
   const pm=completePmTask(seedPm("2026-11-02"),"DEMO-PM-001",
-    {checklistConfirmed:true,result:"PASS",at:"2026-11-02T09:00:00Z"}).pm;
+    {checklistConfirmed:true,result:"PASS",at:"2026-11-01T09:00:00Z"}).pm;
   const r=assessAlternateCenters(job(),"10",mappedPmScenario(pm));
   assert.equal(r.suggestions.length,1);
   assert.equal(r.assessments[0].pmEvidence.status,"NO_RECORDED_ALERTS");
@@ -169,8 +169,8 @@ test("completed PM and no recorded alerts preserve independent scenario clearanc
 });
 test("open PM request flags uncertainty; closing it restores only scenario eligibility",()=>{
   let pm=completePmTask(seedPm("2026-11-02"),"DEMO-PM-001",
-    {checklistConfirmed:true,result:"PASS",at:"2026-11-02T09:00:00Z"}).pm;
-  const request=requestMaintenance(pm,"DEMO-M-001","Illustrative abnormal noise","Medium","DEMO-01","2026-11-02T10:00:00Z");
+    {checklistConfirmed:true,result:"PASS",at:"2026-11-01T09:00:00Z"}).pm;
+  const request=requestMaintenance(pm,"DEMO-M-001","Illustrative abnormal noise","Medium","DEMO-01","2026-11-01T10:00:00Z");
   pm=request.pm;
   const before=structuredClone(pm);
   const r=assessAlternateCenters(job(),"10",mappedPmScenario(pm));
@@ -178,7 +178,7 @@ test("open PM request flags uncertainty; closing it restores only scenario eligi
   assert.ok(r.assessments[0].pmEvidence.openRequestIds.includes(request.id));
   assert.equal(r.assessments[0].blocked.length,0);
   assert.deepEqual(pm,before);
-  pm=closeMaintenanceRequest(pm,request.id,"Example resolved","2026-11-02T11:00:00Z");
+  pm=closeMaintenanceRequest(pm,request.id,"Example resolved","2026-11-01T11:00:00Z");
   const cleared=assessAlternateCenters(job(),"10",mappedPmScenario(pm));
   assert.equal(cleared.assessments[0].pmEvidence.status,"NO_RECORDED_ALERTS");
   assert.equal(cleared.suggestions.length,1);
@@ -202,7 +202,7 @@ test("malformed PM asset record does not crash advisory review",()=>{
 
 test("canonical PM machine association resolves without a caller link",()=>{
   const pm=completePmTask(seedPm("2026-11-02"),"DEMO-PM-001",
-    {checklistConfirmed:true,result:"PASS",at:"2026-11-02T09:00:00Z"}).pm;
+    {checklistConfirmed:true,result:"PASS",at:"2026-11-01T09:00:00Z"}).pm;
   pm.machines[0].workCenterLink={centerId:"LASER-01",sourceRef:"SYN-CANONICAL-PM-LINK"};
   const before=structuredClone(pm),s=scenario(center());
   s.pmContext={state:pm};
@@ -242,4 +242,37 @@ test("two PM machines claiming the same center are ambiguous",()=>{
   pm.machines[1].workCenterLink={centerId:"LASER-01",sourceRef:"SYN-LINK-2"};
   const s=scenario(center());s.pmContext={state:pm};
   assert.equal(assessAlternateCenters(job(),"10",s).status,"INVALID_SCENARIO");
+});
+
+test("post-window PM completion and request closure cannot clear an earlier window",()=>{
+  let pm=seedPm("2026-11-02");
+  pm=completePmTask(pm,"DEMO-PM-001",
+    {checklistConfirmed:true,result:"PASS",at:"2026-11-07T09:00:00Z"}).pm;
+  const request=requestMaintenance(pm,"DEMO-M-001","Illustrative abnormal noise",
+    "Medium","DEMO-01","2026-11-02T10:00:00Z");
+  pm=closeMaintenanceRequest(request.pm,request.id,"Example resolved","2026-11-07T11:00:00Z");
+  const before=structuredClone(pm);
+  const r=assessAlternateCenters(job(),"10",mappedPmScenario(pm));
+  const evidence=r.assessments[0].pmEvidence;
+  assert.equal(evidence.status,"NEEDS_REVIEW");
+  assert.ok(evidence.dueTaskIds.includes("DEMO-PM-001"));
+  assert.ok(evidence.openRequestIds.includes(request.id));
+  assert.equal(r.suggestions.length,0);
+  assert.deepEqual(pm,before);
+});
+test("PM completion during the window does not rewrite readiness at window start",()=>{
+  const pm=completePmTask(seedPm("2026-11-02"),"DEMO-PM-001",
+    {checklistConfirmed:true,result:"PASS",at:"2026-11-03T09:00:00Z"}).pm;
+  const r=assessAlternateCenters(job(),"10",mappedPmScenario(pm));
+  assert.equal(r.assessments[0].pmEvidence.status,"NEEDS_REVIEW");
+  assert.ok(r.assessments[0].pmEvidence.dueTaskIds.includes("DEMO-PM-001"));
+});
+test("requests opened after the window do not block an earlier planning scenario",()=>{
+  let pm=completePmTask(seedPm("2026-11-02"),"DEMO-PM-001",
+    {checklistConfirmed:true,result:"PASS",at:"2026-11-01T09:00:00Z"}).pm;
+  pm=requestMaintenance(pm,"DEMO-M-001","Illustrative abnormal noise",
+    "Medium","DEMO-01","2026-11-07T10:00:00Z").pm;
+  const r=assessAlternateCenters(job(),"10",mappedPmScenario(pm));
+  assert.equal(r.assessments[0].pmEvidence.status,"NO_RECORDED_ALERTS");
+  assert.equal(r.suggestions.length,1);
 });
