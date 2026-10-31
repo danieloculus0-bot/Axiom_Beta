@@ -41,6 +41,11 @@ export function reviewRoutingCandidate(job, candidate) {
   }
   const previous = new Map(original.map((op, i) => [text(op.step), {op, index:i}]));
   const current = new Map(candidate.operations.map((op, i) => [text(op.step), {op, index:i}]));
+  // Insertions/removals shift absolute indices, not relative order.
+  const commonBefore = original.filter(op => current.has(text(op.step))).map(op => text(op.step));
+  const commonAfter = candidate.operations.filter(op => previous.has(text(op.step))).map(op => text(op.step));
+  const relativeBefore = new Map(commonBefore.map((step,i) => [step,i]));
+  const relativeAfter = new Map(commonAfter.map((step,i) => [step,i]));
   const refs = new Map();
   for (const item of Array.isArray(candidate.evidence) ? candidate.evidence : []) {
     if (!item || !text(item.step) || !text(item.sourceRef)) continue;
@@ -51,7 +56,7 @@ export function reviewRoutingCandidate(job, candidate) {
   for (const [step, {op, index}] of current) {
     const before = previous.get(step);
     const kind = !before ? "ADDED" : signature(op) !== signature(before.op) ? "MODIFIED" :
-      index !== before.index ? "REORDERED" : null;
+      relativeBefore.get(step) !== relativeAfter.get(step) ? "REORDERED" : null;
     if (kind) changes.push({step, kind, evidenceRefs: refs.get(step) || [],
       capabilityUnverified: !before || text(op.center) !== text(before.op.center)});
   }
@@ -63,10 +68,13 @@ export function reviewRoutingCandidate(job, candidate) {
     .map(x => `Operation ${x.step} (${x.kind}) lacks a source reference.`);
   if (changes.some(x => x.capabilityUnverified))
     issues.push("New or changed work-center assignments require independent capability verification.");
+  // Changed routes may only cite program metadata for changed operations.
+  const changedSteps = new Set(changes.filter(x => x.kind !== "REMOVED").map(x => x.step));
   const programAssociations = (Array.isArray(candidate.programLinks) ? candidate.programLinks : [])
     .map(link => {
       const op = current.get(text(link?.step))?.op;
-      const matches = !!op && text(link?.partNumber) === job.partNumber &&
+      const matches = !!op && (!changes.length || changedSteps.has(text(link?.step))) &&
+        text(link?.partNumber) === job.partNumber &&
         text(link?.revision) === job.revision && text(link?.center) === text(op.center) &&
         !!text(link?.programId) && !!text(link?.sourceRef);
       return {step:text(link?.step), programId:text(link?.programId),

@@ -29,9 +29,9 @@ jobs:
         with:
           node-version: '22'
       - name: Test browser demo logic
-        run: node --test web/engine.test.mjs web/ewi/engine.test.mjs web/erp/engine.test.mjs web/erp/pm.test.mjs web/erp/navigation.test.mjs web/erp/reports.test.mjs web/erp/context-actions.test.mjs web/erp/requests.test.mjs web/erp/routing-edit.test.mjs
+        run: node --test web/engine.test.mjs web/ewi/engine.test.mjs web/erp/engine.test.mjs web/erp/pm.test.mjs web/erp/navigation.test.mjs web/erp/reports.test.mjs web/erp/context-actions.test.mjs web/erp/requests.test.mjs web/erp/routing-edit.test.mjs web/erp/workforce.test.mjs web/erp/qcdsm.test.mjs
       - name: Validate browser module syntax
-        run: node --check web/erp/app.mjs && node --check web/ewi/app.mjs && node --check web/erp/pm-view.mjs && node --check web/erp/navigation-ui.mjs && node --check web/erp/reports.mjs && node --check web/erp/context-ui.mjs && node --check web/erp/context-actions.mjs && node --check web/erp/request-view.mjs && node --check web/erp/requests.mjs && node --check web/erp/routing-edit.mjs && node --check web/erp/routing-view.mjs
+        run: node --check web/erp/app.mjs && node --check web/ewi/app.mjs && node --check web/erp/pm-view.mjs && node --check web/erp/navigation-ui.mjs && node --check web/erp/reports.mjs && node --check web/erp/context-ui.mjs && node --check web/erp/context-actions.mjs && node --check web/erp/request-view.mjs && node --check web/erp/requests.mjs && node --check web/erp/routing-edit.mjs && node --check web/erp/routing-view.mjs && node --check web/erp/workforce.mjs && node --check web/erp/workforce-view.mjs && node --check web/erp/qcdsm.mjs && node --check web/erp/qcdsm-view.mjs
       - name: Enable/configure Pages
         uses: actions/configure-pages@v5
         with:

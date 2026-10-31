@@ -125,3 +125,14 @@ test("fractional-hour deficit is excluded before rounded display values",()=>{
   assert.equal(sufficient.suggestions.length,1);
   assert.equal(sufficient.assessments[0].slackHours,0);
 });
+
+test("two-operation alternate-center suggestion rejects unrelated CNC program evidence",()=>{
+ const v=center();v.programLink={step:"20",partNumber:"SYN-PART-1",revision:"A",
+  center:"DEMO-QC",programId:"SYN-UNRELATED-20",sourceRef:"SYN-REF-20"};
+ const result=assess(v);
+ assert.equal(result.suggestions.length,1);
+ assert.equal(result.suggestions[0].candidate.operations[0].center,"LASER-01");
+ assert.equal(result.suggestions[0].routingReview.programAssociations[0].status,"MISMATCH_OR_INCOMPLETE");
+ assert.match(result.suggestions[0].routingReview.issues.join(" "),/do not match/);
+ assert.equal(result.suggestions[0].canAutoApply,false);
+});

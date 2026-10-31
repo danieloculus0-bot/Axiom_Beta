@@ -23,6 +23,11 @@ export const MENU_GROUPS=[
     {id:"quality",label:"Quality Control",icon:"◉",hint:"Hold and release examples",keywords:["NCR","inspection","nonconformance"]},
     {id:"pm",label:"PM Tracker",icon:"⚙",hint:"Scheduled asset maintenance",keywords:["preventive maintenance","machine","asset","due date"]}
   ]},
+  {id:"people",label:"People & Culture",items:[
+    {id:"hr",label:"Human Resources",icon:"♙",hint:"Fictional roster, roles and training verification",keywords:["human resources","HR","people","staff","roles","organization","training matrix","employee"]},
+    {id:"morale",label:"Morale & Recognition",icon:"♡",hint:"Aggregate company pulse and reviewed recognition",keywords:["morale","company pulse","workforce health","recognition","rewards","employee engagement","leadership"]},
+    {id:"qcdsm",label:"QCDSM Wheel",icon:"◉",hint:"Five QCDSM domains, with Morale as driver; linked RCA evidence",keywords:["qcdsm","pareto","safety","risk","root cause","RCA","quality","cost","delivery","morale"]}
+  ]},
   {id:"oversight",label:"Analytics & Integration",items:[
     {id:"reports",label:"Report Center",icon:"▤",hint:"Real browser-local data reports",keywords:["reporting","export","job status","time","metrics"]},
     {id:"bridge",label:"ERP Emulator",icon:"⛓",hint:"Fictional external integration",keywords:["JobBOSS","simulator","integration","API"]},

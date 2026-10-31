@@ -79,3 +79,33 @@ test("malformed or absent optional associations cannot crash assessment",()=>{
   assert.equal(r.programAssociations.length,3);
   assert.ok(r.programAssociations.every(x=>x.status==="MISMATCH_OR_INCOMPLETE"));
 });
+
+test("insert/remove do not flag untouched steps as REORDERED",()=>{
+ const j=job(),p=candidate(j),extra={step:"15",name:"Synthetic step",center:"DEMO-CUT",instructions:["Synthetic"],check:"Example"};
+ p.operations.splice(1,0,extra);p.evidence=[{step:"15",sourceRef:"SYN-ADD"}];
+ let v=reviewRoutingCandidate(j,p);
+ assert.equal(v.status,"REVIEW_REQUIRED");assert.deepEqual(v.changes.map(x=>[x.step,x.kind]),[["15","ADDED"]]);
+ j.routing.operations.splice(1,0,extra);
+ const removal=candidate(j);removal.operations.splice(1,1);removal.evidence=[{step:"15",sourceRef:"SYN-REMOVE"}];
+ v=reviewRoutingCandidate(j,removal);
+ assert.equal(v.status,"REVIEW_REQUIRED");assert.deepEqual(v.changes.map(x=>[x.step,x.kind]),[["15","REMOVED"]]);
+});
+test("true swap remains a reorder requiring step-specific evidence",()=>{
+ const j=job(),p=candidate(j);p.operations.reverse();
+ p.evidence=[{step:"10",sourceRef:"SYN-10"},{step:"20",sourceRef:"SYN-20"}];
+ const v=reviewRoutingCandidate(j,p);
+ assert.equal(v.status,"REVIEW_REQUIRED");
+ assert.deepEqual(v.changes.map(x=>[x.step,x.kind]),[["20","REORDERED"],["10","REORDERED"]]);
+});
+test("unchanged operation program cannot support a different changed operation",()=>{
+ const j=job(),p=candidate(j);p.operations[0].center="LASER-01";
+ p.evidence=[{step:"10",sourceRef:"SYN-CHANGE"}];
+ p.programLinks=[{step:"20",partNumber:j.partNumber,revision:"A",center:"DEMO-QC",programId:"SYN-PROG-20",sourceRef:"SYN-REF-20"}];
+ let v=reviewRoutingCandidate(j,p);
+ assert.equal(v.programAssociations[0].status,"MISMATCH_OR_INCOMPLETE");
+ assert.match(v.issues.join(" "),/do not match/);
+ p.programLinks=[{step:"10",partNumber:j.partNumber,revision:"A",center:"LASER-01",programId:"SYN-PROG-10",sourceRef:"SYN-REF-10"}];
+ v=reviewRoutingCandidate(j,p);
+ assert.equal(v.programAssociations[0].status,"ASSERTED_REFERENCE_ONLY");
+ assert.equal(v.canAutoApply,false);
+});
