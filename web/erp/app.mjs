@@ -12,6 +12,8 @@ import {renderHr,renderMorale} from "./workforce-view.mjs";
 import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
+import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality} from "./quality-case.mjs";
+import {renderQualityCase} from "./quality-case-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
@@ -34,7 +36,7 @@ const stateViews={
 };
 let workforce=seedWorkforce();
 let qcdsmDepartment="Assembly";
-let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""},routeDraft=null;
+let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""},routeDraft=null,selectedQualityId="";
 function load(){
   try{
     const raw=localStorage.getItem(ERP_KEY);
@@ -326,7 +328,7 @@ function purchasingView(){
 function qualityView(){
   const j=job(),open=openQuality(state,j.id);
   let s=heading("Quality management / job hold integration","Quality control",
-    "Create an invented nonconformance, watch clocking block for that job, then close the sample record. This is not a real disposition or signoff.");
+    "Create a fictional nonconformance, review its linked job, record a sample disposition and follow-up. No production approval or signoff.");
   s+='<div class="metrics">'+metric("Quality records",state.quality.length,"Synthetic only")+
     metric("Open holds",state.quality.filter(q=>q.status==="OPEN").length,"Across all jobs")+
     metric("This job open",open.length,j.jobNumber)+metric("EWI readiness",packetIssues(state,j.id).length?"BLOCKED":"READY","Illustrative checks")+'</div>';
@@ -339,8 +341,10 @@ function qualityView(){
     table(["Record","Work order","Reason","State","Action"],shownQuality.map(q=>{
       const record=getJob(state,q.jobId);
       return [h(q.number),jobLink(record,"ewi"),h(q.reason),status(q.status),
-        q.status==="OPEN"?'<button class="action secondary" data-action="close-ncr" data-id="'+h(q.id)+'">Close demo record</button>':h(stamp(q.closedAt))]
+        '<button class="action secondary" data-action="select-quality" data-id="'+h(q.id)+'">Review case</button>']
     }),"No matching fictional quality holds.",shownQuality.map(q=>({type:"quality",id:q.id})))+'</section>';
+  const selected=shownQuality.find(record=>record.id===selectedQualityId)||shownQuality[0];
+  s+=renderQualityCase(state,selected?.id);
   s+=qualityRcaHtml(state,workforce,qcdsmDepartment,localDay());
   return s;
 }
@@ -514,7 +518,12 @@ document.addEventListener("click",event=>{
       if(next.purchaseRequests.some(r=>r.linkedPoId===id&&r.status==="ORDERED"))next=syncReceivedRequests(next,id);
       transact(next,"Simulated PO received. Linked purchase request awaits confirmation.");
     }
-    if(action==="close-ncr")transact(closeQuality(state,id),"Synthetic quality record closed. EWI interlock recalculated.");
+    if(action==="select-quality"){
+      const record=state.quality.find(q=>q.id===id);
+      if(!record)throw Error("Fictional quality case not found");
+      selectedQualityId=id;rememberJob(record.jobId);render();
+      document.getElementById("quality-case-detail")?.scrollIntoView({block:"start"});
+    }
     if(action==="sync"){
       const routing=emulatorFetchRouting(id);
       if(!routing.operations.length)throw Error("Emulator routing is missing");
@@ -632,8 +641,23 @@ document.addEventListener("submit",event=>{
       }
       case "new-po":
         transact(makePurchaseOrder(state,String(f.get("item")),Number(f.get("quantity"))),"Created synthetic purchase order.");break;
-      case "new-ncr":
-        transact(raiseQuality(state,selectedJobId,String(f.get("reason"))),"Quality hold created. EWI clocking is now blocked for that job.");break;
+      case "new-ncr":{
+        const next=raiseQuality(state,selectedJobId,String(f.get("reason")));
+        selectedQualityId=next.quality.at(-1).id;
+        transact(next,"Fictional NCR opened and linked to this work order. EWI clocking is blocked.");break;
+      }
+      case "quality-disposition":
+        selectedQualityId=String(f.get("id"));
+        transact(recordQualityDisposition(state,selectedQualityId,String(f.get("decision")),String(f.get("note"))),
+          "Fictional disposition recorded. The job hold remains until reviewed closure.");break;
+      case "quality-followup":
+        selectedQualityId=String(f.get("id"));
+        transact(recordQualityFollowup(state,selectedQualityId,String(f.get("note"))),
+          "Case follow-up saved to this fictional NCR.");break;
+      case "quality-reviewed-close":
+        selectedQualityId=String(f.get("id"));
+        transact(closeReviewedQuality(state,selectedQualityId),
+          "Reviewed fictional NCR closed. The linked EWI hold was recalculated.");break;
       case "drawing-rev":
         transact(setDrawingRevision(state,selectedJobId,String(f.get("revision"))),"Updated illustration revision, not an official release.");break;
       case "mock-post":{
