@@ -118,6 +118,49 @@ def main():
                     return !event.defaultPrevented;
                 }""")
                 assert native_menu, "Native context menu must remain available in editable fields"
+
+                # A job's dashboard NCR badge must open its canonical case, even
+                # when the global job selector currently points to another job.
+                page.locator('#module-nav a[data-nav="dashboard"]').click()
+                page.wait_for_function("location.hash === '#dashboard'")
+                other_job = page.locator("#job-context option").evaluate_all(
+                    "(options, selected) => options.map(o => o.value).find(v => v !== selected)", job_id
+                )
+                assert other_job, "Synthetic seed must have another work order"
+                page.locator("#job-context").select_option(other_job)
+                dashboard_badge = page.locator(
+                    f'button[data-action="job-quality-cases"][data-id="{job_id}"]'
+                )
+                expect(dashboard_badge).to_have_count(1)
+                dashboard_badge.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+                expect(
+                    panel.locator(
+                        f'[data-evidence-kind="inspection"][data-evidence-id="{inspection_id}"]'
+                    ).first
+                ).to_be_visible()
+
+                # Search is an independent entry point into the same working
+                # Quality Control screen, not a second copy of the NCR data.
+                page.locator('#module-nav a[data-nav="jobs"]').click()
+                page.wait_for_function("location.hash === '#jobs'")
+                search = page.locator("#menu-search")
+                search.fill("effectiveness review")
+                expect(page.locator('#module-nav a[data-nav="quality"]')).to_be_visible()
+                search.press("Enter")
+                page.wait_for_function("location.hash === '#quality'")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+                expect(
+                    panel.locator(
+                        f'[data-evidence-kind="effectiveness"][data-evidence-id="{review_id}"]'
+                    ).first
+                ).to_be_visible()
+                assert search.input_value() == "", "Successful search navigation should clear its query"
                 assert not page_errors, f"Browser JavaScript errors: {page_errors}"
                 print("PASS: 3 evidence types, closed-case return focus, wrong-job guard, native editable context menu")
             finally:
