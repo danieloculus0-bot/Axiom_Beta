@@ -71,15 +71,16 @@ export function seedWorkforce(){
   sick_absence_clusters:0,turnover_count:0,staffing_shortage_count:0,quality_risk_signal:12};
  pulse.risk_score=calculateMoraleRisk(pulse);
  return {schema:1,demo:true,people,requirements,completions:[],pulses:[pulse],
-  nominations:[],ledger:[],actions:[],incidents:[],safetySurveys:[]};
+  nominations:[],ledger:[],actions:[],incidents:[],safetySurveys:[],ptoRequests:[]};
 }
 export function validateWorkforce(raw){
  if(raw?.schema===1&&raw?.demo===true){
   if(raw.incidents===undefined)raw.incidents=[];
   if(raw.safetySurveys===undefined)raw.safetySurveys=[];
+  if(raw.ptoRequests===undefined)raw.ptoRequests=[];
  }
  if(!raw||raw.schema!==1||raw.demo!==true||
-  !["people","requirements","completions","pulses","nominations","ledger","actions","incidents","safetySurveys"]
+  !["people","requirements","completions","pulses","nominations","ledger","actions","incidents","safetySurveys","ptoRequests"]
    .every(key=>Array.isArray(raw[key])&&raw[key].length<=2000))throw Error("Invalid browser demo workforce state");
  return raw;
 }
