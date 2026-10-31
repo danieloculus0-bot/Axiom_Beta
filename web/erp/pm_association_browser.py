@@ -284,6 +284,22 @@ def browser_test() -> None:
                 capacity_form.locator('button[type="submit"]').click()
                 rejected_message = page.locator("#flash").inner_text()
                 assert "All six scenario hour estimates must be explicitly supplied" in rejected_message, rejected_message
+                assert page.locator("#flash").get_attribute("role") == "alert"
+                # Failed validation must not erase the user's unsaved scenario.
+                assert capacity_form.locator('input[name="scenario-enabled"]').is_checked()
+                assert capacity_form.locator("details").get_attribute("open") is not None
+                assert capacity_form.locator('select[name="step"]').input_value() == "10"
+                assert capacity_form.locator('select[name="center"]').input_value() == "DEMO-CUT"
+                assert capacity_form.locator('input[name="window-start"]').input_value() == "2026-11-02T08:00"
+                assert capacity_form.locator('input[name="scenario-bookedHours"]').input_value() == "1"
+                assert capacity_form.locator('input[name="scenario-capacity-ref"]').input_value() == "SYN-BROWSER-CALENDAR-001"
+                assert capacity_form.locator('select[name="scenario-material"]').input_value() == "READY"
+                assert capacity_form.locator('input[name="scenario-calendarHours"]').input_value() == ""
+                # Correct the invalid field in place and verify normal review recovers.
+                capacity_form.locator('input[name="scenario-calendarHours"]').fill("8")
+                capacity_form.locator('button[type="submit"]').click()
+                assert "available 6 hours" in page.locator("#routing-capacity-result").inner_text()
+                assert page.locator("#flash").get_attribute("role") == "status"
                 assert scenario_before == page.evaluate("""async () => {
                     const {ERP_KEY} = await import('./engine.mjs');
                     return localStorage.getItem(ERP_KEY);
