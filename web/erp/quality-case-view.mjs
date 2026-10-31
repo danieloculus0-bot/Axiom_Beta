@@ -1,5 +1,5 @@
 /* One job-linked fictional quality case, using existing ERP context and events. */
-import {QUALITY_DISPOSITIONS} from "./quality-case.mjs";
+import {QUALITY_DISPOSITIONS,QUALITY_INSPECTION_STAGES,QUALITY_INSPECTION_RESULTS} from "./quality-case.mjs";
 const h=value=>String(value??"").replace(/[&<>"']/g,c=>({
   "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
 })[c]);
@@ -12,6 +12,8 @@ export function renderQualityCase(state,id){
     '<a class="action secondary" href="#ewi" data-job="'+h(j.id)+'">EWI / hold</a>':"";
   const disp=q.disposition;
   const notes=Array.isArray(q.followUps)?q.followUps:[];
+  const inspections=Array.isArray(q.inspections)?q.inspections:[];
+  const operations=Array.isArray(j?.routing?.operations)?j.routing.operations:[];
   let html='<section class="panel" id="quality-case-detail"><div class="panel-head"><h2>Quality Forge case · '+h(q.number)+'</h2><span class="tag">'+h(q.status)+'</span></div>'+
     '<p class="small">Linked work order: <b>'+h(j?.jobNumber||"Missing fictional job")+'</b> · '+h(q.reason)+
     '. Browser-local demonstration only. No production disposition or release authority.</p>'+
@@ -19,6 +21,20 @@ export function renderQualityCase(state,id){
     '<div class="receipt"><b>Recorded fictional disposition:</b> '+
     (disp?h(QUALITY_DISPOSITIONS.find(item=>item.id===disp.decision)?.label||disp.decision)+
       ' · '+h(disp.note)+' · '+h(disp.recordedAt):"Not recorded. Case remains on hold.")+'</div>';
+  if(q.status==="OPEN"&&operations.length){
+    html+='<h3>Fictional inspection observation</h3>'+
+      '<p class="small">Record an illustrative check on a routed operation. PASS does not release a job, close a case or certify inspection.</p>'+
+      '<form class="controls" data-form="quality-inspection">'+
+      '<input type="hidden" name="id" value="'+h(q.id)+'">'+
+      '<label>Check stage<select name="stage">'+QUALITY_INSPECTION_STAGES.map(item=>
+        '<option value="'+h(item.id)+'">'+h(item.label)+'</option>').join("")+'</select></label>'+
+      '<label>Routed operation<select name="step">'+operations.map(op=>
+        '<option value="'+h(op.step)+'">'+h(op.step)+' · '+h(op.name)+' ('+h(op.center)+')</option>').join("")+'</select></label>'+
+      '<label>Observation result<select name="result">'+QUALITY_INSPECTION_RESULTS.map(result=>
+        '<option value="'+h(result)+'">'+h(result.replaceAll("_"," "))+'</option>').join("")+'</select></label>'+
+      '<label>Fictional observation<textarea name="observation" minlength="5" maxlength="500" required placeholder="Describe a generic sample observation."></textarea></label>'+
+      '<button class="action secondary" type="submit">Record sample inspection</button></form>';
+  }
   if(q.status==="OPEN"){
     html+='<form class="controls" data-form="quality-disposition">'+
       '<input type="hidden" name="id" value="'+h(q.id)+'">'+
@@ -36,6 +52,13 @@ export function renderQualityCase(state,id){
     '<input type="hidden" name="id" value="'+h(q.id)+'">'+
     '<label>Case follow-up (also available after closing)<textarea name="note" minlength="5" maxlength="500" required placeholder="Record a fictional follow-up or effectiveness check."></textarea></label>'+
     '<button class="action secondary" type="submit">Record follow-up</button></form>'+
+    '<h3>Inspection observations</h3>'+
+    (inspections.length?inspections.map(item=>'<div class="receipt"><b>'+h(item.at)+'</b> · '+
+      h(QUALITY_INSPECTION_STAGES.find(stage=>stage.id===item.stage)?.label||item.stage)+' · '+
+      h(item.result)+' · step '+h(item.step)+' / '+h(item.operation)+' ('+h(item.center)+')'+
+      '<div class="small">Job rev '+h(item.jobRevision)+' · drawing rev '+h(item.drawingRevision??"unknown")+'</div>'+
+      '<div>'+h(item.observation)+'</div></div>').join(""):
+      '<p class="small">No fictional inspection observations recorded for this case.</p>')+
     '<h3>Case activity</h3>'+
     (notes.length?notes.map(item=>'<div class="receipt"><b>'+h(item.at)+'</b> · '+h(item.note)+'</div>').join(""):
       '<p class="small">No follow-ups recorded for this fictional case.</p>')+
