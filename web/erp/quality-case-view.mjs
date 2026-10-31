@@ -25,6 +25,21 @@ export function qualityEvidenceWorkOrderTarget(state,caseId,kind,id){
   const job=state.jobs.find(item=>item?.id===record.jobId);
   return job?{caseId:record.id,kind,id,jobId:job.id}:null;
 }
+/* Return navigation is valid only for the original evidence and its canonical job.
+ * This is an in-memory UI route, not a second NCR or work-order record.
+ */
+export function qualityEvidenceReturnTarget(state,selection,jobId){
+  if(!selection||typeof selection!=="object")return null;
+  const target=qualityEvidenceWorkOrderTarget(state,selection.caseId,selection.kind,selection.id);
+  return target?.jobId===jobId?target:null;
+}
+export function qualityEvidenceReturnAction(state,selection,jobId){
+  const target=qualityEvidenceReturnTarget(state,selection,jobId);
+  return target?'<div class="notice">This fictional work order was opened from linked NCR evidence. '+
+    '<button type="button" class="action secondary" data-action="quality-evidence-return" data-case="'+
+    h(target.caseId)+'" data-kind="'+h(target.kind)+'" data-id="'+h(target.id)+
+    '">Return to NCR evidence</button></div>':"";
+}
 /* Link only to the current, matching routed operation for this inspection.
  * Historical evidence remains readable when a routing or revision has changed.
  */
