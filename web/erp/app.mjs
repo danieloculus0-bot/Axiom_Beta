@@ -687,11 +687,26 @@ document.addEventListener("submit",event=>{
   }
 });
 $("job-context").addEventListener("change",e=>{rememberJob(e.target.value);flash="";render();});
+// An edited input invalidates the old read-only assessment, without replacing
+// the form or silently recalculating against different scenario assumptions.
+function invalidateCapacityReviewOnFormEdit(event){
+  if(!capacityReview || !event.target.closest?.('form[data-form="routing-capacity-review"]'))return;
+  capacityReview=null;
+  const prior=document.getElementById("routing-capacity-result");
+  if(!prior)return;
+  const notice=document.createElement("p");
+  notice.id="routing-capacity-stale";
+  notice.className="small";
+  notice.setAttribute("role","status");
+  notice.textContent="Scenario inputs changed. Submit again to review current evidence.";
+  prior.replaceWith(notice);
+}
 document.addEventListener("change",e=>{
+  invalidateCapacityReviewOnFormEdit(e);
   if(e.target.id==="clock-step")selectedStep=e.target.value;
   if(e.target.id==="report-select") {selectedReport=e.target.value;render();}
 });
-document.addEventListener("input",e=>{if(e.target.id==="operator-code")operator=e.target.value;});
+document.addEventListener("input",e=>{invalidateCapacityReviewOnFormEdit(e);if(e.target.id==="operator-code")operator=e.target.value;});
 window.addEventListener("hashchange",()=>{flash="";render();});
 window.addEventListener("storage",e=>{if(e.key===ERP_KEY||e.key===CLOCK_KEY||e.key===WORKFORCE_KEY){capacityReview=null;load();render();}});
 window.addEventListener("focus",()=>{if(stored){capacityReview=null;load();render();}});
