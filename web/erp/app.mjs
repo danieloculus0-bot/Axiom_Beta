@@ -6,6 +6,7 @@ import {
 } from "./engine.mjs";
 import {startSession,stopSession,durationSeconds,sessionsCsv} from "../ewi/engine.mjs";
 import {renderPm} from "./pm-view.mjs";
+import {reviewPmWorkCenterAssociation} from "./pm-work-center-link.mjs";
 import {renderRequestDesk} from "./request-view.mjs";
 import {WORKFORCE_KEY,seedWorkforce,validateWorkforce,addDemoPerson,assignDemoRole,recordDemoPulse,completeDemoTraining,nominateDemoRecognition,reviewDemoNomination,closeDemoAction} from "./workforce.mjs";
 import {renderHr,renderMorale} from "./workforce-view.mjs";
@@ -13,6 +14,7 @@ import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,renderCost,renderDelivery,renderSafety,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
+import {inspectRoutingCapacityEvidence,routingCapacityEvidenceHtml} from "./routing-capacity-review.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
  issueRequestPO,syncReceivedRequests,verifyPurchaseRequest,followupPurchaseRequest} from "./requests.mjs";
@@ -34,7 +36,7 @@ const stateViews={
 };
 let workforce=seedWorkforce();
 let qcdsmDepartment="Assembly";
-let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""},routeDraft=null;
+let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""},routeDraft=null,capacityReview=null;
 function load(){
   try{
     const raw=localStorage.getItem(ERP_KEY);
@@ -63,7 +65,7 @@ function persist(){
   try{localStorage.setItem(ERP_KEY,JSON.stringify(state));localStorage.setItem(CLOCK_KEY,JSON.stringify(sessions));localStorage.setItem(WORKFORCE_KEY,JSON.stringify(workforce));}
   catch{stored=false;flash="Local storage unavailable. Export records before refreshing.";}
 }
-function transact(next,message){state=next;flash=message;persist();render();}
+function transact(next,message){state=next;capacityReview=null;flash=message;persist();render();}
 function workforceTransact(next,type,detail,message){
   workforce=next;
   state=change(state,type,detail,()=>{});
@@ -223,6 +225,7 @@ function routingView(){
     moduleLink("ewi","EWI","Clock operation")+'</div>'+
     '<h3 style="margin-top:20px">Source labels</h3><p>Routing: '+h(j.routing.source)+'<br>Drawing: '+h(j.drawing.number)+' / Rev '+h(j.drawing.revision)+'</p></section></div>';
   s+=routingEditorHtml(j,routeDraft?.jobId===j.id?routeDraft.operations:null,sessions.some(session=>session.jobId===j.id));
+  s+=routingCapacityEvidenceHtml(j,capacityReview?.jobId===j.id?capacityReview:null);
   return s;
 }
 function drawingSvg(j){
@@ -437,6 +440,7 @@ const renderers={dashboard,jobs:jobsView,routing:routingView,ewi:clockView,inven
 function rememberJob(id){
   if(!getJob(state,id))return;
   if(routeDraft&&routeDraft.jobId!==id)routeDraft=null;
+  if(selectedJobId!==id)capacityReview=null;
   selectedJobId=id;selectedStep=job().routing.operations[0].step;
   history.replaceState(null,"",location.pathname+"?job="+encodeURIComponent(id)+location.hash);
 }
@@ -539,7 +543,7 @@ document.addEventListener("click",event=>{
       state,sessions,workforce},null,2),"application/json","axiom-erp-synthetic-demo.json");
     if(action==="export-csv")download(sessionsCsv(sessions),"text/csv;charset=utf-8","axiom-erp-demo-clock.csv");
     if(action==="reset" && confirm("Delete all fictional Axiom ERP and EWI clock records in this browser and reset the demo?")){
-      state=seedState();sessions=[];workforce=seedWorkforce();selectedContext=null;selectedIntent="";rememberJob(state.jobs[0].id);
+      state=seedState();sessions=[];workforce=seedWorkforce();capacityReview=null;selectedContext=null;selectedIntent="";rememberJob(state.jobs[0].id);
       flash="Local demo reset to fictional starter records.";persist();render();
     }
   }catch(e){flash=e.message;render();}
@@ -572,6 +576,14 @@ document.addEventListener("submit",event=>{
         transact(captureQualityContext(state,workforce,String(f.get("qualityId")),qcdsmDepartment),"QCDSM evidence linked to a synthetic quality investigation. Root cause remains unconfirmed.");break;
       case "morale-nominate":
         workforceTransact(nominateDemoRecognition(workforce,String(f.get("person")),String(f.get("category")),String(f.get("reason")),Number(f.get("points"))),"morale.recognition.nominated","Fictional recognition nomination","Nomination added for demonstration review.");break;
+      case "routing-capacity-review": {
+        const j=job();
+        capacityReview=inspectRoutingCapacityEvidence(state,j.id,
+          String(f.get("step")||""),String(f.get("center")||""),
+          String(f.get("window-start")||""),String(f.get("window-end")||""));
+        flash="Evidence gaps reviewed for the saved fictional routing. No capacity or routing changes made.";
+        render();break;
+      }
       case "routing-save":{
         if(!routeDraft||routeDraft.jobId!==job().id)throw Error("No active routing edit for this job");
         const updated=saveRoutingDraft(state,routeDraft.jobId,readRoutingEditor(form),sessions);
@@ -582,6 +594,22 @@ document.addEventListener("submit",event=>{
         const result=createMachine(state.pm,String(f.get("machine-type")),String(f.get("criticality")));
         selectedPmMachineId=result.id;
         pmTransact(result.pm,"pm.asset.created",result.id+" / FICTIONAL","Added a generic demonstration machine.");
+        break;
+      }
+      case "pm-work-center-link": {
+        const machineId=String(f.get("machine")||"");
+        if(!getMachine(state.pm,machineId))throw Error("Select an existing fictional PM machine.");
+        if(f.get("confirmed")===null)throw Error("Explicit fictional association review is required.");
+        const centerId=String(f.get("center")||"")||null;
+        const result=reviewPmWorkCenterAssociation(state.pm,{
+          machineId,centerId,sourceRef:String(f.get("source")||"").trim(),
+          reviewedBy:String(f.get("reviewer")||"").trim().toUpperCase(),
+          at:new Date().toISOString()
+        });
+        selectedPmMachineId=machineId;
+        pmTransact(result.pm,centerId?"pm.work_center.demo_link_reviewed":"pm.work_center.demo_unlinked",
+          machineId+" / "+(centerId||"UNMAPPED")+" / "+result.change.sourceRef+" / FICTIONAL",
+          "Fictional work-center association review recorded. No machine qualification or release.");
         break;
       }
       case "pm-new-task": {
@@ -650,8 +678,8 @@ document.addEventListener("change",e=>{
 });
 document.addEventListener("input",e=>{if(e.target.id==="operator-code")operator=e.target.value;});
 window.addEventListener("hashchange",()=>{flash="";render();});
-window.addEventListener("storage",e=>{if(e.key===ERP_KEY||e.key===CLOCK_KEY||e.key===WORKFORCE_KEY){load();render();}});
-window.addEventListener("focus",()=>{if(stored){load();render();}});
+window.addEventListener("storage",e=>{if(e.key===ERP_KEY||e.key===CLOCK_KEY||e.key===WORKFORCE_KEY){capacityReview=null;load();render();}});
+window.addEventListener("focus",()=>{if(stored){capacityReview=null;load();render();}});
 setInterval(()=>{
   document.querySelectorAll("[data-live-clock]").forEach(el=>{
     const active=sessions.find(s=>s.employee===operator&&!s.end);
