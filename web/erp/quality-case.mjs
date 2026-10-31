@@ -18,6 +18,35 @@ const timestamp=at=>{
   if(typeof at!=="string"||!Number.isFinite(Date.parse(at)))throw Error("Invalid case timestamp");
   return at;
 };
+export const QUALITY_INSPECTION_STAGES=[
+  {id:"FIRST_PIECE",label:"First-piece check"},
+  {id:"IN_PROCESS",label:"In-process check"},
+  {id:"FINAL_REVIEW",label:"Final review"}
+];
+export const QUALITY_INSPECTION_RESULTS=["PASS","FAIL","REVIEW_REQUIRED"];
+/* Records a fictional observation against the existing NCR, job and routed step.
+ * It is evidence only, never a production inspection approval or automatic release.
+ */
+export function recordQualityInspection(state,id,stage,step,result,observation,at=new Date().toISOString()){
+  const record=recordFor(state,id);
+  if(!record||record.status!=="OPEN")throw Error("Select an open fictional quality case");
+  const job=state.jobs.find(j=>j.id===record.jobId);
+  if(!job)throw Error("Linked fictional work order is missing");
+  if(!QUALITY_INSPECTION_STAGES.some(item=>item.id===stage))throw Error("Choose a listed fictional inspection stage");
+  const operation=job.routing?.operations?.find(op=>String(op.step)===String(step));
+  if(!operation)throw Error("Choose a routed operation on this fictional job");
+  if(!QUALITY_INSPECTION_RESULTS.includes(result))throw Error("Choose a listed fictional inspection result");
+  const detail=noteText(observation),time=timestamp(at);
+  return change(state,"quality.inspection.recorded",record.number+" / "+stage+" / "+result,n=>{
+    const q=n.quality.find(item=>item.id===id);
+    if(!Array.isArray(q.inspections))q.inspections=[];
+    q.inspections.push({
+      id:id+"-inspection-"+(q.inspections.length+1),stage,step:String(operation.step),
+      operation:operation.name,center:operation.center,result,observation:detail,
+      jobRevision:job.revision,drawingRevision:job.drawing?.revision??null,at:time
+    });
+  },time);
+}
 export function recordQualityDisposition(state,id,decision,note,at=new Date().toISOString()){
   const record=recordFor(state,id);
   if(!record||record.status!=="OPEN")throw Error("Select an open fictional quality case");
