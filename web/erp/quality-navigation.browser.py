@@ -222,7 +222,7 @@ def main():
                     }""")
                     assert native_case_link, "Case links must retain native browser right-click"
                     case_link.click()
-                    page.wait_for_function("(view) => location.hash === '#' + view", target_view)
+                    page.wait_for_function("(view) => location.hash === '#' + view", arg=target_view)
                     expect(page.locator("#job-context")).to_have_value(job_id)
                     page.locator('#module-nav a[data-nav="quality"]').click()
                     page.wait_for_function("location.hash === '#quality'")
