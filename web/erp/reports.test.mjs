@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {seedState,makePurchaseOrder,receivePurchaseOrder,raiseQuality,createJob} from "./engine.mjs";
 import {makeReport,reportCsv,REPORTS} from "./reports.mjs";
+import {qualityCaseTimeline} from "./quality-timeline.mjs";
+import {renderQualityCase} from "./quality-case-view.mjs";
 import {startSession,stopSession} from "../ewi/engine.mjs";
 import {completePmTask} from "./pm.mjs";
 import {qualityJobSummary,jobQualityTarget,recordQualityInspection,recordQualityDisposition,closeReviewedQuality,
@@ -156,4 +158,44 @@ test("job quality navigation target selects a real open case before closed histo
  state=closeReviewedQuality(state,second,"2026-10-30T12:03:00.000Z");
  assert.equal(jobQualityTarget(state,"sample-1001").caseId,first);
  assert.equal(jobQualityTarget(state,"sample-1002"),null);
+});
+
+test("Quality Forge case chronology follows canonical evidence through post-closure review",()=>{
+ let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict","2026-10-30T12:00:00Z");
+ const id=state.quality[0].id,step=state.jobs[0].routing.operations[0].step;
+ state=recordQualityInspection(state,id,"FIRST_PIECE",step,"FAIL","Fictional first piece deviation","2026-10-30T12:01:00Z");
+ state=recordQualityCorrectiveAction(state,id,"QUALITY","Review fictional sample setup",
+   state.quality[0].inspections[0].id,"2026-10-30T12:02:00Z");
+ const actionId=state.quality[0].correctiveActions[0].id;
+ state=recordQualityFollowup(state,id,"Fictional follow-up requested","2026-10-30T12:03:00Z");
+ state=recordQualityDisposition(state,id,"SCRAP","Fictional disposition rationale","2026-10-30T12:04:00Z");
+ state=closeReviewedQuality(state,id,"2026-10-30T12:05:00Z");
+ state=reviewQualityCorrectiveAction(state,id,actionId,"NOT_EFFECTIVE","Fictional later review","2026-10-30T12:06:00Z");
+ const before=JSON.stringify(state),timeline=qualityCaseTimeline(state.quality[0]);
+ assert.deepEqual(timeline.map(entry=>entry.kind),
+   ["opened","inspection","corrective","followup","disposition","closed","effectiveness"]);
+ assert.equal(timeline[1].sourceId,state.quality[0].inspections[0].id);
+ assert.equal(timeline.at(-1).sourceId,state.quality[0].correctiveActions[0].reviews[0].id);
+ assert.equal(JSON.stringify(state),before);
+ assert.equal(state.quality[0].status,"CLOSED");
+ const html=renderQualityCase(state,id);
+ const chronology=html.slice(html.indexOf("<h3>Case chronology</h3>"));
+ assert.ok(chronology.includes("Effectiveness: NOT_EFFECTIVE"));
+ assert.ok(chronology.indexOf("NCR closed")<chronology.indexOf("Effectiveness: NOT_EFFECTIVE"));
+ assert.ok(chronology.includes(state.jobs[0].jobNumber)===false); // Timeline is scoped to the already-selected case.
+});
+test("Quality Forge chronology handles legacy records and escapes fictional user text",()=>{
+ assert.deepEqual(qualityCaseTimeline(null),[]);
+ assert.deepEqual(qualityCaseTimeline({id:"legacy",status:"OPEN"}),[]);
+ const legacy={id:"legacy",reason:"Example",openedAt:"not a date",followUps:[
+   {id:"first",note:"A",at:"2026-10-30T12:00:00Z"},
+   {id:"second",note:"B",at:"2026-10-30T12:00:00Z"}]};
+ const rows=qualityCaseTimeline(legacy);
+ assert.deepEqual(rows.map(entry=>entry.sourceId),["first","second","legacy"]);
+ assert.equal(rows.at(-1).at,null);
+ let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict","2026-10-30T12:00:00Z");
+ state=recordQualityFollowup(state,state.quality[0].id,"<script>alert(1)</script>","2026-10-30T12:01:00Z");
+ const html=renderQualityCase(state,state.quality[0].id);
+ assert.ok(html.includes("&lt;script&gt;alert(1)&lt;/script&gt;"));
+ assert.ok(!html.includes("<script>"));
 });
