@@ -29,7 +29,7 @@ export function renderQualityCase(state,id){
       '<button class="action secondary" type="submit">Record demo disposition</button></form>'+
       '<form class="controls" data-form="quality-reviewed-close">'+
       '<input type="hidden" name="id" value="'+h(q.id)+'">'+
-      '<button class="action" type="submit" '+(!disp?"disabled":"")+'>Close reviewed demo case</button>'+
+      '<button class="action" type="submit" '+(!disp||disp.decision==="RETURN_FOR_REVIEW"?"disabled":"")+'>Close reviewed demo case</button>'+
       '<span class="small">Closing removes this fictional job hold; it is not a real approval.</span></form>';
   }
   html+='<form class="controls" data-form="quality-followup">'+
