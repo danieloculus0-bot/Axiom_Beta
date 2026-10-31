@@ -119,14 +119,32 @@ export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, sta
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) ||
       end.getTime() <= start.getTime())
     fail("The planning window must end after it starts.");
+  const center = scopedScenarioCenter(scenarioEvidence,job,operation,centerId,startLocal,endLocal);
+  // The existing canonical browser jobs can disprove an asserted zero count,
+  // but their routes have no scheduling dates and cannot prove occupied hours.
+  const knownRoutedCount = state.jobs.reduce((count,item) =>
+    count + (Array.isArray(item.routing?.operations) ?
+      item.routing.operations.filter(op => op?.center === centerId).length : 0),0);
+  const contradictedZero = center.routedOperationCount === 0 && knownRoutedCount > 0;
+  if (contradictedZero) delete center.routedOperationCount;
   const result = assessAlternateCenters(job,step,{
     window:{start:start.toISOString(),end:end.toISOString()},
-    // Deliberately omit all capability, capacity and readiness assertions.
-    // A browser-local PM record is evidence to review, not a clearance.
-    centers:[scopedScenarioCenter(scenarioEvidence,job,operation,centerId,startLocal,endLocal)],
-    pmContext:{state:state.pm}
+    // Deliberately omit unverified capability, capacity and readiness facts.
+    centers:[center],pmContext:{state:state.pm}
   });
-  return {jobId,partNumber:job.partNumber,revision:job.revision,step,centerId,
+  if (contradictedZero) {
+    const assessment = result.assessments.find(item => item.center === centerId);
+    if (assessment) {
+      assessment.idleCandidate = false;
+      assessment.unknown.push("Asserted zero routed operations conflicts with " +
+        knownRoutedCount + " existing fictional routing assignment(s); planning-window load is UNKNOWN.");
+      assessment.notes.push("Existing routing assignments do not prove scheduled hours or machine availability.");
+      if (assessment.status !== "EXCLUDED") assessment.status = "NEEDS_REVIEW";
+    }
+    result.suggestions = result.suggestions.filter(item => item.center !== centerId);
+    result.status = result.suggestions.length ? "SCENARIO_CANDIDATES" : "NO_ELIGIBLE_ALTERNATIVES";
+  }
+  return {knownRoutedCount,jobId,partNumber:job.partNumber,revision:job.revision,step,centerId,
     startLocal,endLocal,evidenceSupplied:scenarioEvidence !== null,
     scenarioEvidence:scenarioEvidence===null?null:structuredClone(scenarioEvidence),
     result,assessment:result.assessments[0] || null};
@@ -190,6 +208,9 @@ export function routingCapacityEvidenceHtml(job, review = null) {
       '<h3>Read-only assessment: '+h(review.step)+' / '+h(review.centerId)+'</h3>'+
       '<p><b>Result:</b> '+h(a?.status || review.result.status)+
       ' · <b>PM association:</b> '+h(a?.pmEvidence?.status || 'UNKNOWN')+'</p>'+
+      '<p class="small">Existing fictional job routing references to this center: '+
+      h(review.knownRoutedCount ?? 'UNKNOWN')+
+      '. This is not a scheduled-load or machine-availability measurement.</p>'+
       (review.evidenceSupplied ?
         '<p><b>Scenario estimates, not verified:</b> available '+h(a?.availableHours ?? "UNKNOWN")+
         ' hours; required '+h(a?.requiredHours ?? "UNKNOWN")+

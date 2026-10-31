@@ -152,3 +152,36 @@ test("unsupported fictional capability is excluded",()=>{
   assert.equal(review.result.suggestions.length,0);
   assert.equal(review.result.canAutoApply,false);
 });
+
+test("a claimed idle center cannot contradict existing canonical routing assignments",()=>{
+  const state=seedState(),job=state.jobs[0],before=structuredClone(state),e=scopedEvidence(job);
+  // PRESS-02 is already assigned to step 20 of the existing fictional job.
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e);
+  assert.equal(review.knownRoutedCount,1);
+  assert.equal(review.assessment.idleCandidate,false);
+  assert.equal(review.assessment.status,"NEEDS_REVIEW");
+  assert.match(review.assessment.unknown.join(" "),/zero routed operations conflicts/);
+  assert.match(review.assessment.unknown.join(" "),/planning-window load is UNKNOWN/);
+  assert.equal(review.result.suggestions.length,0);
+  assert.match(routingCapacityEvidenceHtml(job,review),/not a scheduled-load/);
+  assert.deepEqual(state,before);
+  assert.equal(e.center.routedOperationCount,0); // no caller mutation
+});
+test("zero existing route references is only an idle candidate, not verified free hours",()=>{
+  const state=seedState(),job=state.jobs[0],e=scopedEvidence(job);
+  e.scope.centerId="DEMO-CUT";
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e);
+  assert.equal(review.knownRoutedCount,0);
+  assert.equal(review.assessment.idleCandidate,true);
+  assert.equal(review.assessment.status,"NEEDS_REVIEW"); // PM mapping is still UNKNOWN
+  assert.equal(review.result.suggestions.length,0);
+});
+test("nonzero asserted routed count remains reviewable without inferring a schedule",()=>{
+  const state=seedState(),job=state.jobs[0],e=scopedEvidence(job);
+  e.center.routedOperationCount=1;
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e);
+  assert.equal(review.knownRoutedCount,1);
+  assert.equal(review.assessment.idleCandidate,false);
+  assert.ok(!review.assessment.unknown.some(x=>x.includes("zero routed operations conflicts")));
+  assert.equal(review.result.canAutoApply,false);
+});
