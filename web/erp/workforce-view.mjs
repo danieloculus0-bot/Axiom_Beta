@@ -37,7 +37,7 @@ export function renderHr(w){
   '</select></label><button class="action" type="submit">Add demo code</button></form>'+
   '<h3 style="margin-top:22px">HR workflow boundary</h3>'+
   '<p class="small">Actual employment records, qualifications, time-off approvals, pay profiles and role permissions belong to Axiom’s authenticated local backend. None are loaded here.</p>'+
-  '<a class="action secondary" href="#morale">Open Morale & Recognition</a></section></div>';
+  '<div class="actions"><a class="action secondary" href="#morale">Open Morale & Recognition</a> <a class="action secondary" href="#pto">Sample PTO requests</a> <a class="action secondary" href="#payroll">Payroll preview</a> <a class="action secondary" href="#modules">All workbenches</a></div></section></div>';
  html+='<section class="panel"><div class="panel-head"><h2>Training requirements and verification</h2><span class="tag">Synthetic completions</span></div>'+
   table(["Key","Requirement","Applies to role","Recurs after","Recognition"],w.requirements.map(t=>[
    h(t.id),h(t.title),h(ROLES.find(r=>r.id===t.role)?.title||t.role),
