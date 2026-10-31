@@ -242,3 +242,54 @@ test("incomplete reservation suppresses an otherwise eligible fictional alternat
   assert.equal(guarded.result.canAutoApply,false);
   assert.deepEqual(state,before);
 });
+
+function packetReadyAlternate(){
+  const state=seedState(),job=state.jobs[0],e=scopedEvidence(job);
+  state.pm=completePmTask(seedPm("2026-11-02"),"DEMO-PM-001",{
+    checklistConfirmed:true,result:"PASS",at:"2026-11-01T09:00:00Z"
+  }).pm;
+  state.pm=reviewPmWorkCenterAssociation(state.pm,{
+    machineId:state.pm.machines[0].id,centerId:"DEMO-CUT",
+    sourceRef:"SYN-PACKET-PM-001",reviewedBy:"DEMO-PLANNER",
+    at:"2026-11-01T10:00:00Z"
+  }).pm;
+  e.scope.centerId="DEMO-CUT";
+  return {state,job,e};
+}
+test("canonical drawing revision mismatch suppresses otherwise eligible alternate",()=>{
+  const {state,job,e}=packetReadyAlternate();
+  assert.equal(inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e).result.suggestions.length,1);
+  job.drawing.revision="A";
+  const before=structuredClone(state);
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e);
+  assert.equal(review.assessment.status,"NEEDS_REVIEW");
+  assert.equal(review.result.suggestions.length,0);
+  assert.match(review.assessment.unknown.join(" "),/Drawing revision.*does not match job revision/);
+  assert.equal(review.result.canAutoApply,false);
+  assert.deepEqual(state,before);
+});
+test("canonical open quality hold blocks alternate; closed hold does not",()=>{
+  const {state,job,e}=packetReadyAlternate();
+  state.quality.push({id:"q-synthetic",jobId:job.id,status:"OPEN",reason:"Synthetic first-piece discrepancy"});
+  const blocked=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e);
+  assert.equal(blocked.assessment.status,"NEEDS_REVIEW");
+  assert.equal(blocked.result.suggestions.length,0);
+  assert.match(blocked.assessment.unknown.join(" "),/Open quality hold/);
+  state.quality[0].status="CLOSED";
+  const reviewed=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e);
+  assert.equal(reviewed.result.suggestions.length,1);
+  assert.equal(reviewed.result.canAutoApply,false);
+});
+test("closed job and unreviewed routing draft cannot be bypassed by scenario assertions",()=>{
+  const {state,job,e}=packetReadyAlternate();
+  job.status="CLOSED";
+  const closed=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e);
+  assert.equal(closed.result.suggestions.length,0);
+  assert.match(closed.assessment.unknown.join(" "),/Job is not open/);
+  job.status="OPEN";
+  job.routing.reviewState="REVIEW_REQUIRED";
+  const draft=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e);
+  assert.equal(draft.result.suggestions.length,0);
+  assert.match(draft.assessment.unknown.join(" "),/Edited routing awaiting demo review/);
+  assert.equal(draft.result.canAutoApply,false);
+});
