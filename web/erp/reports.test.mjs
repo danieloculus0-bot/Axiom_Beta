@@ -323,7 +323,7 @@ test("inspection and linked corrective evidence navigate to the exact current jo
 
 test("inspection routing navigation rejects changed revisions, operations, missing or cross-case evidence",()=>{
  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
- state=raiseQuality(state,"sample-1002","Separate fictional NCR",later);
+ state=raiseQuality(state,"sample-1002","Generic drawing revision conflict",later);
  const q=state.quality[0],other=state.quality[1];
  const step=state.jobs[0].routing.operations[0].step;
  state=recordQualityInspection(state,q.id,"IN_PROCESS",step,"REVIEW_REQUIRED",
