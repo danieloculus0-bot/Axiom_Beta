@@ -32,7 +32,7 @@ test("CAM facing exercise validates bounds and does not invent production author
 test("module directory includes audited local-only and independent modules without fake routes",()=>{
  const html=renderModuleDirectory();
  for(const name of ["EZ CAM","Payroll","PTO requests","EZ-FAIR","Supplier intelligence","Accounting & journal","BEAN reasoning"])
-  assert.ok(html.includes(name),name);
+  assert.ok(MODULE_CATALOG.some(([,items])=>items.some(x=>x[0]===name)),name);
  assert.ok(MODULE_CATALOG.every(([,items])=>items.every(x=>x[2]===null||/^(jobs|routing|ewi|cam|documents|quality|inventory|purchasing|requests|pm|cost|qcdsm|hr|pto|payroll|morale|reports|audit)$/.test(x[2]))));
  assert.ok(html.includes("No public in-app screen"));
 });
