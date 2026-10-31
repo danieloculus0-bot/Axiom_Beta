@@ -26,7 +26,7 @@ export const MENU_GROUPS=[
   {id:"people",label:"People & Culture",items:[
     {id:"hr",label:"Human Resources",icon:"♙",hint:"Fictional roster, roles and training verification",keywords:["human resources","HR","people","staff","roles","organization","training matrix","employee"]},
     {id:"morale",label:"Morale & Recognition",icon:"♡",hint:"Aggregate company pulse and reviewed recognition",keywords:["morale","company pulse","workforce health","recognition","rewards","employee engagement","leadership"]},
-    {id:"qcdsm",label:"QCDSM Wheel",icon:"◉",hint:"Morale-centered quality, cost, delivery and safety evidence with RCA links",keywords:["qcdsm","pareto","safety","risk","root cause","RCA","quality","cost","delivery","morale"]}
+    {id:"qcdsm",label:"QCDSM Wheel",icon:"◉",hint:"Five QCDSM domains, with Morale as driver; linked RCA evidence",keywords:["qcdsm","pareto","safety","risk","root cause","RCA","quality","cost","delivery","morale"]}
   ]},
   {id:"oversight",label:"Analytics & Integration",items:[
     {id:"reports",label:"Report Center",icon:"▤",hint:"Real browser-local data reports",keywords:["reporting","export","job status","time","metrics"]},
