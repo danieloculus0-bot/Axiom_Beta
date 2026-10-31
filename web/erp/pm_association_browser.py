@@ -311,6 +311,43 @@ def browser_test() -> None:
                 assert not capacity_form.locator('input[name="scenario-enabled"]').is_checked()
                 assert capacity_form.locator('input[name="scenario-calendarHours"]').input_value() == ""
                 assert capacity_form.locator('input[name="scenario-capability-ref"]').input_value() == ""
+
+                # Capacity reviews are ephemeral. A same-job clock session changes
+                # routing-editor eligibility and must invalidate an older review,
+                # even when navigating between screens without a page reload.
+                capacity_form.locator('select[name="step"]').select_option("10")
+                capacity_form.locator('select[name="center"]').select_option("DEMO-CUT")
+                capacity_form.locator('input[name="window-start"]').fill("2026-11-02T08:00")
+                capacity_form.locator('input[name="window-end"]').fill("2026-11-02T16:00")
+                capacity_form.locator('button[type="submit"]').click()
+                assert page.locator("#routing-capacity-result").count() == 1
+                page.evaluate("location.hash='#ewi'")
+                page.locator('[data-action="clock-in"]').wait_for(state="visible")
+                page.evaluate("location.hash='#routing'")
+                assert page.locator("#routing-capacity-result").count() == 1, (
+                    "Navigation alone must not erase a review"
+                )
+                page.evaluate("location.hash='#ewi'")
+                page.locator('[data-action="clock-in"]').click()
+                page.evaluate("location.hash='#routing'")
+                assert page.locator("#routing-capacity-result").count() == 0, (
+                    "Clock IN must invalidate stale routing eligibility"
+                )
+                capacity_form = page.locator('form[data-form="routing-capacity-review"]')
+                capacity_form.locator('select[name="step"]').select_option("10")
+                capacity_form.locator('select[name="center"]').select_option("DEMO-CUT")
+                capacity_form.locator('input[name="window-start"]').fill("2026-11-02T08:00")
+                capacity_form.locator('input[name="window-end"]').fill("2026-11-02T16:00")
+                capacity_form.locator('button[type="submit"]').click()
+                assert "Browser-local EWI clock sessions on this job: 1" in (
+                    page.locator("#routing-capacity-result").inner_text()
+                )
+                page.evaluate("location.hash='#ewi'")
+                page.locator('[data-action="clock-out"]').click()
+                page.evaluate("location.hash='#routing'")
+                assert page.locator("#routing-capacity-result").count() == 0, (
+                    "Clock OUT must invalidate stale routing evidence"
+                )
                 context.close()
                 print("PASS: Chromium PM lifecycle and read-only routing capacity scenario")
             finally:
