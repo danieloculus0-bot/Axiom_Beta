@@ -11,7 +11,7 @@ import {WORKFORCE_KEY,seedWorkforce,validateWorkforce,addDemoPerson,assignDemoRo
 import {renderHr,renderMorale} from "./workforce-view.mjs";
 import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
-import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
+import {renderQcdsm,renderCost,renderDelivery,renderSafety,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
@@ -30,7 +30,7 @@ const deep=v=>structuredClone(v);
 const stateViews={
  dashboard:"Command Center",jobs:"Work Orders",routing:"Routing & Planning",
  ewi:"EWI & Clocking",inventory:"Inventory",purchasing:"Purchasing",
- quality:"Quality Control",documents:"Drawing Control",pm:"PM Tracker",requests:"Request Desk",hr:"Human Resources",morale:"Morale & Recognition",qcdsm:"QCDSM Wheel",reports:"Report Center",bridge:"ERP Emulator",audit:"Event History"
+ quality:"Quality Control",documents:"Drawing Control",pm:"PM Tracker",requests:"Request Desk",hr:"Human Resources",morale:"Morale & Recognition",qcdsm:"QCDSM",cost:"Cost",delivery:"Delivery",safety:"Safety",reports:"Report Center",bridge:"ERP Emulator",audit:"Event History"
 };
 let workforce=seedWorkforce();
 let qcdsmDepartment="Assembly";
@@ -168,7 +168,7 @@ function dashboard(){
     moduleLink("requests","Request Desk","Track assignments and follow-ups")+
     moduleLink("hr","Human Resources","Demo roles and training")+
     moduleLink("morale","Morale","Company pulse and recognition")+
-    moduleLink("qcdsm","QCDSM Wheel","Quality, Cost, Delivery, Safety & Morale")+
+    moduleLink("qcdsm","QCDSM","Select any of five live operational sections")+
     moduleLink("reports","Reports","Live synthetic operational reports")+
     moduleLink("purchasing","Purchasing","Receive demo inventory")+
     moduleLink("bridge","ERP Bridge","Emulated import and time receipt")+
@@ -433,7 +433,7 @@ function auditView(){
   return s;
 }
 const renderers={dashboard,jobs:jobsView,routing:routingView,ewi:clockView,inventory:inventoryView,
-  purchasing:purchasingView,quality:qualityView,documents:documentsView,pm:()=>renderPm(state.pm,selectedPmMachineId),requests:()=>renderRequestDesk(state,selectedRequest),hr:()=>renderHr(workforce),morale:()=>renderMorale(workforce),qcdsm:()=>renderQcdsm(state,workforce,qcdsmDepartment,localDay()),reports:reportsView,bridge:bridgeView,audit:auditView};
+  purchasing:purchasingView,quality:qualityView,documents:documentsView,pm:()=>renderPm(state.pm,selectedPmMachineId),requests:()=>renderRequestDesk(state,selectedRequest),hr:()=>renderHr(workforce),morale:()=>renderMorale(workforce),qcdsm:()=>renderQcdsm(state,workforce,qcdsmDepartment,localDay()),cost:()=>renderCost(state,sessions),delivery:()=>renderDelivery(state),safety:()=>renderSafety(state,workforce,qcdsmDepartment,localDay()),reports:reportsView,bridge:bridgeView,audit:auditView};
 function rememberJob(id){
   if(!getJob(state,id))return;
   if(routeDraft&&routeDraft.jobId!==id)routeDraft=null;
