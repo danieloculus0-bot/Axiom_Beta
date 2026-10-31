@@ -324,12 +324,14 @@ def browser_test() -> None:
                 page.evaluate("location.hash='#ewi'")
                 page.locator('[data-action="clock-in"]').wait_for(state="visible")
                 page.evaluate("location.hash='#routing'")
+                page.locator('form[data-form="routing-capacity-review"]').wait_for(state="visible")
                 assert page.locator("#routing-capacity-result").count() == 1, (
                     "Navigation alone must not erase a review"
                 )
                 page.evaluate("location.hash='#ewi'")
                 page.locator('[data-action="clock-in"]').click()
                 page.evaluate("location.hash='#routing'")
+                page.locator('form[data-form="routing-capacity-review"]').wait_for(state="visible")
                 assert page.locator("#routing-capacity-result").count() == 0, (
                     "Clock IN must invalidate stale routing eligibility"
                 )
@@ -345,6 +347,7 @@ def browser_test() -> None:
                 page.evaluate("location.hash='#ewi'")
                 page.locator('[data-action="clock-out"]').click()
                 page.evaluate("location.hash='#routing'")
+                page.locator('form[data-form="routing-capacity-review"]').wait_for(state="visible")
                 assert page.locator("#routing-capacity-result").count() == 0, (
                     "Clock OUT must invalidate stale routing evidence"
                 )
