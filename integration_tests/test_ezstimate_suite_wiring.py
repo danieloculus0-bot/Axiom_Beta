@@ -63,6 +63,13 @@ def test_real_estimate_and_erp(tmp_path,monkeypatch):
             "setup_cost_total":20,"scrap_pct":10,"margin_pct":20}
     quote=price_quote({"lines":[inputs]})
     assert quote["total"]=="255.00"
+    # Synthetic cross-project operation evidence is retained with quote provenance.
+    synthetic_feature={"schema":"axiom.fabrication_feature.v1","process":"bending",
+                       "attributes":{"radius":".125","angle_degrees":"90","count":2},
+                       "source":"EZ-500.pdf","page":1,"region":"full page",
+                       "raw_callout":"2 BENDS R.125 90 DEG",
+                       "status":"proposed","needs_review":True}
+    extracted["fabrication_features"]=[synthetic_feature]
     proposal={"schema":"ezstimate.quote_proposal.v1","source_system":"EZstimate",
               "status":"review_required","quote_number":"EZ-Q-500",
               "source_drawing":manifest,"documents":[extracted],
@@ -82,6 +89,7 @@ def test_real_estimate_and_erp(tmp_path,monkeypatch):
         assert item["estimated_value"]==255
         assert link["source_version_id"]==manifest["file_version_id"]
         assert link["drawing_sha256"]==manifest["sha256"]
+        assert json.loads(link["payload_json"])["documents"][0]["fabrication_features"]==[synthetic_feature]
     # Join FAI and estimating from the identical released PDF bytes and identity.
     from superforge.integrations.controlled_fai import import_controlled_fai
     fai_proposal = inspect_released_pdf(manifest, content)
