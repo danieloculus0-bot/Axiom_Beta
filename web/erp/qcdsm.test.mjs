@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {seedState,raiseQuality,packetIssues} from "./engine.mjs";
+import {seedState,raiseQuality,packetIssues,makePurchaseOrder,receivePurchaseOrder} from "./engine.mjs";
 import {seedWorkforce,recordDemoPulse,recordDemoIncident,recordDemoSafetySurvey,validateWorkforce} from "./workforce.mjs";
 import {qcdsmEvidence,captureQualityContext,qualityContextFor} from "./qcdsm.mjs";
-import {renderQcdsm,wheelHtml,qualityRcaHtml} from "./qcdsm-view.mjs";
+import {renderQcdsm,renderCost,renderDelivery,renderSafety,wheelHtml,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {makeReport} from "./reports.mjs";
+import {getMenuItem} from "./navigation.mjs";
 const today="2026-10-30",at="2026-10-30T12:00:00Z";
 const pulse={department:"Assembly",scheduled_headcount:20,present_headcount:18,overtime_hours:180,
  over_50_hours_count:8,exhausted_pto_count:3,pto_absence_count:1,sick_absence_clusters:0,
@@ -28,7 +29,12 @@ test("QCDSM uses factual ERP signals and missing baselines remain N/A",()=>{
   ["Quality","Cost","Delivery","Safety","Morale"]);
  assert.equal((wheel.match(/data-driver="true"/g)||[]).length,1);
  assert.match(wheel,/data-qcdsm-domain="Morale" data-driver="true"/);
- assert.match(wheel,/>QCDSM<\/text>/);
+ assert.equal((wheel.match(/class="wheel-sector"/g)||[]).length,5);
+ for(const route of ["quality","cost","delivery","safety","morale"]){
+  assert.match(wheel,new RegExp('href="#'+route+'"'));
+  assert.ok(getMenuItem(route));
+ }
+ assert.doesNotMatch(wheel,/>QCDSM<\/text>|QCDSM wheel|QCDSM operating wheel/);
  assert.doesNotMatch(wheel,/>MORALE<\/text>/);
  assert.doesNotMatch(renderQcdsm(s,w,"Machining",today),/Morale: the five structural levers|Purpose|Mastery|Autonomy|Belonging/);
 });
@@ -97,10 +103,57 @@ test("QCDSM report and wheel read same sources as quality and workforce modules"
  assert.equal(row[6],e.quality.openHolds);
  assert.equal(row[7],"N/A");
  const ui=renderQcdsm(erp,w,"Assembly",today);
- assert.match(ui,/data-form="safety-incident"/);
- assert.match(ui,/data-form="safety-survey"/);
- assert.match(ui,/QCDSM operating wheel/);
+ assert.match(ui,/Select a section to open its current records/);
+ assert.doesNotMatch(ui,/QCDSM wheel|QCDSM operating wheel|data-form="safety-incident"/);
+ const safetyUi=renderSafety(erp,w,"Assembly",today);
+ assert.match(safetyUi,/data-form="safety-incident"/);
+ assert.match(safetyUi,/data-form="safety-survey"/);
+ assert.match(safetyUi,/SI-1/);
  const rca=qualityRcaHtml(erp,w,"Assembly",today);
  assert.match(rca,/data-form="quality-qcdsm-review"/);
  assert.match(rca,/Capture QCDSM evidence for RCA/);
+});
+
+test("Cost opens real PO and clock evidence, without inventing monetary rates",()=>{
+ let erp=seedState();
+ assert.match(renderCost(erp,[]),/No purchase orders entered/);
+ erp=makePurchaseOrder(erp,"MAT-BAR",15,at);
+ let page=renderCost(erp,[]);
+ assert.match(page,/SIM-PO-0001/);
+ assert.match(page,/>15</);
+ assert.match(page,/Outstanding POs<\/small><strong>1/);
+ assert.match(page,/Actual cost<\/small><strong>N\/A/);
+ assert.match(page,/href="#purchasing"/);
+ erp=receivePurchaseOrder(erp,erp.purchaseOrders[0].id,at);
+ page=renderCost(erp,[]);
+ assert.match(page,/Outstanding POs<\/small><strong>0/);
+ assert.match(page,/Received POs<\/small><strong>1/);
+});
+test("Delivery opens current ERP work-order and material readiness, not fabricated OTD",()=>{
+ let erp=seedState();
+ let page=renderDelivery(erp);
+ assert.match(page,/On-time delivery<\/small><strong>N\/A/);
+ assert.match(page,/DEMO-4102/);
+ assert.match(page,/data-job="sample-1001"/);
+ assert.match(page,/href="#jobs"/);
+ erp=raiseQuality(erp,"sample-1001","Generic drawing revision conflict",at);
+ page=renderDelivery(erp);
+ assert.match(page,/Needs attention<\/small><strong>2/);
+ assert.match(page,/Open quality hold/);
+ assert.match(page,/Readiness does not equal on-time delivery/);
+});
+test("Safety opens live department incident and distinct confidence records",()=>{
+ let w=seedWorkforce();
+ let page=renderSafety(seedState(),w,"Maintenance",today);
+ assert.match(page,/No safety events recorded/);
+ assert.match(page,/Safety priority<\/small><strong>N\/A/);
+ w=recordDemoIncident(w,{department:"Maintenance",kind:"near_miss",observedOn:today},today);
+ w=recordDemoSafetySurvey(w,{department:"Maintenance",respondents:10,concerned:4},today);
+ page=renderSafety(seedState(),w,"Maintenance",today);
+ assert.match(page,/SI-1/);
+ assert.match(page,/Safety priority<\/small><strong>27/);
+ assert.match(page,/Surveyed concerns<\/small><strong>4 \/ 10/);
+ assert.match(page,/href="#quality"/);
+ assert.match(page,/href="#morale"/);
+ assert.doesNotMatch(renderSafety(seedState(),w,"Assembly",today),/SI-1/);
 });

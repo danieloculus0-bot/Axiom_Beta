@@ -6,7 +6,8 @@ export const NAV_KEY="axiom_public_erp_menu_v1";
 
 export const MENU_GROUPS=[
   {id:"workspace",label:"Workspace",items:[
-    {id:"dashboard",label:"Command Center",icon:"◫",hint:"Home KPIs and quick links",keywords:["home","overview","dashboard","today","right click help","open with"]}
+    {id:"dashboard",label:"Command Center",icon:"◫",hint:"Home KPIs and quick links",keywords:["home","overview","dashboard","today","right click help","open with"]},
+    {id:"qcdsm",label:"QCDSM",icon:"◉",hint:"Open Quality, Cost, Delivery, Safety or Morale directly from five equal sectors",keywords:["performance","pareto","wheel","quality","cost","delivery","safety","morale","RCA","root cause"]}
   ]},
   {id:"production",label:"Manufacturing",items:[
     {id:"jobs",label:"Work Orders",icon:"▦",hint:"Create and track fictional jobs",keywords:["job entry","job tracker","production order","work order entry","job tracking"]},
@@ -21,12 +22,14 @@ export const MENU_GROUPS=[
   ]},
   {id:"operations",label:"Quality & Assets",items:[
     {id:"quality",label:"Quality Control",icon:"◉",hint:"Hold and release examples",keywords:["NCR","inspection","nonconformance"]},
+    {id:"cost",label:"Cost",icon:"▥",hint:"Current purchasing and operation time records; cost baselines when available",keywords:["copq","cost of poor quality","costing","expenses","labor","purchasing"]},
+    {id:"delivery",label:"Delivery",icon:"▤",hint:"Live work-order readiness and purchasing status",keywords:["delivery","otd","on time","readiness","due date","schedule","blocked"]},
+    {id:"safety",label:"Safety",icon:"◈",hint:"Recent synthetic incidents, safety confidence and investigation signals",keywords:["incident","recordable","near miss","safety","safety confidence","workload"]},
     {id:"pm",label:"PM Tracker",icon:"⚙",hint:"Scheduled asset maintenance",keywords:["preventive maintenance","machine","asset","due date"]}
   ]},
   {id:"people",label:"People & Culture",items:[
     {id:"hr",label:"Human Resources",icon:"♙",hint:"Fictional roster, roles and training verification",keywords:["human resources","HR","people","staff","roles","organization","training matrix","employee"]},
     {id:"morale",label:"Morale & Recognition",icon:"♡",hint:"Aggregate company pulse and reviewed recognition",keywords:["morale","company pulse","workforce health","recognition","rewards","employee engagement","leadership"]},
-    {id:"qcdsm",label:"QCDSM Wheel",icon:"◉",hint:"Five QCDSM domains, with Morale as driver; linked RCA evidence",keywords:["qcdsm","pareto","safety","risk","root cause","RCA","quality","cost","delivery","morale"]}
   ]},
   {id:"oversight",label:"Analytics & Integration",items:[
     {id:"reports",label:"Report Center",icon:"▤",hint:"Real browser-local data reports",keywords:["reporting","export","job status","time","metrics"]},
