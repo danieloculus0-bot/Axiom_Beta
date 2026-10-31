@@ -45,6 +45,7 @@ def main():
                 page.locator('form[data-form="quality-inspection"] textarea[name="observation"]').fill(
                     "Synthetic first-piece inspection observation"
                 )
+                inspection_step = page.locator('form[data-form="quality-inspection"] select[name="step"]').input_value()
                 page.locator('form[data-form="quality-inspection"] button[type="submit"]').click()
                 inspection_id = panel.locator('[data-evidence-kind="inspection"]').first.get_attribute("data-evidence-id")
                 assert inspection_id
@@ -248,7 +249,7 @@ def main():
                 route_card = page.locator("#view [data-route-step]:focus")
                 expect(route_card).to_have_count(1)
                 routed_step = route_card.get_attribute("data-route-step")
-                assert routed_step, "Routing jump must focus an actual operation"
+                assert routed_step == inspection_step, "Routing jump must focus the recorded operation"
                 page.locator('#module-nav a[data-nav="quality"]').click()
                 page.wait_for_function("location.hash === '#quality'")
                 expect(panel).to_have_attribute("data-case-id", case_id)
@@ -272,7 +273,7 @@ def main():
                 page.wait_for_function("location.hash === '#quality'")
                 expect(panel).to_have_attribute("data-case-id", case_id)
                 expect(route_action).to_have_count(0)
-                expect(panel.get_by_role("note", name=None).filter(
+                expect(panel.locator('[role="note"]').filter(
                     has_text="Recorded drawing revision differs"
                 )).to_have_count(1)
                 expect(panel.locator(
