@@ -1,4 +1,4 @@
-import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection} from "./quality-case.mjs";
+import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction} from "./quality-case.mjs";
 import {renderQualityCase} from "./quality-case-view.mjs";
 import {contextActions,contextRelated} from "./context-actions.mjs";
 import {readFileSync} from "node:fs";
@@ -215,4 +215,74 @@ test("inspection observations survive case closure without claiming automatic ap
   assert.doesNotMatch(renderQualityCase(state,id),/data-form="quality-inspection"/);
   assert.match(renderQualityCase(state,id),/Further sample review needed/);
   assert.throws(()=>recordQualityInspection(state,id,"FINAL_REVIEW",step,"PASS","Late inspection",u),/open fictional quality case/);
+});
+
+
+test("Quality Forge corrective action links an existing NCR, optional inspection and responsible fictional role",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
+  const id=state.quality[0].id,step=state.jobs[0].routing.operations[0].step;
+  state=recordQualityInspection(state,id,"FIRST_PIECE",step,"FAIL","Fictional first piece failed",t);
+  const inspectionId=state.quality[0].inspections[0].id,original=state;
+  assert.throws(()=>recordQualityCorrectiveAction(state,id,"PERSON","Example action",inspectionId,u),/owner role/);
+  assert.throws(()=>recordQualityCorrectiveAction(state,id,"QUALITY","Example action","q-2-inspection-1",u),/on this fictional case/);
+  assert.throws(()=>recordQualityCorrectiveAction(state,id,"QUALITY","x",inspectionId,u),/5 to 500/);
+  assert.throws(()=>recordQualityCorrectiveAction(state,"missing","Example role","Example action",inspectionId,u),/open fictional quality case/);
+  assert.throws(()=>recordQualityCorrectiveAction(state,id,"QUALITY","Example action",inspectionId,"bad"),/timestamp/);
+  assert.strictEqual(state,original);
+  state=recordQualityCorrectiveAction(state,id,"QUALITY",
+    'Review fictional <img src=x onerror=alert(1)> process check',inspectionId,u);
+  const q=state.quality[0],action=q.correctiveActions[0];
+  assert.equal(q.jobId,"sample-1001");
+  assert.equal(action.id,id+"-action-1");
+  assert.equal(action.sourceInspectionId,inspectionId);
+  assert.equal(action.ownerRole,"QUALITY");
+  assert.deepEqual(action.reviews,[]);
+  assert.equal(state.events.at(-1).type,"quality.corrective_action.recorded");
+  assert.match(packetIssues(state,"sample-1001").join(" "),/quality hold/);
+  assert.ok(!packetIssues(state,"sample-1002").some(issue=>issue.includes("quality hold")));
+  const html=renderQualityCase(state,id);
+  assert.match(html,/data-form="quality-corrective-action"/);
+  assert.match(html,/data-form="quality-effectiveness"/);
+  assert.match(html,/q-1-inspection-1/);
+  assert.match(html,/&lt;img src=x onerror=alert\(1\)&gt;/);
+  assert.doesNotMatch(html,/<img src=x/);
+  assert.ok(contextActions(state,"quality",id).some(a=>a.view==="quality"));
+  assert.match(html,/href="#routing" data-job="sample-1001"/);
+  const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
+  assert.match(app,/case "quality-corrective-action"/);
+  assert.match(app,/case "quality-effectiveness"/);
+  assert.match(app,/data-action="select-quality"/);
+});
+test("effectiveness review is historical evidence, not automatic case closure or release",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
+  const id=state.quality[0].id;
+  state=recordQualityCorrectiveAction(state,id,"ENGINEERING","Update a fictional check", "",t);
+  const actionId=state.quality[0].correctiveActions[0].id,original=state;
+  assert.throws(()=>reviewQualityCorrectiveAction(state,id,"missing","EFFECTIVE","Sample check",u),/not found/);
+  assert.throws(()=>reviewQualityCorrectiveAction(state,id,actionId,"APPROVED","Sample check",u),/effectiveness result/);
+  assert.throws(()=>reviewQualityCorrectiveAction(state,id,actionId,"EFFECTIVE","x",u),/5 to 500/);
+  assert.throws(()=>reviewQualityCorrectiveAction(state,id,actionId,"EFFECTIVE","Sample check","invalid"),/timestamp/);
+  assert.throws(()=>reviewQualityCorrectiveAction(state,id,actionId,"EFFECTIVE","Sample check","2026-10-29T12:00:00Z"),/cannot precede/);
+  assert.strictEqual(state,original);
+  state=reviewQualityCorrectiveAction(state,id,actionId,"MORE_EVIDENCE","Further fictional evidence required",u);
+  assert.equal(state.quality[0].status,"OPEN");
+  assert.equal(state.quality[0].correctiveActions[0].reviews[0].result,"MORE_EVIDENCE");
+  assert.match(packetIssues(state,"sample-1001").join(" "),/quality hold/);
+  state=recordQualityDisposition(state,id,"SCRAP","Fictional disposition documented",u);
+  state=closeReviewedQuality(state,id,u);
+  assert.equal(state.quality[0].status,"CLOSED");
+  assert.deepEqual(packetIssues(state,"sample-1001"),[]);
+  assert.doesNotMatch(renderQualityCase(state,id),/data-form="quality-corrective-action"/);
+  assert.match(renderQualityCase(state,id),/data-form="quality-effectiveness"/);
+  assert.throws(()=>recordQualityCorrectiveAction(state,id,"QUALITY","Late action","",u),/open fictional quality case/);
+  state=reviewQualityCorrectiveAction(state,id,actionId,"NOT_EFFECTIVE",
+    "Fictional sample still needs follow-up","2026-10-31T12:00:00Z");
+  const reviews=state.quality[0].correctiveActions[0].reviews;
+  assert.equal(reviews.length,2);
+  assert.equal(reviews[1].id,actionId+"-review-2");
+  assert.equal(state.quality[0].status,"CLOSED");
+  assert.equal(state.events.at(-1).type,"quality.corrective_action.effectiveness_reviewed");
+  assert.match(renderQualityCase(state,id),/Fictional sample still needs follow-up/);
+  state=recordQualityFollowup(state,id,"Further fictional review planned","2026-10-31T12:01:00Z");
+  assert.equal(state.quality[0].followUps.length,1);
 });

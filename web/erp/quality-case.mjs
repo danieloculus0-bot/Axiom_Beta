@@ -66,6 +66,62 @@ export function recordQualityFollowup(state,id,note,at=new Date().toISOString())
     q.followUps.push({id:id+"-followup-"+(q.followUps.length+1),note:detail,at:time});
   },time);
 }
+
+export const QUALITY_ACTION_ROLES=[
+  {id:"QUALITY",label:"Quality (fictional role)"},
+  {id:"PRODUCTION",label:"Production (fictional role)"},
+  {id:"ENGINEERING",label:"Engineering (fictional role)"},
+  {id:"MATERIALS",label:"Materials (fictional role)"},
+  {id:"MAINTENANCE",label:"Maintenance (fictional role)"}
+];
+export const QUALITY_EFFECTIVENESS_RESULTS=[
+  {id:"EFFECTIVE",label:"Effective (illustrative)"},
+  {id:"NOT_EFFECTIVE",label:"Not effective / further action needed"},
+  {id:"MORE_EVIDENCE",label:"More evidence needed"}
+];
+/* Corrective actions live on the existing fictional NCR and may optionally cite
+ * an inspection on that same case. No approval, release or automatic rerouting.
+ */
+export function recordQualityCorrectiveAction(state,id,ownerRole,description,inspectionId="",at=new Date().toISOString()){
+  const record=recordFor(state,id);
+  if(!record||record.status!=="OPEN")throw Error("Select an open fictional quality case");
+  if(!state.jobs.some(j=>j.id===record.jobId))throw Error("Linked fictional work order is missing");
+  if(!QUALITY_ACTION_ROLES.some(role=>role.id===ownerRole))throw Error("Choose a listed fictional owner role");
+  const sourceId=String(inspectionId??"").trim();
+  if(sourceId&&!(record.inspections||[]).some(item=>item.id===sourceId))
+    throw Error("Choose an inspection observation on this fictional case");
+  const detail=noteText(description),time=timestamp(at);
+  return change(state,"quality.corrective_action.recorded",record.number+" / "+ownerRole,n=>{
+    const q=n.quality.find(item=>item.id===id);
+    if(!Array.isArray(q.correctiveActions))q.correctiveActions=[];
+    q.correctiveActions.push({
+      id:id+"-action-"+(q.correctiveActions.length+1),ownerRole,description:detail,
+      sourceInspectionId:sourceId||null,createdAt:time,reviews:[]
+    });
+  },time);
+}
+/* Effectiveness reviews are append-only observations, including after case
+ * closure. An ineffective result never silently reopens or releases work.
+ */
+export function reviewQualityCorrectiveAction(state,id,actionId,result,note,at=new Date().toISOString()){
+  const record=recordFor(state,id);
+  if(!record)throw Error("Fictional quality case not found");
+  const action=(record.correctiveActions||[]).find(item=>item.id===actionId);
+  if(!action)throw Error("Corrective action not found on this fictional quality case");
+  if(!QUALITY_EFFECTIVENESS_RESULTS.some(item=>item.id===result))
+    throw Error("Choose a listed fictional effectiveness result");
+  const detail=noteText(note),time=timestamp(at);
+  if(Date.parse(time)<Date.parse(action.createdAt))
+    throw Error("Effectiveness review cannot precede the fictional action");
+  return change(state,"quality.corrective_action.effectiveness_reviewed",record.number+" / "+actionId+" / "+result,n=>{
+    const target=n.quality.find(item=>item.id===id).correctiveActions.find(item=>item.id===actionId);
+    if(!Array.isArray(target.reviews))target.reviews=[];
+    target.reviews.push({
+      id:actionId+"-review-"+(target.reviews.length+1),result,note:detail,at:time
+    });
+  },time);
+}
+
 export function closeReviewedQuality(state,id,at=new Date().toISOString()){
   const record=recordFor(state,id);
   if(!record||record.status!=="OPEN")throw Error("Select an open fictional quality case");
