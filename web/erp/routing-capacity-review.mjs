@@ -132,13 +132,28 @@ export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, sta
     // Deliberately omit unverified capability, capacity and readiness facts.
     centers:[center],pmContext:{state:state.pm}
   });
-  if (contradictedZero) {
+  // Browser-local reservations can contradict a claimed material READY state,
+  // but even full reservation does not prove material is physically at the center.
+  // There is no canonical dated production schedule in this ERP demo.
+  const materialKnown = state.items.some(item => item.id === job.materialId) &&
+    Number.isSafeInteger(job.quantity) && job.quantity > 0 &&
+    Number.isSafeInteger(job.reserved) && job.reserved >= 0 &&
+    job.reserved <= job.quantity;
+  const materialConflict = center.material === "READY" &&
+    (!materialKnown || job.reserved < job.quantity);
+  if (contradictedZero || materialConflict) {
     const assessment = result.assessments.find(item => item.center === centerId);
     if (assessment) {
-      assessment.idleCandidate = false;
-      assessment.unknown.push("Asserted zero routed operations conflicts with " +
-        knownRoutedCount + " existing fictional routing assignment(s); planning-window load is UNKNOWN.");
-      assessment.notes.push("Existing routing assignments do not prove scheduled hours or machine availability.");
+      if (contradictedZero) {
+        assessment.idleCandidate = false;
+        assessment.unknown.push("Asserted zero routed operations conflicts with " +
+          knownRoutedCount + " existing fictional routing assignment(s); planning-window load is UNKNOWN.");
+        assessment.notes.push("Existing routing assignments do not prove scheduled hours or machine availability.");
+      }
+      if (materialConflict) {
+        assessment.unknown.push("Scenario material READY conflicts with missing or incomplete canonical job material reservation; readiness is UNKNOWN.");
+        assessment.notes.push("Browser-local reservation is not proof of physical material availability or operation-level readiness.");
+      }
       if (assessment.status !== "EXCLUDED") assessment.status = "NEEDS_REVIEW";
     }
     result.suggestions = result.suggestions.filter(item => item.center !== centerId);
