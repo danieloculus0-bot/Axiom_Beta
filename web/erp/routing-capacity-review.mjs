@@ -104,7 +104,14 @@ export function readRoutingCapacityScenario(fields,job,step,centerId,startLocal,
  * Browser datetime-local values are interpreted in the user's local timezone.
  * Results are ephemeral and never saved to job, PM, or ERP event records.
  */
-export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, startLocal, endLocal, scenarioEvidence = null) {
+export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, startLocal, endLocal, scenarioEvidence = null, sessions = null) {
+  // The caller must supply its browser-local EWI session snapshot to check
+  // whether the existing routing editor permits changes to this job.
+  if (sessions !== null && !Array.isArray(sessions))
+    fail("Browser-local EWI sessions must be an array when provided.");
+  const clockHistoryCount = sessions === null ? null :
+    sessions.filter(session => session && typeof session === "object" && session.jobId === jobId).length;
+  const clockHistoryConflict = clockHistoryCount > 0;
   const job = getJob(state,jobId);
   if (!job || !state.jobs.some(item => item.id === jobId))
     fail("Select an existing fictional job.");
@@ -144,7 +151,7 @@ export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, sta
   // Reuse the canonical EWI/job packet checks that gate clocking. Scenario
   // assertions cannot override drawing, quality, job status or draft review.
   const packetConcerns = packetIssues(state,jobId);
-  if (contradictedZero || materialConflict || packetConcerns.length) {
+  if (contradictedZero || materialConflict || packetConcerns.length || clockHistoryConflict) {
     const assessment = result.assessments.find(item => item.center === centerId);
     if (assessment) {
       if (contradictedZero) {
@@ -157,6 +164,10 @@ export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, sta
         assessment.unknown.push("Scenario material READY conflicts with missing or incomplete canonical job material reservation; readiness is UNKNOWN.");
         assessment.notes.push("Browser-local reservation is not proof of physical material availability or operation-level readiness.");
       }
+      if (clockHistoryConflict) {
+        assessment.unknown.push("This fictional job has browser-local EWI clock history; the existing routing editor blocks changes after any clock session.");
+        assessment.notes.push("Browser-local EWI sessions are not a production schedule, machine load measurement or official timeclock record.");
+      }
       if (packetConcerns.length) {
         assessment.unknown.push(...packetConcerns.map(issue =>
           "Canonical job packet requires review: " + issue));
@@ -167,7 +178,7 @@ export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, sta
     result.suggestions = result.suggestions.filter(item => item.center !== centerId);
     result.status = result.suggestions.length ? "SCENARIO_CANDIDATES" : "NO_ELIGIBLE_ALTERNATIVES";
   }
-  return {knownRoutedCount,jobId,partNumber:job.partNumber,revision:job.revision,step,centerId,
+  return {knownRoutedCount,clockHistoryCount,jobId,partNumber:job.partNumber,revision:job.revision,step,centerId,
     startLocal,endLocal,evidenceSupplied:scenarioEvidence !== null,
     scenarioEvidence:scenarioEvidence===null?null:structuredClone(scenarioEvidence),
     result,assessment:result.assessments[0] || null};
@@ -234,6 +245,9 @@ export function routingCapacityEvidenceHtml(job, review = null) {
       '<p class="small">Existing fictional job routing references to this center: '+
       h(review.knownRoutedCount ?? 'UNKNOWN')+
       '. This is not a scheduled-load or machine-availability measurement.</p>'+
+      '<p class="small">Browser-local EWI clock sessions on this job: '+
+      h(review.clockHistoryCount ?? 'NOT CHECKED')+
+      '. These are not a production schedule or verified machine load.</p>'+
       (review.evidenceSupplied ?
         '<p><b>Scenario estimates, not verified:</b> available '+h(a?.availableHours ?? "UNKNOWN")+
         ' hours; required '+h(a?.requiredHours ?? "UNKNOWN")+

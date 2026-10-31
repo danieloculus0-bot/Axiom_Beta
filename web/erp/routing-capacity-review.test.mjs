@@ -293,3 +293,39 @@ test("closed job and unreviewed routing draft cannot be bypassed by scenario ass
   assert.match(draft.assessment.unknown.join(" "),/Edited routing awaiting demo review/);
   assert.equal(draft.result.canAutoApply,false);
 });
+
+test("browser-local EWI clock history suppresses a routing suggestion the editor cannot save",()=>{
+  const {state,job,e}=packetReadyAlternate();
+  const before=structuredClone(state);
+  const base=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e,[]);
+  assert.equal(base.result.suggestions.length,1);
+  for(const end of [null,"2026-11-01T11:00:00Z"]){
+    const sessions=[{id:"SYN-CLOCK-001",jobId:job.id,step:"20",
+      employee:"DEMO-01",start:"2026-11-01T10:00:00Z",end}];
+    const snapshot=structuredClone(sessions);
+    const review=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e,sessions);
+    assert.equal(review.clockHistoryCount,1);
+    assert.equal(review.assessment.status,"NEEDS_REVIEW");
+    assert.equal(review.result.suggestions.length,0);
+    assert.equal(review.result.canAutoApply,false);
+    assert.match(review.assessment.unknown.join(" "),/routing editor blocks changes/);
+    assert.match(routingCapacityEvidenceHtml(job,review),/Browser-local EWI clock sessions on this job: 1/);
+    assert.deepEqual(sessions,snapshot);
+  }
+  assert.deepEqual(state,before);
+});
+test("unrelated browser-local clock sessions do not block this fictional job",()=>{
+  const {state,job,e}=packetReadyAlternate();
+  const sessions=[{id:"SYN-CLOCK-002",jobId:state.jobs[1].id,step:"10",
+    employee:"DEMO-02",start:"2026-11-01T10:00:00Z",end:null}];
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e,sessions);
+  assert.equal(review.clockHistoryCount,0);
+  assert.equal(review.result.suggestions.length,1);
+  assert.equal(review.result.canAutoApply,false);
+  assert.doesNotMatch(review.assessment.unknown.join(" "),/routing editor blocks changes/);
+});
+test("malformed EWI session collection is rejected rather than assumed empty",()=>{
+  const {state,job,e}=packetReadyAlternate();
+  assert.throws(()=>inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e,{}),
+    /EWI sessions must be an array/);
+});

@@ -580,7 +580,7 @@ document.addEventListener("submit",event=>{
         const j=job(),step=String(f.get("step")||""),center=String(f.get("center")||""),
           start=String(f.get("window-start")||""),end=String(f.get("window-end")||"");
         const evidence=readRoutingCapacityScenario(f,j,step,center,start,end);
-        capacityReview=inspectRoutingCapacityEvidence(state,j.id,step,center,start,end,evidence);
+        capacityReview=inspectRoutingCapacityEvidence(state,j.id,step,center,start,end,evidence,sessions);
         flash="Fictional estimates reviewed, not verified or saved. No routing changed.";
         render();break;
       }
