@@ -17,7 +17,7 @@ import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDr
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
  issueRequestPO,syncReceivedRequests,verifyPurchaseRequest,followupPurchaseRequest} from "./requests.mjs";
 import {installContextMenu} from "./context-ui.mjs";
-import {resolveContext,contextRelated} from "./context-actions.mjs";
+import {resolveContext,contextRelated,contextAttrs} from "./context-actions.mjs";
 import {installMenu} from "./navigation-ui.mjs";
 import {REPORTS,makeReport,reportCsv} from "./reports.mjs";
 import {getMachine,getTask,pmOverview,createMachine,addPmTask,completePmTask,requestMaintenance,
@@ -88,8 +88,7 @@ function metric(label,val,detail=""){return '<div class="metric"><small>'+h(labe
 function moduleLink(view,label,detail){
   return '<a href="#'+view+'"><b>'+h(label)+'</b><span>'+h(detail)+'</span></a>';
 }
-function contextAttrs(type,id){return '"data-ctx-type="'+h(type)+'" data-ctx-id="'+h(id)+'" tabindex="0" title="Right-click for Open with"';}
-function ctxSpan(type,id,text){return '<span class="context-record" data-ctx-type="'+h(type)+'" data-ctx-id="'+h(id)+'" tabindex="0" title="Right-click for Open with">'+h(text)+'</span>';}
+function ctxSpan(type,id,text){return '<span class="context-record" '+contextAttrs(type,id)+'>'+h(text)+'</span>';}
 function table(headers,rows,empty="No synthetic records yet.",contexts=[]){
   if(!rows.length)return '<div class="empty">'+h(empty)+'</div>';
   return '<div class="tablewrap"><table><thead><tr>'+headers.map(x=>'<th>'+h(x)+'</th>').join("")+'</tr></thead><tbody>'+rows.map((r,i)=>{
