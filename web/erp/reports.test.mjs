@@ -133,7 +133,7 @@ test("job-linked NCR entry points preserve job and case identity and hide empty 
  const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
  assert.ok(app.includes('function jobQualityCell(j)'));
  assert.ok(app.includes('if(!summary.total)return'));
- assert.ok((app.match(/jobQualityCell\\(j\\)/g)||[]).length>=4);
+ assert.ok(app.split("jobQualityCell(j)").length-1>=4);
  assert.ok(app.includes('if(action==="job-quality-cases")'));
  assert.ok(app.includes('selectedContext={type:"job",id}'));
  assert.ok(app.includes('selectedQualityId=(cases.find(q=>q.status==="OPEN")||cases[0]).id'));
