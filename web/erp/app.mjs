@@ -12,7 +12,7 @@ import {renderHr,renderMorale} from "./workforce-view.mjs";
 import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
-import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality} from "./quality-case.mjs";
+import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection} from "./quality-case.mjs";
 import {renderQualityCase} from "./quality-case-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
@@ -646,6 +646,11 @@ document.addEventListener("submit",event=>{
         selectedQualityId=next.quality.at(-1).id;
         transact(next,"Fictional NCR opened and linked to this work order. EWI clocking is blocked.");break;
       }
+      case "quality-inspection":
+        selectedQualityId=String(f.get("id"));
+        transact(recordQualityInspection(state,selectedQualityId,String(f.get("stage")),
+          String(f.get("step")),String(f.get("result")),String(f.get("observation"))),
+          "Fictional inspection observation saved on this NCR and routed step. No job release.");break;
       case "quality-disposition":
         selectedQualityId=String(f.get("id"));
         transact(recordQualityDisposition(state,selectedQualityId,String(f.get("decision")),String(f.get("note"))),
