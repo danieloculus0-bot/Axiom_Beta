@@ -131,3 +131,18 @@ export function closeReviewedQuality(state,id,at=new Date().toISOString()){
     throw Error("Return for review keeps this fictional quality case open");
   return closeQuality(state,id,timestamp(at));
 }
+
+/* Read-only job-level view over canonical NCR records. No second quality store. */
+export function qualityJobSummary(state,jobId){
+  const cases=state.quality.filter(q=>q.jobId===jobId);
+  const actions=cases.flatMap(q=>Array.isArray(q.correctiveActions)?q.correctiveActions:[]);
+  const reviews=actions.flatMap(action=>Array.isArray(action.reviews)?action.reviews:[])
+    .filter(review=>review&&typeof review.at==="string"&&typeof review.result==="string")
+    .sort((a,b)=>b.at.localeCompare(a.at));
+  return {
+    cases,total:cases.length,open:cases.filter(q=>q.status==="OPEN").length,
+    inspections:cases.reduce((count,q)=>count+(Array.isArray(q.inspections)?q.inspections.length:0),0),
+    correctiveActions:actions.length,
+    latestEffectiveness:reviews[0]?.result||(actions.length?"NOT REVIEWED":"NO ACTION")
+  };
+}

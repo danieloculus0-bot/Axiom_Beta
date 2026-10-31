@@ -3,9 +3,10 @@ import {packetIssues,available,reservedTotal} from "./engine.mjs";
 import {taskDue,getMachine,localDay} from "./pm.mjs";
 import {durationSeconds} from "../ewi/engine.mjs";
 import {qcdsmEvidence} from "./qcdsm.mjs";
+import {qualityJobSummary} from "./quality-case.mjs";
 
 export const REPORTS=[
- {id:"jobs",label:"Work order readiness",description:"Job revision, reservations and example hold reasons"},
+ {id:"jobs",label:"Work order readiness",description:"Job readiness and linked fictional NCR / corrective-action evidence"},
  {id:"inventory",label:"Inventory position",description:"On hand, reserved and available by stock item"},
  {id:"purchasing",label:"Purchase order status",description:"Synthetic PO lifecycle and receiving"},
  {id:"quality",label:"Quality hold register",description:"Linked fictional NCR dispositions, inspections, corrective actions, effectiveness and follow-up"},
@@ -21,9 +22,14 @@ export function makeReport(state,sessions,id,today=localDay(),workforce=null){
  let columns=[],rows=[];
  switch(id){
  case "jobs":
-  columns=["Work order","Part","Revision","Quantity","Reserved","State","Demo checks"];
-  rows=state.jobs.map(j=>[j.jobNumber,j.partNumber,j.revision,j.quantity,j.reserved||0,j.status,
-    packetIssues(state,j.id).join("; ")||"Example checks passed"]);break;
+  columns=["Work order","Part","Revision","Quantity","Reserved","State","Demo checks",
+    "NCRs","Open NCRs","Corrective actions","Latest effectiveness"];
+  rows=state.jobs.map(j=>{
+    const q=qualityJobSummary(state,j.id);
+    return [j.jobNumber,j.partNumber,j.revision,j.quantity,j.reserved||0,j.status,
+      packetIssues(state,j.id).join("; ")||"Example checks passed",
+      q.total,q.open,q.correctiveActions,q.latestEffectiveness];
+  });break;
  case "inventory":
   columns=["Stock item","Description","Unit","On hand","Reserved","Available"];
   rows=state.items.map(i=>[i.id,i.name,i.unit,i.onHand,reservedTotal(state,i.id),available(state,i.id)]);break;

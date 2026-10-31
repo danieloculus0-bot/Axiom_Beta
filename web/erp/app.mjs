@@ -12,7 +12,7 @@ import {renderHr,renderMorale} from "./workforce-view.mjs";
 import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
-import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction} from "./quality-case.mjs";
+import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction,qualityJobSummary} from "./quality-case.mjs";
 import {renderQualityCase} from "./quality-case-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
@@ -101,6 +101,13 @@ function table(headers,rows,empty="No synthetic records yet.",contexts=[]){
 }
 function jobLink(j,view="routing"){return '<a class="cell-link" href="#'+view+'" data-job="'+h(j.id)+'">'+h(j.jobNumber)+'</a>';}
 function jobState(j){return packetIssues(state,j.id).length?'<span class="tag warn">REVIEW</span>':'<span class="tag ok">READY</span>';}
+function jobQualityCell(j){
+  const summary=qualityJobSummary(state,j.id);
+  if(!summary.total)return '<span class="small muted">No NCRs</span>';
+  return '<button type="button" class="action secondary" data-action="job-quality-cases" data-id="'+h(j.id)+
+    '" title="Review fictional NCRs linked to this work order">'+
+    h(summary.open+" open / "+summary.total+" NCR"+(summary.total===1?"":"s"))+'</button>';
+}
 function contextBanner(){
   if(!selectedContext)return "";
   const info=resolveContext(state,selectedContext.type,selectedContext.id);
@@ -111,6 +118,8 @@ function contextBanner(){
 }
 function contextSelection(view,rows){
   const ids=contextRelated(state,selectedContext,view);
+  if(view==="quality"&&selectedContext?.type==="job")
+    return rows.filter(row=>row.jobId===selectedContext.id);
   if(!ids)return rows;
   if(view==="jobs")return rows.filter(row=>ids.includes(row.id));
   if(view==="inventory")return rows.filter(row=>ids.includes(row.id));
@@ -157,8 +166,8 @@ function dashboard(){
      metric("Open POs",ordered,"Simulated purchasing")+'</div>';
   s+='<div class="columns"><section class="panel"><div class="panel-head"><h2>Recent work orders</h2><a href="#jobs" class="action secondary">All work orders</a></div>';
   const recentJobs=state.jobs.slice().reverse().slice(0,7);
-  s+=table(["Job","Part","Revision","Readiness","EWI"],recentJobs.map(j=>[
-    jobLink(j),ctxSpan("part",j.partNumber,j.partNumber),h(j.revision),jobState(j),
+  s+=table(["Job","Part","Revision","Readiness","Quality","EWI"],recentJobs.map(j=>[
+    jobLink(j),ctxSpan("part",j.partNumber,j.partNumber),h(j.revision),jobState(j),jobQualityCell(j),
     '<a href="#ewi" data-job="'+h(j.id)+'" class="action secondary">Open EWI</a>'
   ]),"No fictional jobs yet.",recentJobs.map(j=>({type:"job",id:j.id})));
   s+='</section><section class="panel"><h2>Production modules</h2><div class="feature">'+
@@ -200,9 +209,9 @@ function jobsView(){
     '<button class="action" type="submit">Create work order</button></form></section>';
   const shownJobs=contextSelection("jobs",state.jobs);
   s+='<section class="panel"><div class="panel-head"><h2>Shop order register</h2><a class="action secondary" href="#bridge">Import simulator job</a></div>'+
-    table(["Work order","Part","Rev","Qty","Reserved","Source","Readiness","EWI"],shownJobs.map(j=>[
+    table(["Work order","Part","Rev","Qty","Reserved","Source","Readiness","Quality","EWI"],shownJobs.map(j=>[
       jobLink(j,"routing"),ctxSpan("part",j.partNumber,j.partNumber),h(j.revision),h(j.quantity),h(j.reserved||0),
-      h(j.origin),jobState(j),
+      h(j.origin),jobState(j),jobQualityCell(j),
       '<a class="action secondary" href="#ewi" data-job="'+h(j.id)+'">Open</a>'
     ]),"No related fictional jobs for this record.",shownJobs.map(j=>({type:"job",id:j.id})))+'</section>';
   return s;
@@ -223,6 +232,7 @@ function routingView(){
     moduleLink("inventory","Materials","Reserve generic stock")+
     moduleLink("quality","Quality","Review holds")+
     moduleLink("ewi","EWI","Clock operation")+'</div>'+
+    '<h3>Linked quality cases</h3>'+jobQualityCell(j)+
     '<h3 style="margin-top:20px">Source labels</h3><p>Routing: '+h(j.routing.source)+'<br>Drawing: '+h(j.drawing.number)+' / Rev '+h(j.drawing.revision)+'</p></section></div>';
   s+=routingEditorHtml(j,routeDraft?.jobId===j.id?routeDraft.operations:null,sessions.some(session=>session.jobId===j.id));
   return s;
@@ -424,6 +434,10 @@ function reportsView(){
         const record=state.quality.find(q=>q.number===value);
         if(record)return '<button type="button" class="action secondary" data-action="report-quality-case" data-id="'+h(record.id)+'">'+h(value)+'</button>';
       }
+      if(selected.id==="jobs"&&col===7&&Number(value)>0){
+        const record=state.jobs.find(j=>j.jobNumber===row[0]);
+        if(record)return jobQualityCell(record);
+      }
       return h(value);
     })),
       "This report has no records yet. Create a fictional transaction in its source module.")+
@@ -529,6 +543,19 @@ document.addEventListener("click",event=>{
       if(!record)throw Error("Fictional quality case not found");
       selectedQualityId=id;
       openContext({type:"quality",id},{view:"quality",intent:"quality"});
+    }
+    if(action==="job-quality-cases"){
+      if(!getJob(state,id))throw Error("Fictional work order not found");
+      const cases=qualityJobSummary(state,id).cases;
+      if(!cases.length)throw Error("No fictional NCRs on this work order");
+      selectedContext={type:"job",id};
+      selectedIntent="quality";
+      selectedQualityId=(cases.find(q=>q.status==="OPEN")||cases[0]).id;
+      rememberJob(id);
+      if(location.hash==="#quality"){
+        render();
+        document.getElementById("quality-case-detail")?.scrollIntoView({block:"start"});
+      }else location.hash="#quality";
     }
     if(action==="select-quality"){
       const record=state.quality.find(q=>q.id===id);
