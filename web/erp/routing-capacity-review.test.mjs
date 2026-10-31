@@ -135,6 +135,13 @@ test("browser scenario produces traceable estimates but no clearance or writes",
   assert.match(html,/scenario-enabled" value="yes" checked/);
   assert.match(html,/SYN-UI-CAL-001/);
   assert.match(html,/Scenario estimates, not verified/);
+  // Reviewed controls must retain their exact values after DOM re-render.
+  assert.match(html,/<option value="10" selected>/);
+  assert.match(html,/<option value="PRESS-02" selected>/);
+  assert.match(html,/<option value="supported" selected>/);
+  assert.match(html,/<option value="CLEAR" selected>/);
+  assert.match(html,/<option value="READY" selected>/);
+  assert.match(html,/<option value="ON_TIME" selected>/);
 });
 test("unsupported fictional capability is excluded",()=>{
   const state=seedState(),job=state.jobs[0],f=browserScenarioFields();
