@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {seedState,makePurchaseOrder,receivePurchaseOrder,raiseQuality,createJob} from "./engine.mjs";
 import {makeReport,reportCsv,REPORTS} from "./reports.mjs";
 import {qualityCaseTimeline} from "./quality-timeline.mjs";
-import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionRoutingStatus} from "./quality-case-view.mjs";
+import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionRoutingStatus,qualityEvidenceWorkOrderTarget} from "./quality-case-view.mjs";
 import {startSession,stopSession} from "../ewi/engine.mjs";
 import {completePmTask} from "./pm.mjs";
 import {qualityJobSummary,jobQualityTarget,recordQualityInspection,recordQualityDisposition,closeReviewedQuality,
@@ -422,4 +422,59 @@ test("closed NCR keeps historical inspection, linked corrective and chronology h
  assert.ok(html.includes('href="#jobs" data-job="sample-1001"'));
  assert.ok(!html.includes('data-action="quality-routing-step"'));
  assert.equal(JSON.stringify(state),before);
+});
+
+test("NCR inspection, corrective action and effectiveness evidence open only their actual work order",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
+  state=raiseQuality(state,"sample-1002","Generic drawing revision conflict",later);
+  const q=state.quality[0],other=state.quality[1];
+  const step=state.jobs[0].routing.operations[0].step;
+  state=recordQualityInspection(state,q.id,"FIRST_PIECE",step,"FAIL",
+    "Generic fictional inspection evidence","2026-10-30T12:01:00Z");
+  const inspectionId=state.quality[0].inspections[0].id;
+  state=recordQualityCorrectiveAction(state,q.id,"QUALITY",
+    "Generic fictional corrective action",inspectionId,"2026-10-30T12:02:00Z");
+  const actionId=state.quality[0].correctiveActions[0].id;
+  state=reviewQualityCorrectiveAction(state,q.id,actionId,"EFFECTIVE",
+    "Fictional effectiveness observation","2026-10-30T12:03:00Z");
+  const reviewId=state.quality[0].correctiveActions[0].reviews[0].id;
+  const before=JSON.stringify(state);
+  for(const [kind,id] of [["inspection",inspectionId],["corrective",actionId],["effectiveness",reviewId]]){
+    assert.deepEqual(qualityEvidenceWorkOrderTarget(state,q.id,kind,id),
+      {caseId:q.id,kind,id,jobId:"sample-1001"});
+    assert.equal(qualityEvidenceWorkOrderTarget(state,other.id,kind,id),null);
+    assert.equal(qualityEvidenceWorkOrderTarget(state,q.id,kind,"unrelated-evidence"),null);
+  }
+  const html=renderQualityCase(state,q.id);
+  assert.equal((html.match(/data-action="quality-evidence-work-order"/g)||[]).length,3);
+  for(const [kind,id] of [["inspection",inspectionId],["corrective",actionId],["effectiveness",reviewId]])
+    assert.ok(html.includes('data-case="'+q.id+'" data-kind="'+kind+'" data-id="'+id+'"'));
+  assert.ok(html.includes('href="#jobs" data-job="sample-1001"'));
+  assert.equal(JSON.stringify(state),before);
+});
+
+test("NCR evidence work-order actions are guarded for legacy, missing and unrelated records",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
+  const q=state.quality[0],step=state.jobs[0].routing.operations[0].step;
+  state=recordQualityInspection(state,q.id,"FINAL_REVIEW",step,"PASS",
+    "Fictional final observation",later);
+  const id=state.quality[0].inspections[0].id;
+  assert.equal(qualityEvidenceWorkOrderTarget(state,q.id,"inspection",null),null);
+  assert.equal(qualityEvidenceWorkOrderTarget(state,q.id,"corrective",id),null);
+  assert.equal(qualityEvidenceWorkOrderTarget(null,q.id,"inspection",id),null);
+  const orphan=structuredClone(state);
+  orphan.jobs=[];
+  assert.equal(qualityEvidenceWorkOrderTarget(orphan,q.id,"inspection",id),null);
+  assert.ok(!renderQualityCase(orphan,q.id).includes('data-action="quality-evidence-work-order"'));
+  const legacy=structuredClone(state);
+  legacy.quality[0].inspections=[{stage:"FINAL",observation:"Legacy fictional evidence"}];
+  assert.ok(!renderQualityCase(legacy,q.id).includes('data-action="quality-evidence-work-order"'));
+  const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
+  assert.ok(app.includes('if(action==="quality-evidence-work-order")'));
+  assert.ok(app.includes('qualityEvidenceWorkOrderTarget(state,caseId,kind,id)'));
+  assert.ok(app.includes('panel?.dataset.caseId!==target.caseId'));
+  assert.ok(app.includes('selectedContext={type:"quality",id:target.caseId}'));
+  assert.ok(app.includes('selectedQualityId=target.caseId'));
+  assert.ok(app.includes('rememberJob(target.jobId)'));
+  assert.ok(app.includes('if(action==="quality-routing-step")'));
 });
