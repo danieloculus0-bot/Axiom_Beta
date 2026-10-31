@@ -53,3 +53,49 @@ test("review HTML escapes operation labels and untrusted evidence messages",()=>
   assert.ok(html.includes('&lt;img src=x onerror=alert(1)&gt;'));
   assert.ok(!html.includes('<img src=x'));
 });
+
+const scopedEvidence = job => ({
+  scope:{jobId:job.id,partNumber:job.partNumber,revision:job.revision,
+    step:"10",centerId:"PRESS-02",startLocal:START,endLocal:END},
+  center:{capability:{operation:job.routing.operations[0].name,supported:true,sourceRef:"SYN-CAP-001"},
+    calendarHours:8,bookedHours:1,queuedHours:1,maintenanceHours:0,setupHours:1,runHours:2,
+    capacitySourceRef:"SYN-CALENDAR-001",readinessSourceRef:"SYN-READY-001",
+    maintenanceState:"CLEAR",tooling:"READY",fixture:"READY",material:"READY",
+    deliveryState:"ON_TIME",routedOperationCount:0}
+});
+test("scoped fictional hours reach advisor but PM remains unverified and nothing persists",()=>{
+  const state=seedState(),job=state.jobs[0],before=structuredClone(state),e=scopedEvidence(job);
+  const copy=structuredClone(e);
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e);
+  assert.equal(review.assessment.availableHours,6);
+  assert.equal(review.assessment.requiredHours,3);
+  assert.equal(review.assessment.utilizationPercent,25);
+  assert.equal(review.assessment.pmEvidence.status,"UNMAPPED");
+  assert.equal(review.assessment.status,"NEEDS_REVIEW");
+  assert.equal(review.result.suggestions.length,0);
+  assert.equal(review.result.canAutoApply,false);
+  assert.match(routingCapacityEvidenceHtml(job,review),/Scenario estimates, not verified/);
+  assert.deepEqual(state,before);assert.deepEqual(e,copy);
+});
+test("scenario evidence is bound to exact job, part, revision, step, center and window",()=>{
+  const state=seedState(),job=state.jobs[0],e=scopedEvidence(job);
+  const run=()=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e);
+  for(const k of Object.keys(e.scope)){
+    const prior=e.scope[k];e.scope[k]="SYN-WRONG";
+    assert.throws(run,/must match the selected job/);e.scope[k]=prior;
+  }
+  e.center.capability.operation="Unrelated operation";
+  assert.throws(run,/exact selected operation/);
+});
+test("unsourced, invalid and unsupported scenario fields fail closed",()=>{
+  const state=seedState(),job=state.jobs[0],e=scopedEvidence(job);
+  const run=()=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e);
+  e.center.capacitySourceRef="private-asset";
+  assert.throws(run,/fictional SYN-/);e.center.capacitySourceRef="SYN-CALENDAR-001";
+  e.center.calendarHours=-1;
+  assert.throws(run,/finite, nonnegative/);e.center.calendarHours=8;
+  e.center.maintenanceState="CERTIFIED";
+  assert.throws(run,/supported states/);e.center.maintenanceState="CLEAR";
+  e.center.programLink={programId:"SYN-OTHER"};
+  assert.throws(run,/unsupported or missing evidence/);
+});

@@ -10,12 +10,54 @@ const h = value => String(value ?? "").replace(/[&<>"']/g, c =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const localStamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 const fail = message => {throw Error(message);};
+const syntheticRef = x => typeof x === "string" && /^SYN-[A-Z0-9-]{1,60}$/.test(x);
+// Caller-supplied scenario assertions are never verified, persisted or auto-applied.
+function scopedScenarioCenter(e,job,op,id,startLocal,endLocal){
+  if(e === null)return {id};
+  if(!e || typeof e !== "object" || Array.isArray(e) ||
+      Object.keys(e).some(k=>!["scope","center"].includes(k)))
+    fail("Scenario evidence must be a scoped synthetic object.");
+  const expected={jobId:job.id,partNumber:job.partNumber,revision:job.revision,
+    step:op.step,centerId:id,startLocal,endLocal};
+  if(!e.scope || typeof e.scope !== "object" || Array.isArray(e.scope) ||
+      Object.keys(e.scope).length!==Object.keys(expected).length ||
+      Object.entries(expected).some(([k,v])=>e.scope[k]!==v))
+    fail("Scenario evidence must match the selected job, revision, step, center and window.");
+  const c=e.center;
+  const allowed=["capability","calendarHours","bookedHours","queuedHours",
+    "maintenanceHours","setupHours","runHours","capacitySourceRef",
+    "readinessSourceRef","maintenanceState","tooling","fixture","material",
+    "deliveryState","routedOperationCount"];
+  if(!c || typeof c!=="object" || Array.isArray(c) ||
+      Object.keys(c).some(k=>!allowed.includes(k)))
+    fail("Scenario center contains unsupported or missing evidence fields.");
+  const cap=c.capability;
+  if(!cap || typeof cap!=="object" || Array.isArray(cap) ||
+      Object.keys(cap).some(k=>!["operation","supported","sourceRef"].includes(k)) ||
+      cap.operation!==op.name || typeof cap.supported!=="boolean")
+    fail("Capability assertion must identify the exact selected operation.");
+  if(![cap.sourceRef,c.capacitySourceRef,c.readinessSourceRef].every(syntheticRef))
+    fail("Capability, capacity and readiness require fictional SYN- evidence references.");
+  const states={maintenanceState:["CLEAR","DOWN","UNKNOWN"],
+    tooling:["READY","BLOCKED","UNKNOWN"],fixture:["READY","BLOCKED","UNKNOWN"],
+    material:["READY","BLOCKED","UNKNOWN"],deliveryState:["ON_TIME","LATE","UNKNOWN"]};
+  if(Object.entries(states).some(([k,values])=>c[k]!==undefined&&!values.includes(c[k])))
+    fail("Scenario readiness values must use explicit supported states.");
+  const hours=["calendarHours","bookedHours","queuedHours","maintenanceHours","setupHours","runHours"];
+  if(hours.some(k=>c[k]!==undefined &&
+      (typeof c[k]!=="number"||!Number.isFinite(c[k])||c[k]<0||c[k]>100000)))
+    fail("Scenario hours must be finite, nonnegative estimates.");
+  if(c.routedOperationCount!==undefined &&
+      (!Number.isSafeInteger(c.routedOperationCount)||c.routedOperationCount<0))
+    fail("Scenario routed-operation count must be a nonnegative integer.");
+  return {id,...structuredClone(c)};
+}
 
 /** No supplied capacity/capability evidence means UNKNOWN, not an idle machine.
  * Browser datetime-local values are interpreted in the user's local timezone.
  * Results are ephemeral and never saved to job, PM, or ERP event records.
  */
-export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, startLocal, endLocal) {
+export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, startLocal, endLocal, scenarioEvidence = null) {
   const job = getJob(state,jobId);
   if (!job || !state.jobs.some(item => item.id === jobId))
     fail("Select an existing fictional job.");
@@ -34,11 +76,12 @@ export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, sta
     window:{start:start.toISOString(),end:end.toISOString()},
     // Deliberately omit all capability, capacity and readiness assertions.
     // A browser-local PM record is evidence to review, not a clearance.
-    centers:[{id:centerId}],
+    centers:[scopedScenarioCenter(scenarioEvidence,job,operation,centerId,startLocal,endLocal)],
     pmContext:{state:state.pm}
   });
   return {jobId,partNumber:job.partNumber,revision:job.revision,step,centerId,
-    startLocal,endLocal,result,assessment:result.assessments[0] || null};
+    startLocal,endLocal,evidenceSupplied:scenarioEvidence !== null,
+    result,assessment:result.assessments[0] || null};
 }
 
 export function routingCapacityEvidenceHtml(job, review = null) {
@@ -74,10 +117,19 @@ export function routingCapacityEvidenceHtml(job, review = null) {
       '<h3>Read-only assessment: '+h(review.step)+' / '+h(review.centerId)+'</h3>'+
       '<p><b>Result:</b> '+h(a?.status || review.result.status)+
       ' · <b>PM association:</b> '+h(a?.pmEvidence?.status || 'UNKNOWN')+'</p>'+
-      '<p><b>Capacity and qualification:</b> UNKNOWN. No capacity figures were supplied or inferred.</p>'+
+      (review.evidenceSupplied ?
+        '<p><b>Scenario estimates, not verified:</b> available '+h(a?.availableHours ?? "UNKNOWN")+
+        ' hours; required '+h(a?.requiredHours ?? "UNKNOWN")+
+        ' hours; utilization '+h(a?.utilizationPercent ?? "UNKNOWN")+
+        '%. Capability and availability still require independent review.</p>'+
+        '<p class="small"><b>Asserted evidence:</b> '+(a?.evidenceRefs || []).map(h).join(', ')+'</p>' :
+        '<p><b>Capacity and qualification:</b> UNKNOWN. No capacity figures were supplied or inferred.</p>')+
       (messages.length?'<ul>'+messages.map(message=>'<li>'+h(message)+'</li>').join('')+'</ul>':'')+
-      '<p class="small">No alternate routing proposed or saved. Source evidence, scheduled load, '+
-      'tooling, material, maintenance clearance and human review are required before a recommendation.</p></div>';
+      (review.result.suggestions.length ?
+        '<p class="small">Scenario-only alternate identified for human draft review. No routing saved, approved or released.</p>' :
+        '<p class="small">No alternate routing proposed or saved. Source evidence, scheduled load, '+
+        'tooling, material, maintenance clearance and human review are required before a recommendation.</p>')+
+      '</div>';
   }
   return html+'</section>';
 }
