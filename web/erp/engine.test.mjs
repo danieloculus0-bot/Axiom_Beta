@@ -1,5 +1,5 @@
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction} from "./quality-case.mjs";
-import {renderQualityCase,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEffectivenessInspectionTarget,qualityCorrectiveInspectionTarget,qualityInspectionCorrectiveTargets,qualityJobInspectionTarget,renderJobQualityEvidence} from "./quality-case-view.mjs";
+import {renderQualityCase,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEffectivenessInspectionTarget,qualityCorrectiveInspectionTarget,qualityInspectionCorrectiveTargets,qualityJobInspectionTarget,renderJobQualityEvidence,renderJobRegisterInspectionEvidence} from "./quality-case-view.mjs";
 import {contextActions,contextRelated} from "./context-actions.mjs";
 import {readFileSync} from "node:fs";
 import test from "node:test";
@@ -492,4 +492,36 @@ test("job routing evidence opens only uniquely linked fictional inspections, inc
   assert.equal(state.quality[0].inspections.length,2,"read-only job links cannot write evidence");
   assert.match(readFileSync(new URL("./app.mjs",import.meta.url),"utf8"),
     /if\(action==="job-quality-inspection"\)/);
+});
+
+test("work-order register reveals only uniquely linked inspections and reuses canonical case links",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
+  const caseId=state.quality[0].id,step=state.jobs[0].routing.operations[0].step;
+  state=recordQualityInspection(state,caseId,"FIRST_PIECE",step,"FAIL","Synthetic register inspection",t);
+  const inspectionId=state.quality[0].inspections[0].id;
+  const button='data-action="job-quality-inspection" data-case="'+caseId+
+    '" data-job="sample-1001" data-id="'+inspectionId+'"';
+  let html=renderJobRegisterInspectionEvidence(state,"sample-1001");
+  assert.ok(html.includes('<details class="job-inspection-details"><summary>Inspections (1)</summary>'));
+  assert.equal(html.split(button).length-1,1,"register links to exact existing inspection");
+  assert.match(html,/data-action="report-quality-case"/,"case entry is the same canonical NCR");
+  assert.equal(renderJobRegisterInspectionEvidence(state,"sample-1002"),"","unrelated job has no evidence");
+  assert.equal(renderJobRegisterInspectionEvidence({...state,jobs:[]},"sample-1001"),"","missing job is not linked");
+  const duplicate=structuredClone(state);
+  duplicate.quality[0].inspections.push({...duplicate.quality[0].inspections[0]});
+  assert.equal(renderJobRegisterInspectionEvidence(duplicate,"sample-1001"),"",
+    "ambiguous duplicate inspection is not advertised");
+  const wrongCase=structuredClone(state);
+  wrongCase.quality.push({...structuredClone(state.quality[0]),jobId:"sample-1002"});
+  assert.equal(renderJobRegisterInspectionEvidence(wrongCase,"sample-1001"),"",
+    "duplicate case IDs across jobs do not create links");
+  state=recordQualityDisposition(state,caseId,"SCRAP","Synthetic reviewed disposition",u);
+  state=closeReviewedQuality(state,caseId,u);
+  html=renderJobRegisterInspectionEvidence(state,"sample-1001");
+  assert.equal(html.split(button).length-1,1,"closed-case inspection remains readable");
+  const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
+  assert.ok(app.includes("jobQualityCell(j)+renderJobRegisterInspectionEvidence(state,j.id)"),
+    "the actual job register embeds the existing evidence projection");
+  assert.ok(app.includes('(view==="jobs"&&!contextSelection("jobs",state.jobs)'),
+    "register navigation validates visible job identity");
 });

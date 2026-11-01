@@ -526,6 +526,49 @@ def main():
                 expect(panel).to_have_attribute("data-case-id", case_id)
                 expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
 
+                # The canonical work-order register is another independent
+                # entry point to the exact closed-case inspection. The global
+                # job selection may point at a different fictional work order.
+                page.locator('#module-nav a[data-nav="jobs"]').click()
+                page.wait_for_function("location.hash === '#jobs'")
+                clear_context = page.locator('#view button[data-action="clear-record-context"]')
+                if clear_context.count():
+                    clear_context.click()
+                page.locator("#job-context").select_option(other_job)
+                target_row = page.locator("#view table tbody tr").filter(
+                    has=page.locator(f'a.cell-link[data-job="{job_id}"]')
+                )
+                expect(target_row).to_have_count(1)
+                details = target_row.locator("details.job-inspection-details")
+                expect(details).to_have_count(1)
+                expect(details.locator("summary")).to_have_text("Inspections (1)")
+                unrelated_row = page.locator("#view table tbody tr").filter(
+                    has=page.locator(f'a.cell-link[data-job="{other_job}"]')
+                )
+                expect(unrelated_row.locator("details.job-inspection-details")).to_have_count(0)
+                details.locator("summary").click()
+                register_jump = details.locator(
+                    f'button[data-action="job-quality-inspection"][data-case="{case_id}"]'
+                    f'[data-job="{job_id}"][data-id="{inspection_id}"]'
+                )
+                expect(register_jump).to_be_visible()
+                expect(page.locator("#job-context")).to_have_value(other_job)
+                register_jump.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+                register_inspection = panel.locator(
+                    f'[data-evidence-kind="inspection"][data-evidence-id="{inspection_id}"]'
+                ).first
+                expect(register_inspection).to_be_visible()
+                assert register_inspection.evaluate("el => document.activeElement === el"), (
+                    "Register jump must focus the exact canonical inspection"
+                )
+                expect(page.locator(
+                    f'#view button[data-action="select-quality"][data-id="{case_id}"]'
+                )).to_have_count(1)
+
                 # Existing inline part records provide a real Open with entry
                 # point even while the separate record-row fix remains in #48.
                 page.locator('#module-nav a[data-nav="jobs"]').click()
