@@ -307,18 +307,23 @@ test("canonical open quality hold blocks alternate; closed hold does not",()=>{
   assert.equal(reviewed.result.suggestions.length,1);
   assert.equal(reviewed.result.canAutoApply,false);
 });
-test("closed job and unreviewed routing draft cannot be bypassed by scenario assertions",()=>{
+test("closed jobs remain blocked; beta draft review is advisory without changing the saved route",()=>{
   const {state,job,e}=packetReadyAlternate();
   job.status="CLOSED";
-  const closed=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e);
+  const closed=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e,[]);
   assert.equal(closed.result.suggestions.length,0);
   assert.match(closed.assessment.unknown.join(" "),/Job is not open/);
   job.status="OPEN";
   job.routing.reviewState="REVIEW_REQUIRED";
-  const draft=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e);
-  assert.equal(draft.result.suggestions.length,0);
-  assert.match(draft.assessment.unknown.join(" "),/Edited routing awaiting demo review/);
+  const before=structuredClone(state);
+  // BETA: the existing operator workflow permits fictional clocking while
+  // review remains pending. Preserve the old hard-interlock assertion here:
+  // assert.match(draft.assessment.unknown.join(" "),/Edited routing awaiting demo review/);
+  const draft=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e,[]);
+  assert.equal(draft.result.suggestions.length,1);
   assert.equal(draft.result.canAutoApply,false);
+  assert.equal(job.routing.reviewState,"REVIEW_REQUIRED");
+  assert.deepEqual(state,before);
 });
 
 test("browser-local EWI clock history suppresses a routing suggestion the editor cannot save",()=>{
