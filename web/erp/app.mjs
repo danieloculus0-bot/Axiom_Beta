@@ -13,7 +13,7 @@ import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction,qualityJobSummary,jobQualityTarget} from "./quality-case.mjs";
-import {renderQualityCase,renderJobQualityEvidence,renderJobRegisterInspectionEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction,qualityJobInspectionTarget,qualityJobCorrectiveTarget,qualityJobFollowupTarget,qualityJobDispositionTarget,qualityJobEffectivenessTarget} from "./quality-case-view.mjs";
+import {renderQualityCase,renderJobQualityEvidence,renderJobRegisterInspectionEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction,qualityJobInspectionTarget,qualityJobCorrectiveTarget,qualityJobFollowupTarget,qualityJobDispositionTarget,qualityJobEffectivenessTarget,qualityReportCaseTarget} from "./quality-case-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
@@ -433,10 +433,11 @@ function reportsView(){
     '</select></label><span class="small muted">'+h(selected.description)+'</span></div></section>';
   s+='<section class="panel"><div class="panel-head"><h2>'+h(report.title)+'</h2><span class="tag accent">'+
     h(report.rows.length)+' rows</span></div>'+
-    table(report.columns,report.rows.slice(0,100).map(row=>row.map((value,col)=>{
+    table(report.columns,report.rows.slice(0,100).map((row,rowIndex)=>row.map((value,col)=>{
       if(selected.id==="quality"&&col===0){
-        const record=state.quality.find(q=>q.number===value);
-        if(record)return '<button type="button" class="action secondary" data-action="report-quality-case" data-id="'+h(record.id)+'">'+h(value)+'</button>';
+        const target=qualityReportCaseTarget(state,row,rowIndex);
+        if(target)return '<button type="button" class="action secondary" data-action="report-quality-case" data-id="'+h(target.caseId)+
+          '" data-row-index="'+h(target.rowIndex)+'">'+h(value)+'</button>';
       }
       if(selected.id==="jobs"&&col===7&&Number(value)>0){
         const record=state.jobs.find(j=>j.jobNumber===row[0]);
@@ -571,10 +572,15 @@ document.addEventListener("click",event=>{
       transact(next,"Simulated PO received. Linked purchase request awaits confirmation.");
     }
     if(action==="report-quality-case"){
-      const record=state.quality.find(q=>q.id===id);
-      if(!record)throw Error("Fictional quality case not found");
-      selectedQualityId=id;
-      openContext({type:"quality",id},{view:"quality",intent:"quality"});
+      const indexText=button.dataset.rowIndex;
+      if(currentView()!=="reports"||selectedReport!=="quality"||
+         !/^(0|[1-9]\d*)$/.test(indexText??""))
+        throw Error("Fictional report case link is unavailable");
+      const rowIndex=Number(indexText);
+      const target=qualityReportCaseTarget(state,reportWithContext("quality").rows[rowIndex],rowIndex);
+      if(!target||target.caseId!==id)throw Error("Fictional report case link is stale or ambiguous");
+      selectedQualityId=target.caseId;
+      openContext({type:"quality",id:target.caseId},{view:"quality",intent:"quality"});
     }
     if(action==="quality-evidence-focus"){
       const caseId=button.dataset.case,kind=button.dataset.kind;
