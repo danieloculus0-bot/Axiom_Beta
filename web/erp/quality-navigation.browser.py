@@ -98,6 +98,28 @@ def main():
                 ).click()
                 assert disposition_receipt.evaluate("el => document.activeElement === el")
 
+                # Corrective receipt and chronology return to the exact
+                # source inspection without writing or reopening the case.
+                corrective_receipt_source = panel.locator(
+                    f'[data-evidence-kind="corrective"][data-evidence-id="{corrective_id}"] > '
+                    f'button[data-action="quality-evidence-focus"][data-kind="inspection"][data-id="{inspection_id}"]'
+                )
+                corrective_chronology_source = panel.locator(
+                    'h3:has-text("Case chronology") ~ div.receipt'
+                ).filter(has_text="Corrective action:").locator(
+                    f'button[data-action="quality-evidence-focus"][data-kind="inspection"][data-id="{inspection_id}"]'
+                )
+                expect(corrective_receipt_source).to_have_count(1)
+                expect(corrective_chronology_source).to_have_count(1)
+                for source in (corrective_receipt_source, corrective_chronology_source):
+                    source.click()
+                    observation = panel.locator(
+                        f'[data-evidence-kind="inspection"][data-evidence-id="{inspection_id}"]'
+                    ).first
+                    assert observation.evaluate("el => document.activeElement === el")
+                    expect(page.locator("#job-context")).to_have_value(job_id)
+                    expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+
                 # The corrective receipt and case chronology must reach the
                 # SAME existing review form after closure without writing evidence.
                 review_handoffs = panel.locator(

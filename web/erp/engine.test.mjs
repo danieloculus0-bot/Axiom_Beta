@@ -1,5 +1,5 @@
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction} from "./quality-case.mjs";
-import {renderQualityCase,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEffectivenessInspectionTarget} from "./quality-case-view.mjs";
+import {renderQualityCase,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEffectivenessInspectionTarget,qualityCorrectiveInspectionTarget} from "./quality-case-view.mjs";
 import {contextActions,contextRelated} from "./context-actions.mjs";
 import {readFileSync} from "node:fs";
 import test from "node:test";
@@ -370,4 +370,37 @@ test("effectiveness evidence traces only its own linked source inspection throug
   assert.equal(state.quality[0].status,"CLOSED");
   assert.equal(renderQualityCase(state,caseId).split(link).length-1,2,
     "historical inspection remains reachable after fictional case closure");
+});
+
+test("corrective receipt and chronology link only an unambiguous source inspection",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Synthetic drawing revision conflict",t);
+  const caseId=state.quality[0].id,step=state.jobs[0].routing.operations[0].step;
+  state=recordQualityInspection(state,caseId,"FIRST_PIECE",step,"FAIL","Synthetic observation",t);
+  const inspectionId=state.quality[0].inspections[0].id;
+  state=recordQualityCorrectiveAction(state,caseId,"QUALITY","Synthetic inspection response",inspectionId,u);
+  state=recordQualityCorrectiveAction(state,caseId,"ENGINEERING","Synthetic case-level response","",u);
+  const record=state.quality[0],actionId=record.correctiveActions[0].id;
+  assert.deepEqual(qualityCorrectiveInspectionTarget(record,actionId),{kind:"inspection",id:inspectionId});
+  assert.equal(qualityCorrectiveInspectionTarget(record,record.correctiveActions[1].id),null);
+  assert.equal(qualityCorrectiveInspectionTarget(record,"unrelated-action"),null);
+  const link='data-action="quality-evidence-focus" data-case="'+caseId+
+    '" data-kind="inspection" data-id="'+inspectionId+'">View source inspection';
+  assert.equal(renderQualityCase(state,caseId).split(link).length-1,2,
+    "receipt and chronology both navigate to the same inspection");
+  const missing=structuredClone(record);missing.inspections=[];
+  assert.equal(qualityCorrectiveInspectionTarget(missing,actionId),null);
+  const stale=structuredClone(record);stale.correctiveActions[0].sourceInspectionId="missing-inspection";
+  assert.equal(qualityCorrectiveInspectionTarget(stale,actionId),null);
+  const ambiguous=structuredClone(record);ambiguous.inspections.push({...ambiguous.inspections[0]});
+  assert.equal(qualityCorrectiveInspectionTarget(ambiguous,actionId),null);
+  assert.doesNotMatch(renderQualityCase({...state,quality:[ambiguous]},caseId),
+    /View source inspection/,"ambiguous evidence must not create a misleading link");
+  const duplicateAction=structuredClone(record);
+  duplicateAction.correctiveActions.push({...duplicateAction.correctiveActions[0]});
+  assert.equal(qualityCorrectiveInspectionTarget(duplicateAction,actionId),null);
+  state=recordQualityDisposition(state,caseId,"SCRAP","Synthetic disposition reviewed",u);
+  state=closeReviewedQuality(state,caseId,u);
+  assert.equal(state.quality[0].status,"CLOSED");
+  assert.equal(renderQualityCase(state,caseId).split(link).length-1,2,
+    "closed-case evidence remains navigable without reopening the case");
 });
