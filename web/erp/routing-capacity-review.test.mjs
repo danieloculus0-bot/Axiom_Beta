@@ -117,9 +117,36 @@ test("browser scenario opt-in rejects missing or unsourced values",()=>{
   const state=seedState(),job=state.jobs[0],f=browserScenarioFields();
   assert.equal(readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END),null);
   f.set("scenario-enabled","yes");f.delete("scenario-calendarHours");
-  assert.throws(()=>readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END),/six scenario hour/);
+  assert.throws(()=>readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END),/Calendar, maintenance, setup and run hours/);
   f.set("scenario-calendarHours","8");f.set("scenario-capacity-ref","REAL-ASSET");
   assert.throws(()=>readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END),/fictional SYN-/);
+});
+test("unknown booked and queued load stays UNKNOWN instead of being invented as zero",()=>{
+  const state=seedState(),job=state.jobs[0],before=structuredClone(state),f=browserScenarioFields();
+  f.set("scenario-enabled","yes");
+  f.delete("scenario-bookedHours");
+  f.delete("scenario-queuedHours");
+  const partial=readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END);
+  assert.equal(Object.hasOwn(partial.center,"bookedHours"),false);
+  assert.equal(Object.hasOwn(partial.center,"queuedHours"),false);
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,partial,[]);
+  assert.equal(review.assessment.status,"NEEDS_REVIEW");
+  assert.equal(review.assessment.availableHours,null);
+  assert.equal(review.assessment.utilizationPercent,null);
+  assert.match(review.assessment.unknown.join(" "),/Planning-window hours are UNKNOWN/);
+  assert.equal(review.result.suggestions.length,0);
+  assert.equal(review.result.canAutoApply,false);
+  assert.match(routingCapacityEvidenceHtml(job,review),/available UNKNOWN hours/);
+  assert.deepEqual(state,before);
+  f.set("scenario-bookedHours","0");
+  f.set("scenario-queuedHours","0");
+  const explicitZero=readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END);
+  assert.equal(explicitZero.center.bookedHours,0);
+  assert.equal(explicitZero.center.queuedHours,0);
+  const withZero=inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,explicitZero,[]);
+  assert.equal(withZero.assessment.availableHours,8);
+  assert.equal(withZero.assessment.utilizationPercent,0);
+  assert.deepEqual(state,before);
 });
 test("browser scenario produces traceable estimates but no clearance or writes",()=>{
   const state=seedState(),job=state.jobs[0],before=structuredClone(state),f=browserScenarioFields();
