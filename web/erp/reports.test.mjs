@@ -221,8 +221,8 @@ test("job routing evidence index links exact canonical cases and keeps closed re
  const before=JSON.stringify(state),html=renderJobQualityEvidence(state,"sample-1001");
  assert.deepEqual(qualityCaseEvidenceSummary(state.quality[0]),
    {inspections:1,correctiveActions:1,latestEffectiveness:"NOT_EFFECTIVE"});
- assert.match(html,new RegExp('data-action="report-quality-case" data-id="'+first+'"'));
- assert.match(html,new RegExp('data-action="report-quality-case" data-id="'+second+'"'));
+ assert.match(html,new RegExp('data-action="job-quality-case" data-job="sample-1001" data-id="'+first+'"'));
+ assert.match(html,new RegExp('data-action="job-quality-case" data-job="sample-1001" data-id="'+second+'"'));
  assert.ok(!html.includes('data-id="'+unrelated+'"'));
  assert.match(html,/NOT_EFFECTIVE/);
  assert.match(html,/CLOSED/);

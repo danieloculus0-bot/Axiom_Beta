@@ -859,6 +859,38 @@ def main():
                 page.wait_for_function("location.hash === '#quality'")
                 expect(panel).to_have_attribute("data-case-id", case_id)
                 expect(page.locator("#job-context")).to_have_value(job_id)
+                # Case entry in Routing and Shop order register must not use the
+                # Report Center-only handler. Both paths focus this exact NCR.
+                page.locator('#module-nav a[data-nav="routing"]').click()
+                page.wait_for_function("location.hash === '#routing'")
+                routing_case = page.locator(
+                    f'button[data-action="job-quality-case"][data-id="{case_id}"][data-job="{job_id}"]'
+                )
+                expect(routing_case).to_have_count(1)
+                routing_case.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                assert panel.evaluate("el => document.activeElement === el"), "Case detail should receive focus"
+                page.locator('#module-nav a[data-nav="jobs"]').click()
+                page.wait_for_function("location.hash === '#jobs'")
+                page.locator(".job-inspection-details summary").click()
+                register_case = page.locator(
+                    f'button[data-action="job-quality-case"][data-id="{case_id}"][data-job="{job_id}"]'
+                )
+                expect(register_case).to_have_count(1)
+                register_case.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                page.locator('#module-nav a[data-nav="jobs"]').click()
+                page.wait_for_function("location.hash === '#jobs'")
+                page.locator(".job-inspection-details summary").click()
+                register_case = page.locator(
+                    f'button[data-action="job-quality-case"][data-id="{case_id}"][data-job="{job_id}"]'
+                )
+                register_case.evaluate("el => { el.dataset.job = 'wrong-job'; el.click(); }")
+                assert page.url.endswith("#jobs"), "Stale job binding must not redirect"
                 # Duplicate canonical IDs are ambiguous even if the visible
                 # numbers differ. Neither register nor right-click may guess.
                 page.evaluate("""({originalId, otherId}) => {
