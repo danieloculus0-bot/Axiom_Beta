@@ -74,10 +74,28 @@ def main():
                 assert review_id
                 expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
 
+                # Follow-up evidence is recorded on the same closed NCR, then
+                # reached from its chronology without creating another case.
+                page.locator('form[data-form="quality-followup"] textarea[name="note"]').fill(
+                    "Synthetic post-closure case follow-up"
+                )
+                page.locator('form[data-form="quality-followup"] button[type="submit"]').click()
+                followup_id = panel.locator('[data-evidence-kind="followup"]').first.get_attribute("data-evidence-id")
+                assert followup_id
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+                panel.locator(
+                    f'button[data-action="quality-evidence-focus"][data-kind="followup"][data-id="{followup_id}"]'
+                ).click()
+                followup_receipt = panel.locator(
+                    f'[data-evidence-kind="followup"][data-evidence-id="{followup_id}"]'
+                ).first
+                assert followup_receipt.evaluate("el => document.activeElement === el")
+
                 for kind, evidence_id in (
                     ("inspection", inspection_id),
                     ("corrective", corrective_id),
                     ("effectiveness", review_id),
+                    ("followup", followup_id),
                 ):
                     panel.locator(
                         f'button[data-action="quality-evidence-work-order"][data-kind="{kind}"][data-id="{evidence_id}"]'
@@ -90,7 +108,7 @@ def main():
                     assert return_button.get_attribute("data-kind") == kind
                     assert return_button.get_attribute("data-id") == evidence_id
 
-                    if kind == "inspection":
+                    if kind in ("inspection", "followup"):
                         other_job = page.locator("#job-context option").evaluate_all(
                             "(options, selected) => options.map(o => o.value).find(v => v !== selected)", job_id
                         )
