@@ -187,6 +187,13 @@ export function assessAlternateCenters(job, step, scenario) {
         blocked.push("Booked, queued and maintenance hours exceed calendar hours.");
       else if (rawAvailable < rawRequired)
         blocked.push("Insufficient remaining hours after booked, queued and maintenance load.");
+      // A zero-total operation estimate is not evidence that routing consumes
+      // no machine time. Keep required/slack UNKNOWN until independently reviewed.
+      if (rawRequired === 0) {
+        requiredHours = null;
+        slackHours = null;
+        unknown.push("Both setup and run hours are zero; required operation time is UNKNOWN pending review.");
+      }
     }
     const idleCandidate = center.routedOperationCount === 0;
     if (idleCandidate)

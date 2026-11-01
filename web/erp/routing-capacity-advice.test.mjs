@@ -432,3 +432,30 @@ test("offset-aware reviewed PM links match equivalent UTC instants without backd
     {at:"2026-11-07T03:00:00-05:00"}).pm;
   assert.equal(assessPm(future).assessments[0].pmEvidence.status,"UNMAPPED");
 });
+
+
+test("zero-total setup and run estimates cannot create a fictional zero-time routing proposal",()=>{
+  const c=center(),before=structuredClone(c);
+  c.setupHours=0;c.runHours=0;
+  const original=structuredClone(c),r=assess(c),a=r.assessments[0];
+  assert.equal(a.status,"NEEDS_REVIEW");
+  assert.equal(a.requiredHours,null);
+  assert.equal(a.slackHours,null);
+  assert.equal(a.availableHours,24);
+  assert.match(a.unknown.join(" "),/required operation time is UNKNOWN/);
+  assert.equal(r.suggestions.length,0);
+  assert.equal(r.canAutoApply,false);
+  assert.deepEqual(c,original);
+  assert.equal(before.setupHours,1);
+});
+
+test("positive total operation time remains eligible with a zero setup or run component",()=>{
+  for(const [setup,run] of [[1,0],[0,6]]){
+    const c=center();c.setupHours=setup;c.runHours=run;
+    const r=assess(c);
+    assert.equal(r.assessments[0].status,"SCENARIO_ELIGIBLE");
+    assert.equal(r.assessments[0].requiredHours,setup+run);
+    assert.equal(r.suggestions.length,1);
+    assert.equal(r.suggestions[0].canAutoApply,false);
+  }
+});
