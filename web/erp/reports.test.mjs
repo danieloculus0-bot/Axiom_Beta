@@ -486,7 +486,7 @@ test("NCR evidence work-order actions are guarded for legacy, missing and unrela
 });
 
 test("NCR evidence work-order and return links reject duplicate canonical or receipt IDs",()=>{
-  let state=raiseQuality(seedState(),"sample-1001","Synthetic drawing review",at);
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
   const caseId=state.quality[0].id,jobId="sample-1001";
   const step=state.jobs[0].routing.operations[0].step;
   state=recordQualityInspection(state,caseId,"FIRST_PIECE",step,"FAIL",
