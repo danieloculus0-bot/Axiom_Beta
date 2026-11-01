@@ -859,6 +859,31 @@ def main():
                 page.wait_for_function("location.hash === '#quality'")
                 expect(panel).to_have_attribute("data-case-id", case_id)
                 expect(page.locator("#job-context")).to_have_value(job_id)
+                # Duplicate canonical IDs are ambiguous even if the visible
+                # numbers differ. Neither register nor right-click may guess.
+                page.evaluate("""({originalId, otherId}) => {
+                    const key = "axiom_public_erp_suite_v1";
+                    const demo = JSON.parse(localStorage.getItem(key));
+                    const second = demo.quality.find(q => q.id === otherId);
+                    second.id = originalId;
+                    localStorage.setItem(key, JSON.stringify(demo));
+                }""", {"originalId": case_id, "otherId": duplicate_case_id})
+                page.goto(f"http://127.0.0.1:{server.server_port}/erp/#quality")
+                assert page.locator('button[data-action="select-quality"]').count() == 0, (
+                    "Ambiguous case IDs must not expose Review case destinations"
+                )
+                assert panel.get_attribute("data-case-id") is None, (
+                    "Ambiguous IDs must not render a different job's case"
+                )
+                ambiguous_row = page.locator(
+                    f'tr[data-ctx-type="quality"][data-ctx-id="{case_id}"]'
+                ).first
+                ambiguous_row.click(button="right")
+                expect(page.locator("#axiom-record-menu")).to_be_hidden()
+                page.goto(f"http://127.0.0.1:{server.server_port}/erp/#jobs")
+                assert page.locator('button[data-action="job-quality-cases"]').count() == 0, (
+                    "Work-order NCR links must not select an ambiguous case"
+                )
                 assert not page_errors, f"Browser JavaScript errors: {page_errors}"
                 print("PASS: Quality Forge navigation, duplicate-number report identity, native context menus")
             finally:
