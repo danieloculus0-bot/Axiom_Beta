@@ -125,14 +125,22 @@ export function qualityEvidenceReturnAction(state,selection,jobId){
  * This is a read-only projection, not an inference about why a route changed.
  */
 export function qualityInspectionRoutingStatus(state,caseId,inspectionId){
-  if(!Array.isArray(state?.quality)||!Array.isArray(state?.jobs))return null;
-  const record=state.quality.find(item=>item?.id===caseId);
-  const inspection=(Array.isArray(record?.inspections)?record.inspections:[])
-    .find(item=>item?.id===inspectionId&&typeof inspectionId==="string"&&inspectionId.length>0);
-  if(!inspection)return null;
+  if(!Array.isArray(state?.quality)||!Array.isArray(state?.jobs)||
+     typeof caseId!=="string"||!caseId||
+     typeof inspectionId!=="string"||!inspectionId)return null;
+  // Historical browser-local records may have colliding IDs. A routed-step
+  // jump must identify one case, one observation, one job and one operation.
+  const cases=state.quality.filter(item=>item?.id===caseId);
+  if(cases.length!==1||!["OPEN","CLOSED"].includes(cases[0].status))return null;
+  const record=cases[0];
+  const observations=(Array.isArray(record.inspections)?record.inspections:[])
+    .filter(item=>item?.id===inspectionId);
+  if(observations.length!==1)return null;
+  const inspection=observations[0];
   const unavailable=reason=>({target:null,reason});
-  const job=state.jobs.find(item=>item?.id===record?.jobId);
-  if(!job)return unavailable("Linked fictional work order is unavailable.");
+  const jobs=state.jobs.filter(item=>item?.id===record.jobId);
+  if(jobs.length!==1)return unavailable("Linked fictional work order is unavailable.");
+  const job=jobs[0];
   if(typeof inspection.jobRevision!=="string"||!inspection.jobRevision||
      typeof inspection.drawingRevision!=="string"||!inspection.drawingRevision)
     return unavailable("Recorded revision evidence is incomplete.");
@@ -140,8 +148,11 @@ export function qualityInspectionRoutingStatus(state,caseId,inspectionId){
     return unavailable("Recorded job revision differs from the current work order.");
   if(inspection.drawingRevision!==job.drawing?.revision)
     return unavailable("Recorded drawing revision differs from the current drawing.");
-  const operation=job.routing?.operations?.find(op=>String(op.step)===String(inspection.step));
-  if(!operation)return unavailable("Recorded step is absent from the current routing.");
+  const operations=(Array.isArray(job.routing?.operations)?job.routing.operations:[])
+    .filter(op=>op&&String(op.step)===String(inspection.step));
+  if(!operations.length)return unavailable("Recorded step is absent from the current routing.");
+  if(operations.length!==1)return unavailable("Recorded step is ambiguous in the current routing.");
+  const operation=operations[0];
   if(!inspection.operation||!inspection.center)
     return unavailable("Recorded operation details are incomplete.");
   if(inspection.operation!==operation.name||inspection.center!==operation.center)
