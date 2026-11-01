@@ -541,7 +541,7 @@ def main():
                 expect(target_row).to_have_count(1)
                 details = target_row.locator("details.job-inspection-details")
                 expect(details).to_have_count(1)
-                expect(details.locator("summary")).to_have_text("Quality evidence (2)")
+                expect(details.locator("summary")).to_have_text("Quality evidence (3)")
                 unrelated_row = page.locator("#view table tbody tr").filter(
                     has=page.locator(f'a.cell-link[data-job="{other_job}"]')
                 )
@@ -601,7 +601,7 @@ def main():
                     has=page.locator(f'a.cell-link[data-job="{job_id}"]')
                 )
                 details = target_row.locator("details.job-inspection-details")
-                expect(details.locator("summary")).to_have_text("Quality evidence (2)")
+                expect(details.locator("summary")).to_have_text("Quality evidence (3)")
                 details.locator("summary").click()
                 register_corrective = details.locator(
                     f'button[data-action="job-quality-corrective"][data-case="{case_id}"]'
@@ -616,6 +616,49 @@ def main():
                 assert corrective_receipt.evaluate("el => document.activeElement === el"), (
                     "Register jump must focus the same canonical corrective action"
                 )
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+
+
+                # Post-closure follow-up evidence uses the same canonical NCR
+                # from both work-order entry points without changing records.
+                page.locator('#module-nav a[data-nav="routing"]').click()
+                page.wait_for_function("location.hash === '#routing'")
+                routing_followup = page.locator(
+                    f'#view button[data-action="job-quality-followup"][data-case="{case_id}"]'
+                    f'[data-job="{job_id}"][data-id="{followup_id}"]'
+                )
+                expect(routing_followup).to_have_count(1)
+                routing_followup.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                assert followup_receipt.evaluate("el => document.activeElement === el")
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+
+                page.locator('#module-nav a[data-nav="jobs"]').click()
+                page.wait_for_function("location.hash === '#jobs'")
+                expect(page.locator("#view h2").filter(has_text="Shop order register")).to_be_visible()
+                clear_context = page.locator('#view button[data-action="clear-record-context"]')
+                if clear_context.count():
+                    clear_context.first.evaluate("(el) => el.click()")
+                page.locator("#job-context").select_option(other_job)
+                target_row = page.locator("#view table tbody tr").filter(
+                    has=page.locator(f'a.cell-link[data-job="{job_id}"]')
+                )
+                details = target_row.locator("details.job-inspection-details")
+                expect(details.locator("summary")).to_have_text("Quality evidence (3)")
+                details.locator("summary").click()
+                register_followup = details.locator(
+                    f'button[data-action="job-quality-followup"][data-case="{case_id}"]'
+                    f'[data-job="{job_id}"][data-id="{followup_id}"]'
+                )
+                expect(register_followup).to_be_visible()
+                expect(page.locator("#job-context")).to_have_value(other_job)
+                register_followup.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                assert followup_receipt.evaluate("el => document.activeElement === el")
                 expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
 
                 # Existing inline part records provide a real Open with entry
