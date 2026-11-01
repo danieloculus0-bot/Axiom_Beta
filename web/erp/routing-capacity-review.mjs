@@ -93,6 +93,21 @@ function scopedScenarioCenter(e,job,op,id,startLocal,endLocal){
   if(c.routedOperationCount!==undefined &&
       (!Number.isSafeInteger(c.routedOperationCount)||c.routedOperationCount<0))
     fail("Scenario routed-operation count must be a nonnegative integer.");
+  // Provenance must describe actual scenario arithmetic, not merely a
+  // caller-supplied label. Manual values remain editable and unverified.
+  if(c.capacityHourSources){
+    const sources=c.capacityHourSources;
+    if(sources.calendarHours==="PLACEHOLDER"){
+      const expected=conservativeCapacityPlaceholders(
+        startLocal,endLocal,c.placeholderBufferPercent??25).calendarHours;
+      if(c.calendarHours!==expected)
+        fail("Placeholder calendar hours must match the fictional planning window and interruption allowance.");
+    }
+    for(const [key,rate] of [["bookedHours",0.25],["queuedHours",0.125]]){
+      if(sources[key]==="PLACEHOLDER" && c[key]!==roundHours(c.calendarHours*rate))
+        fail("Placeholder booked and queued hours must match the stated effective calendar hours.");
+    }
+  }
   return {id,...structuredClone(c)};
 }
 
