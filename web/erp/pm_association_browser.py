@@ -505,7 +505,13 @@ def browser_test() -> None:
                     pm_completion.locator('select[name="task"]').select_option("DEMO-PM-001")
                     pm_completion.locator('input[name="confirmed"]').check()
                     pm_completion.locator('button[type="submit"]').click()
-                    assert "DEMO-COMP-0001" in handoff_page.locator("#view").inner_text()
+                    assert handoff_page.evaluate("""async () => {
+                        const {ERP_KEY} = await import('./engine.mjs');
+                        const pm = JSON.parse(localStorage.getItem(ERP_KEY)).pm;
+                        return pm.completions[0]?.id === 'DEMO-COMP-0001' &&
+                            pm.completions[0]?.taskId === 'DEMO-PM-001' &&
+                            pm.completions[0]?.result === 'PASS';
+                    }"""), handoff_page.locator("#flash").inner_text()
 
                     pm_link = handoff_page.locator(FORM)
                     pm_link.locator('select[name="center"]').select_option("DEMO-CUT")
