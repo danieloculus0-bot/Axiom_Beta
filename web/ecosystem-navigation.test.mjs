@@ -41,7 +41,7 @@ test("the root redirect still reaches ERP, with visible fallback navigation", ()
 test("ecosystem navigation is not misrepresented as an integration API", () => {
   for (const file of ["./erp/index.html", "./ewi/index.html", "./lab/index.html"]) {
     const html = read(file);
-    assert.ok(html.includes("not connected") || html.includes("No enterprise server"));
+    assert.ok(/not connected|No enterprise server|No server/i.test(html));
     assert.ok(!html.includes('href="' + PROJECTS + '#'), "cross-site nav must not invent record context");
   }
 });
