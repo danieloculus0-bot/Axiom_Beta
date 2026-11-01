@@ -196,8 +196,9 @@ export function qualityJobInspectionTarget(state,jobId,caseId,inspectionId){
      typeof inspectionId!=="string"||!inspectionId)return null;
   if(!Array.isArray(state?.jobs)||state.jobs.filter(job=>job?.id===jobId).length!==1||
      !Array.isArray(state?.quality))return null;
-  const cases=state.quality.filter(record=>record?.id===caseId&&record.jobId===jobId);
-  if(cases.length!==1||!["OPEN","CLOSED"].includes(cases[0].status))return null;
+  const cases=state.quality.filter(record=>record?.id===caseId);
+  if(cases.length!==1||cases[0].jobId!==jobId||
+     !["OPEN","CLOSED"].includes(cases[0].status))return null;
   const observations=Array.isArray(cases[0].inspections)?cases[0].inspections:[];
   if(observations.filter(item=>item?.id===inspectionId).length!==1)return null;
   return {caseId,jobId,kind:"inspection",id:inspectionId};
