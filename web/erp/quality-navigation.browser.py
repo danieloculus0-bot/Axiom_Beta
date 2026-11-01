@@ -526,6 +526,45 @@ def main():
                 expect(panel).to_have_attribute("data-case-id", case_id)
                 expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
 
+                # A duplicate legacy routing step must not let any of the
+                # three inspection/corrective/chronology links guess a route.
+                page.evaluate("""({jobId, step}) => {
+                    const key = "axiom_public_erp_suite_v1";
+                    const demo = JSON.parse(localStorage.getItem(key));
+                    const job = demo.jobs.find(j => j.id === jobId);
+                    const source = job.routing.operations.find(
+                        op => String(op.step) === String(step)
+                    );
+                    job.routing.operations.push({
+                        ...source, name: "Browser-only duplicate operation"
+                    });
+                    localStorage.setItem(key, JSON.stringify(demo));
+                }""", {"jobId": job_id, "step": inspection_step})
+                page.reload()
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                expect(panel.locator('button[data-action="quality-routing-step"]')).to_have_count(0)
+                expect(panel.locator('[role="note"]').filter(
+                    has_text="Recorded step is ambiguous in the current routing."
+                ).first).to_be_visible()
+                expect(panel.locator(
+                    f'[data-evidence-kind="inspection"][data-evidence-id="{inspection_id}"]'
+                ).first).to_be_visible()
+                # Restoring a unique step restores the exact route jump, not
+                # the case's closed status or any other record.
+                page.evaluate("""jobId => {
+                    const key = "axiom_public_erp_suite_v1";
+                    const demo = JSON.parse(localStorage.getItem(key));
+                    const job = demo.jobs.find(j => j.id === jobId);
+                    job.routing.operations = job.routing.operations.filter(
+                        op => op.name !== "Browser-only duplicate operation"
+                    );
+                    localStorage.setItem(key, JSON.stringify(demo));
+                }""", job_id)
+                page.reload()
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                expect(route_action.first).to_be_visible()
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+
                 # The canonical work-order register is another independent
                 # entry point to the exact closed-case inspection. The global
                 # job selection may point at a different fictional work order.
