@@ -1,5 +1,5 @@
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction} from "./quality-case.mjs";
-import {renderQualityCase,qualityInspectionCorrectiveTarget} from "./quality-case-view.mjs";
+import {renderQualityCase,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget} from "./quality-case-view.mjs";
 import {contextActions,contextRelated} from "./context-actions.mjs";
 import {readFileSync} from "node:fs";
 import test from "node:test";
@@ -308,4 +308,33 @@ test("inspection and chronology start one corrective-action draft only on the ma
   state=closeReviewedQuality(state,caseId,u);
   assert.equal(qualityInspectionCorrectiveTarget(state,caseId,inspectionId),null);
   assert.doesNotMatch(renderQualityCase(state,caseId),/data-action="quality-inspection-corrective"/);
+});
+
+test("corrective action receipt and chronology open one exact effectiveness review draft after closure",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Fictional inspection follow-up",t);
+  const caseId=state.quality[0].id;
+  state=recordQualityCorrectiveAction(state,caseId,"QUALITY","Fictional corrective check one","",t);
+  state=recordQualityCorrectiveAction(state,caseId,"ENGINEERING","Fictional corrective check two","",u);
+  const actionId=state.quality[0].correctiveActions[1].id;
+  assert.deepEqual(qualityCorrectiveReviewTarget(state,caseId,actionId),
+    {caseId,actionId,jobId:"sample-1001"});
+  assert.equal(qualityCorrectiveReviewTarget(state,"other-case",actionId),null);
+  assert.equal(qualityCorrectiveReviewTarget(state,caseId,"missing-action"),null);
+  assert.equal(qualityCorrectiveReviewTarget(state,caseId,undefined),null);
+  const html=renderQualityCase(state,caseId);
+  const button='data-action="quality-corrective-review" data-case="'+caseId+'" data-id="'+actionId+'"';
+  assert.equal(html.split(button).length-1,2);
+  assert.equal(state.quality[0].correctiveActions[1].reviews.length,0);
+  const missingJob=structuredClone(state);
+  missingJob.jobs=missingJob.jobs.filter(job=>job.id!=="sample-1001");
+  assert.equal(qualityCorrectiveReviewTarget(missingJob,caseId,actionId),null);
+  assert.doesNotMatch(renderQualityCase(missingJob,caseId),/data-action="quality-corrective-review"/);
+  state=recordQualityDisposition(state,caseId,"SCRAP","Fictional disposition review",u);
+  state=closeReviewedQuality(state,caseId,u);
+  assert.equal(state.quality[0].status,"CLOSED");
+  assert.deepEqual(qualityCorrectiveReviewTarget(state,caseId,actionId),
+    {caseId,actionId,jobId:"sample-1001"});
+  assert.equal(renderQualityCase(state,caseId).split(button).length-1,2);
+  assert.match(readFileSync(new URL("./app.mjs",import.meta.url),"utf8"),
+    /if\(action==="quality-corrective-review"\)/);
 });
