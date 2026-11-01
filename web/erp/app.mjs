@@ -68,6 +68,17 @@ function persist(){
   try{localStorage.setItem(ERP_KEY,JSON.stringify(state));localStorage.setItem(CLOCK_KEY,JSON.stringify(sessions));localStorage.setItem(WORKFORCE_KEY,JSON.stringify(workforce));}
   catch{stored=false;flash="Local storage unavailable. Export records before refreshing.";}
 }
+// Read shared browser storage at the instant a routing draft is submitted.
+// Storage/focus notifications can be delayed while another tab clocks a job.
+// Fail closed on changed or malformed clock snapshots rather than saving from
+// stale in-memory sessions (or overwriting newer clock history via persist).
+function assertFreshClockHistoryForRoutingSave(){
+  if(!stored)return; // The in-memory-only demo has no shared browser storage.
+  const current=localStorage.getItem(CLOCK_KEY);
+  if(current===null && sessions.length===0)return;
+  if(current!==JSON.stringify(sessions))
+    throw Error("Browser-local clock history changed in another tab. Review current job before saving routing.");
+}
 function transact(next,message){state=next;capacityReview=null;flash=message;persist();render();}
 function workforceTransact(next,type,detail,message){
   workforce=next;
@@ -622,6 +633,7 @@ document.addEventListener("submit",event=>{
       }
       case "routing-save":{
         if(!routeDraft||routeDraft.jobId!==job().id)throw Error("No active routing edit for this job");
+        assertFreshClockHistoryForRoutingSave();
         const updated=saveRoutingDraft(state,routeDraft.jobId,readRoutingEditor(form),sessions);
         routeDraft=null;
         transact(updated,"Edited routing saved for demo review. EWI clocking is blocked until reviewed.");break;
