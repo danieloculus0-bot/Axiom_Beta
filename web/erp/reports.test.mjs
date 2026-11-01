@@ -561,7 +561,7 @@ test("fictional NCR follow-ups have exact-case evidence links and work-order ret
   assert.equal(record.status,"CLOSED");
   assert.equal(ids.length,2);
   const html=renderQualityCase(state,q.id);
-  assert.equal((html.match(/data-action="quality-evidence-work-order"/g)||[]).length,2);
+  assert.equal((html.match(/data-action="quality-evidence-work-order"/g)||[]).length,3); // Two follow-ups and the canonical disposition.
   assert.ok(html.includes("&lt;script&gt;fictional post-closure check&lt;/script&gt;"));
   assert.ok(!html.includes("<script>"));
   for(const id of ids){
@@ -589,6 +589,47 @@ test("fictional NCR follow-ups have exact-case evidence links and work-order ret
   const legacy=structuredClone(state);
   legacy.quality[0].followUps=[{at:later,note:"Legacy fictional note"}];
   assert.equal(qualityEvidenceTarget(legacy.quality[0],"followup",ids[0]),null);
-  assert.ok(!renderQualityCase(legacy,q.id).includes('data-action="quality-evidence-focus"'));
+  assert.ok(!renderQualityCase(legacy,q.id).includes('data-kind="followup"'));
   assert.equal(JSON.stringify(state),before);
+});
+
+
+test("fictional NCR disposition is exact-case evidence with guarded work-order return",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
+  state=raiseQuality(state,"sample-1002","Generic drawing revision conflict",later);
+  const [q,unrelated]=state.quality;
+  assert.equal(qualityEvidenceTarget(q,"disposition",q.id),null);
+  state=recordQualityDisposition(state,q.id,"SCRAP",
+    "<script>synthetic disposition note</script>","2026-10-30T12:01:00Z");
+  const record=state.quality[0],before=JSON.stringify(state);
+  assert.deepEqual(qualityEvidenceTarget(record,"disposition",q.id),{kind:"disposition",id:q.id});
+  assert.equal(qualityEvidenceTarget(record,"disposition",unrelated.id),null);
+  assert.equal(qualityEvidenceTarget(unrelated,"disposition",q.id),null);
+  assert.deepEqual(qualityEvidenceWorkOrderTarget(state,q.id,"disposition",q.id),
+    {caseId:q.id,kind:"disposition",id:q.id,jobId:"sample-1001"});
+  assert.equal(qualityEvidenceWorkOrderTarget(state,unrelated.id,"disposition",q.id),null);
+  assert.deepEqual(qualityEvidenceReturnTarget(state,{caseId:q.id,kind:"disposition",id:q.id},"sample-1001"),
+    {caseId:q.id,kind:"disposition",id:q.id,jobId:"sample-1001"});
+  assert.equal(qualityEvidenceReturnTarget(state,{caseId:q.id,kind:"disposition",id:q.id},"sample-1002"),null);
+  const html=renderQualityCase(state,q.id);
+  assert.ok(html.includes('data-evidence-kind="disposition" data-evidence-id="'+q.id+'"'));
+  assert.ok(html.includes('data-action="quality-evidence-focus" data-case="'+q.id+
+    '" data-kind="disposition" data-id="'+q.id+'"'));
+  assert.ok(html.includes('data-action="quality-evidence-work-order" data-case="'+q.id+
+    '" data-kind="disposition" data-id="'+q.id+'"'));
+  assert.ok(html.includes("&lt;script&gt;synthetic disposition note&lt;/script&gt;"));
+  assert.ok(!html.includes("<script>"));
+  assert.equal(JSON.stringify(state),before);
+  state=closeReviewedQuality(state,q.id,"2026-10-30T12:02:00Z");
+  assert.equal(state.quality[0].status,"CLOSED");
+  assert.deepEqual(qualityEvidenceTarget(state.quality[0],"disposition",q.id),
+    {kind:"disposition",id:q.id});
+  const orphan=structuredClone(state);
+  orphan.jobs=orphan.jobs.filter(job=>job.id!=="sample-1001");
+  assert.equal(qualityEvidenceWorkOrderTarget(orphan,q.id,"disposition",q.id),null);
+  assert.ok(!renderQualityCase(orphan,q.id).includes('data-action="quality-evidence-work-order"'));
+  const legacy=structuredClone(state);
+  delete legacy.quality[0].disposition;
+  assert.equal(qualityEvidenceTarget(legacy.quality[0],"disposition",q.id),null);
+  assert.ok(!renderQualityCase(legacy,q.id).includes('data-evidence-kind="disposition"'));
 });
