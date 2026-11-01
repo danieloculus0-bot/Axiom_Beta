@@ -541,7 +541,7 @@ def main():
                 expect(target_row).to_have_count(1)
                 details = target_row.locator("details.job-inspection-details")
                 expect(details).to_have_count(1)
-                expect(details.locator("summary")).to_have_text("Quality evidence (4)")
+                expect(details.locator("summary")).to_have_text("Quality evidence (5)")
                 unrelated_row = page.locator("#view table tbody tr").filter(
                     has=page.locator(f'a.cell-link[data-job="{other_job}"]')
                 )
@@ -601,7 +601,7 @@ def main():
                     has=page.locator(f'a.cell-link[data-job="{job_id}"]')
                 )
                 details = target_row.locator("details.job-inspection-details")
-                expect(details.locator("summary")).to_have_text("Quality evidence (4)")
+                expect(details.locator("summary")).to_have_text("Quality evidence (5)")
                 details.locator("summary").click()
                 register_corrective = details.locator(
                     f'button[data-action="job-quality-corrective"][data-case="{case_id}"]'
@@ -646,7 +646,7 @@ def main():
                     has=page.locator(f'a.cell-link[data-job="{job_id}"]')
                 )
                 details = target_row.locator("details.job-inspection-details")
-                expect(details.locator("summary")).to_have_text("Quality evidence (4)")
+                expect(details.locator("summary")).to_have_text("Quality evidence (5)")
                 details.locator("summary").click()
                 register_followup = details.locator(
                     f'button[data-action="job-quality-followup"][data-case="{case_id}"]'
@@ -687,7 +687,7 @@ def main():
                     has=page.locator(f'a.cell-link[data-job="{job_id}"]')
                 )
                 details = target_row.locator("details.job-inspection-details")
-                expect(details.locator("summary")).to_have_text("Quality evidence (4)")
+                expect(details.locator("summary")).to_have_text("Quality evidence (5)")
                 details.locator("summary").click()
                 register_disposition = details.locator(
                     f'button[data-action="job-quality-disposition"][data-case="{case_id}"]'
@@ -700,6 +700,50 @@ def main():
                 expect(page.locator("#job-context")).to_have_value(job_id)
                 expect(panel).to_have_attribute("data-case-id", case_id)
                 assert disposition_receipt.evaluate("el => document.activeElement === el")
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+
+                # The same recorded review is reachable from routing and the
+                # shop order register, even when another job is selected.
+                page.locator('#module-nav a[data-nav="routing"]').click()
+                page.wait_for_function("location.hash === '#routing'")
+                routing_review = page.locator(
+                    f'#view button[data-action="job-quality-effectiveness"][data-case="{case_id}"]'
+                    f'[data-job="{job_id}"][data-id="{review_id}"]'
+                )
+                expect(routing_review).to_have_count(1)
+                routing_review.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                review_receipt = panel.locator(
+                    f'[data-evidence-kind="effectiveness"][data-evidence-id="{review_id}"]'
+                ).first
+                assert review_receipt.evaluate("el => document.activeElement === el")
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+
+                page.locator('#module-nav a[data-nav="jobs"]').click()
+                page.wait_for_function("location.hash === '#jobs'")
+                page.evaluate("""() => {
+                    document.querySelector('#view button[data-action="clear-record-context"]')?.click();
+                }""")
+                page.locator("#job-context").select_option(other_job)
+                target_row = page.locator("#view table tbody tr").filter(
+                    has=page.locator(f'a.cell-link[data-job="{job_id}"]')
+                )
+                details = target_row.locator("details.job-inspection-details")
+                expect(details.locator("summary")).to_have_text("Quality evidence (5)")
+                details.locator("summary").click()
+                register_review = details.locator(
+                    f'button[data-action="job-quality-effectiveness"][data-case="{case_id}"]'
+                    f'[data-job="{job_id}"][data-id="{review_id}"]'
+                )
+                expect(register_review).to_be_visible()
+                expect(page.locator("#job-context")).to_have_value(other_job)
+                register_review.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                assert review_receipt.evaluate("el => document.activeElement === el")
                 expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
 
                 # Existing inline part records provide a real Open with entry
