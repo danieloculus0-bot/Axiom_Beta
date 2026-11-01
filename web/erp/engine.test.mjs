@@ -1,3 +1,7 @@
+import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality} from "./quality-case.mjs";
+import {renderQualityCase} from "./quality-case-view.mjs";
+import {contextActions,contextRelated} from "./context-actions.mjs";
+import {readFileSync} from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -100,4 +104,69 @@ test("synthetic purchasing and drawing updates create audit events",()=>{
   s=setDrawingRevision(s,"sample-1002","B",u);
   assert.deepEqual(s.events.slice(-3).map(e=>e.type),
     ["po.issued","inventory.received","drawing.example_revision_changed"]);
+});
+
+test("Quality Forge case review stays linked to the canonical fictional job and EWI hold",()=>{
+  let state=seedState();
+  state=raiseQuality(state,"sample-1001","Generic drawing revision conflict",t);
+  const id=state.quality[0].id;
+  assert.equal(state.quality[0].jobId,"sample-1001");
+  assert.ok(contextActions(state,"quality",id).some(action=>action.view==="quality"));
+  assert.deepEqual(contextRelated(state,{type:"quality",id},"quality"),["sample-1001"]);
+  assert.match(renderQualityCase(state,id),/href="#routing" data-job="sample-1001"/);
+  assert.match(renderQualityCase(state,id),/data-form="quality-disposition"/);
+  assert.match(renderQualityCase(state,id),/disabled>Close reviewed demo case/);
+  assert.throws(()=>closeReviewedQuality(state,id,t),/disposition/);
+  state=recordQualityDisposition(state,id,"RETURN_FOR_REVIEW","Further fictional review required",t);
+  assert.throws(()=>closeReviewedQuality(state,id,t),/keeps this fictional quality case open/);
+  assert.match(renderQualityCase(state,id),/disabled>Close reviewed demo case/);
+  state=recordQualityDisposition(state,id,"REWORK","Fictional rework review needed",t);
+  assert.equal(state.quality[0].disposition.decision,"REWORK");
+  assert.match(packetIssues(state,"sample-1001").join(" "),/quality hold/);
+  assert.doesNotMatch(renderQualityCase(state,id),/disabled>Close reviewed demo case/);
+  state=recordQualityFollowup(state,id,"Sample rework check planned",u);
+  state=closeReviewedQuality(state,id,u);
+  assert.equal(state.quality[0].status,"CLOSED");
+  assert.equal(state.quality[0].followUps.length,1);
+  assert.deepEqual(packetIssues(state,"sample-1001"),[]);
+  assert.deepEqual(state.events.slice(-5).map(e=>e.type),[
+    "quality.hold","quality.disposition.recorded","quality.disposition.recorded",
+    "quality.followup.recorded","quality.closed"
+  ]);
+  state=recordQualityFollowup(state,id,"Effectiveness still requires human review","2026-10-31T12:00:00Z");
+  assert.equal(state.quality[0].followUps.length,2);
+  assert.throws(()=>recordQualityDisposition(state,id,"SCRAP","After closure",u),/open/);
+  assert.match(renderQualityCase(state,id),/Effectiveness still requires human review/);
+});
+test("quality case transitions reject invalid decisions and do not change unrelated records",()=>{
+  let state=seedState();
+  state=raiseQuality(state,"sample-1001","Generic drawing revision conflict",t);
+  const id=state.quality[0].id;
+  const original=state;
+  assert.throws(()=>recordQualityDisposition(state,id,"APPROVED","Pretend release",t),/listed/);
+  assert.throws(()=>recordQualityDisposition(state,id,"SCRAP","x",t),/5 to 500/);
+  assert.throws(()=>recordQualityFollowup(state,"missing","A fictional note",t),/not found/);
+  assert.throws(()=>recordQualityFollowup(state,id,"A fictional note","invalid"),/timestamp/);
+  assert.equal(state,original);
+  assert.equal(state.quality[0].disposition,undefined);
+  assert.ok(!packetIssues(state,"sample-1002").some(x=>x.includes("quality hold")));
+  state=recordQualityFollowup(state,id,'Fictional <img src=x onerror=alert(1)> follow-up',u);
+  const html=renderQualityCase(state,id);
+  assert.match(html,/&lt;img src=x onerror=alert\(1\)&gt;/);
+  assert.doesNotMatch(html,/<img src=x/);
+});
+test("quality case is reachable through register, contextual Open with, and linked job actions",()=>{
+  const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
+  assert.match(app,/data-action="select-quality"/);
+  assert.match(app,/selectedQualityId=next\.quality\.at\(-1\)\.id/);
+  assert.match(app,/renderQualityCase\(state,selected\?\.id\)/);
+  assert.match(app,/case "quality-disposition"/);
+  assert.match(app,/case "quality-followup"/);
+  assert.match(app,/case "quality-reviewed-close"/);
+  assert.doesNotMatch(app,/data-action="close-ncr"/);
+  const state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
+  const actions=contextActions(state,"quality",state.quality[0].id);
+  assert.ok(actions.some(a=>a.view==="quality"));
+  assert.ok(actions.some(a=>a.view==="jobs"));
+  assert.ok(actions.some(a=>a.view==="ewi"));
 });
