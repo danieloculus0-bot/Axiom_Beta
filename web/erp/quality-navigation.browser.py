@@ -818,8 +818,49 @@ def main():
                 page.wait_for_function("location.hash === '#quality'")
                 expect(panel).to_have_attribute("data-case-id", case_id)
                 expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+                # A legacy duplicate visible NCR number must still open each
+                # distinct canonical case from its own Report Center row.
+                duplicate_case_id = "q-report-same-number"
+                page.evaluate("""({otherJob, duplicateId}) => {
+                    const key = "axiom_public_erp_suite_v1";
+                    const demo = JSON.parse(localStorage.getItem(key));
+                    const original = demo.quality.find(q => q.id === demo.quality[0].id);
+                    demo.quality.push({
+                        id: duplicateId, number: original.number, jobId: otherJob,
+                        reason: "Illustrative second-job observation", status: "OPEN",
+                        openedAt: "2026-11-01T12:00:00Z", closedAt: null,
+                        inspections: [], correctiveActions: [], followUps: []
+                    });
+                    localStorage.setItem(key, JSON.stringify(demo));
+                }""", {"otherJob": other_job, "duplicateId": duplicate_case_id})
+                page.goto(f"http://127.0.0.1:{server.server_port}/erp/#reports")
+                page.locator("#report-select").select_option("quality")
+                report_buttons = page.locator('button[data-action="report-quality-case"]')
+                expect(report_buttons).to_have_count(2)
+                expect(report_buttons.nth(0)).to_have_text(report_buttons.nth(1).inner_text())
+                expect(report_buttons.nth(0)).to_have_attribute("data-id", case_id)
+                expect(report_buttons.nth(1)).to_have_attribute("data-id", duplicate_case_id)
+                # A mismatched row binding must fail without redirecting.
+                report_buttons.nth(0).evaluate("el => el.dataset.rowIndex = '1'")
+                report_buttons.nth(0).click()
+                assert page.url.endswith("#reports"), "Stale report link must not change views"
+                page.locator(
+                    f'button[data-action="report-quality-case"][data-id="{duplicate_case_id}"]'
+                ).click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(panel).to_have_attribute("data-case-id", duplicate_case_id)
+                expect(page.locator("#job-context")).to_have_value(other_job)
+                page.locator('#module-nav a[data-nav="reports"]').click()
+                page.wait_for_function("location.hash === '#reports'")
+                page.locator("#report-select").select_option("quality")
+                page.locator(
+                    f'button[data-action="report-quality-case"][data-id="{case_id}"]'
+                ).click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                expect(page.locator("#job-context")).to_have_value(job_id)
                 assert not page_errors, f"Browser JavaScript errors: {page_errors}"
-                print("PASS: 3 evidence types, closed-case return focus, wrong-job guard, native editable context menu")
+                print("PASS: Quality Forge navigation, duplicate-number report identity, native context menus")
             finally:
                 browser.close()
     finally:
