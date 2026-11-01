@@ -68,11 +68,18 @@ export function qualityEffectivenessInspectionTarget(record,reviewId){
  * Never offer a generic or unrelated job when the evidence/job is missing.
  */
 export function qualityEvidenceWorkOrderTarget(state,caseId,kind,id){
-  if(!Array.isArray(state?.quality)||!Array.isArray(state?.jobs))return null;
-  const record=state.quality.find(item=>item?.id===caseId);
+  const record=uniqueQualityCase(state,caseId);
   if(!qualityEvidenceTarget(record,kind,id))return null;
-  const job=state.jobs.find(item=>item?.id===record.jobId);
-  return job?{caseId:record.id,kind,id,jobId:job.id}:null;
+  // Historical browser-local data may contain duplicate evidence IDs. Never
+  // open a work order (or offer a return link) by guessing which receipt won.
+  const matches=kind==="disposition"?1:
+    kind==="inspection"?(Array.isArray(record.inspections)?record.inspections:[]).filter(item=>item?.id===id).length:
+    kind==="followup"?(Array.isArray(record.followUps)?record.followUps:[]).filter(item=>item?.id===id).length:
+    kind==="corrective"?(Array.isArray(record.correctiveActions)?record.correctiveActions:[]).filter(item=>item?.id===id).length:
+    kind==="effectiveness"?(Array.isArray(record.correctiveActions)?record.correctiveActions:[])
+      .flatMap(action=>Array.isArray(action?.reviews)?action.reviews:[])
+      .filter(item=>item?.id===id).length:0;
+  return matches===1?{caseId:record.id,kind,id,jobId:record.jobId}:null;
 }
 /* A corrective-action draft may start only from an inspection on the same
  * open fictional NCR and its existing work order. No case or job is created.
