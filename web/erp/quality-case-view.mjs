@@ -10,6 +10,8 @@ export function qualityEvidenceTarget(record,kind,id){
   const inspections=Array.isArray(record.inspections)?record.inspections:[];
   const actions=Array.isArray(record.correctiveActions)?record.correctiveActions:[];
   if(kind==="inspection"&&inspections.some(item=>item?.id===id))return {kind,id};
+  if(kind==="followup"&&Array.isArray(record.followUps)&&
+     record.followUps.some(item=>item?.id===id))return {kind,id};
   if(kind==="corrective"&&actions.some(item=>item?.id===id))return {kind,id};
   if(kind==="effectiveness"&&actions.some(action=>
     Array.isArray(action?.reviews)&&action.reviews.some(review=>review?.id===id)))return {kind,id};
@@ -132,6 +134,7 @@ export function renderQualityCase(state,id){
   const timeline=qualityCaseTimeline(q);
   const inspections=Array.isArray(q.inspections)?q.inspections:[];
   const actions=Array.isArray(q.correctiveActions)?q.correctiveActions:[];
+  const followups=Array.isArray(q.followUps)?q.followUps:[];
   const operations=Array.isArray(j?.routing?.operations)?j.routing.operations:[];
   let html='<section class="panel" id="quality-case-detail" data-case-id="'+h(q.id)+'"><div class="panel-head"><h2 class="context-record" data-ctx-type="quality" data-ctx-id="'+h(q.id)+'" tabindex="0" title="Right-click for Open with">Quality Forge case · '+h(q.number)+'</h2><span class="tag">'+h(q.status)+'</span></div>'+
     '<p class="small">Linked work order: <b>'+h(j?.jobNumber||"Missing fictional job")+'</b> · '+h(q.reason)+
@@ -209,6 +212,11 @@ export function renderQualityCase(state,id){
     '<input type="hidden" name="id" value="'+h(q.id)+'">'+
     '<label>Case follow-up (also available after closing)<textarea name="note" minlength="5" maxlength="500" required placeholder="Record a fictional follow-up or effectiveness check."></textarea></label>'+
     '<button class="action secondary" type="submit">Record follow-up</button></form>'+
+    '<h3>Case follow-ups</h3>'+
+    (followups.length?followups.map(item=>'<div class="receipt"'+evidenceAttrs("followup",item.id)+
+      '><b>'+h(item.at||"Date unknown")+'</b> · '+h(item.note)+
+      evidenceWorkOrderButton(state,q,"followup",item.id)+'</div>').join(""):
+      '<p class="small">No fictional follow-ups recorded for this case.</p>')+
     '<h3>Inspection observations</h3>'+
     (inspections.length?inspections.map(item=>'<div class="receipt"'+evidenceAttrs("inspection",item.id)+'><b>'+h(item.at)+'</b> · '+
       h(QUALITY_INSPECTION_STAGES.find(stage=>stage.id===item.stage)?.label||item.stage)+' · '+

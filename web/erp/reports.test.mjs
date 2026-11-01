@@ -547,3 +547,48 @@ test("work-order return action is scoped and focuses original NCR evidence after
   assert.ok(app.includes('element.dataset.evidenceKind===focus.kind&&element.dataset.evidenceId===focus.id'));
   assert.ok(app.includes('target.focus({preventScroll:true})'));
 });
+
+
+test("fictional NCR follow-ups have exact-case evidence links and work-order return after closure",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
+  state=raiseQuality(state,"sample-1002","Generic drawing revision conflict",later);
+  const [q,unrelated]=state.quality;
+  state=recordQualityFollowup(state,q.id,"Initial synthetic follow-up",later);
+  state=recordQualityDisposition(state,q.id,"SCRAP","Fictional disposition for review","2026-10-30T12:01:00Z");
+  state=closeReviewedQuality(state,q.id,"2026-10-30T12:02:00Z");
+  state=recordQualityFollowup(state,q.id,"<script>fictional post-closure check</script>","2026-10-30T12:03:00Z");
+  const record=state.quality[0],ids=record.followUps.map(item=>item.id),before=JSON.stringify(state);
+  assert.equal(record.status,"CLOSED");
+  assert.equal(ids.length,2);
+  const html=renderQualityCase(state,q.id);
+  assert.equal((html.match(/data-action="quality-evidence-work-order"/g)||[]).length,2);
+  assert.ok(html.includes("&lt;script&gt;fictional post-closure check&lt;/script&gt;"));
+  assert.ok(!html.includes("<script>"));
+  for(const id of ids){
+    assert.deepEqual(qualityEvidenceTarget(record,"followup",id),{kind:"followup",id});
+    assert.equal(qualityEvidenceTarget(unrelated,"followup",id),null);
+    assert.deepEqual(qualityEvidenceWorkOrderTarget(state,q.id,"followup",id),
+      {caseId:q.id,kind:"followup",id,jobId:"sample-1001"});
+    assert.equal(qualityEvidenceWorkOrderTarget(state,unrelated.id,"followup",id),null);
+    assert.deepEqual(qualityEvidenceReturnTarget(state,{caseId:q.id,kind:"followup",id},"sample-1001"),
+      {caseId:q.id,kind:"followup",id,jobId:"sample-1001"});
+    assert.equal(qualityEvidenceReturnTarget(state,{caseId:q.id,kind:"followup",id},"sample-1002"),null);
+    assert.ok(html.includes('data-evidence-kind="followup" data-evidence-id="'+id+'"'));
+    assert.ok(html.includes('data-action="quality-evidence-work-order" data-case="'+q.id+
+      '" data-kind="followup" data-id="'+id+'"'));
+    assert.ok(html.includes('data-action="quality-evidence-focus" data-case="'+q.id+
+      '" data-kind="followup" data-id="'+id+'"'));
+  }
+  assert.equal(qualityEvidenceTarget(record,"followup","missing"),null);
+  assert.equal(qualityEvidenceTarget(record,"inspection",ids[0]),null);
+  assert.equal(qualityEvidenceWorkOrderTarget(state,q.id,"followup","missing"),null);
+  const orphan=structuredClone(state);
+  orphan.jobs=orphan.jobs.filter(job=>job.id!=="sample-1001");
+  assert.equal(qualityEvidenceWorkOrderTarget(orphan,q.id,"followup",ids[0]),null);
+  assert.ok(!renderQualityCase(orphan,q.id).includes('data-action="quality-evidence-work-order"'));
+  const legacy=structuredClone(state);
+  legacy.quality[0].followUps=[{at:later,note:"Legacy fictional note"}];
+  assert.equal(qualityEvidenceTarget(legacy.quality[0],"followup",ids[0]),null);
+  assert.ok(!renderQualityCase(legacy,q.id).includes('data-action="quality-evidence-focus"'));
+  assert.equal(JSON.stringify(state),before);
+});
