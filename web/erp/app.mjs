@@ -10,9 +10,11 @@ import {reviewPmWorkCenterAssociation} from "./pm-work-center-link.mjs";
 import {renderRequestDesk} from "./request-view.mjs";
 import {WORKFORCE_KEY,seedWorkforce,validateWorkforce,addDemoPerson,assignDemoRole,recordDemoPulse,completeDemoTraining,nominateDemoRecognition,reviewDemoNomination,closeDemoAction} from "./workforce.mjs";
 import {renderHr,renderMorale} from "./workforce-view.mjs";
+import {submitDemoPto,reviewDemoPto,previewDemoPay,renderPto,renderPayroll} from "./people-workflows.mjs";
+import {renderModuleDirectory,renderCam,camFacingEnvelope} from "./portfolio-view.mjs";
 import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
-import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
+import {renderQcdsm,renderCost,renderDelivery,renderSafety,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {inspectRoutingCapacityEvidence,routingCapacityEvidenceHtml,readRoutingCapacityScenario} from "./routing-capacity-review.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
@@ -32,9 +34,10 @@ const deep=v=>structuredClone(v);
 const stateViews={
  dashboard:"Command Center",jobs:"Work Orders",routing:"Routing & Planning",
  ewi:"EWI & Clocking",inventory:"Inventory",purchasing:"Purchasing",
- quality:"Quality Control",documents:"Drawing Control",pm:"PM Tracker",requests:"Request Desk",hr:"Human Resources",morale:"Morale & Recognition",qcdsm:"QCDSM Wheel",reports:"Report Center",bridge:"ERP Emulator",audit:"Event History"
+ quality:"Quality Control",documents:"Drawing Control",pm:"PM Tracker",requests:"Request Desk",hr:"Human Resources",morale:"Morale & Recognition",pto:"PTO Requests",payroll:"Payroll Preview",cam:"CAM Preparation",modules:"All Workbenches",qcdsm:"QCDSM",cost:"Cost",delivery:"Delivery",safety:"Safety",reports:"Report Center",bridge:"ERP Emulator",audit:"Event History"
 };
 let workforce=seedWorkforce();
+let payPreviewResult=null,camEnvelopeResult=null;
 let qcdsmDepartment="Assembly";
 let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""},routeDraft=null,capacityReview=null;
 function load(){
@@ -170,7 +173,11 @@ function dashboard(){
     moduleLink("requests","Request Desk","Track assignments and follow-ups")+
     moduleLink("hr","Human Resources","Demo roles and training")+
     moduleLink("morale","Morale","Company pulse and recognition")+
-    moduleLink("qcdsm","QCDSM Wheel","Quality, Cost, Delivery, Safety & Morale")+
+    moduleLink("pto","PTO Requests","Fictional time-off review")+
+    moduleLink("payroll","Payroll Preview","Hourly and salary pay calculation")+
+    moduleLink("cam","CAM Preparation","Generic facing exercise and job context")+
+    moduleLink("modules","All Workbenches","Audited Axiom and SuperForge capabilities")+
+    moduleLink("qcdsm","QCDSM","Select any of five live operational sections")+
     moduleLink("reports","Reports","Live synthetic operational reports")+
     moduleLink("purchasing","Purchasing","Receive demo inventory")+
     moduleLink("bridge","ERP Bridge","Emulated import and time receipt")+
@@ -436,7 +443,7 @@ function auditView(){
   return s;
 }
 const renderers={dashboard,jobs:jobsView,routing:routingView,ewi:clockView,inventory:inventoryView,
-  purchasing:purchasingView,quality:qualityView,documents:documentsView,pm:()=>renderPm(state.pm,selectedPmMachineId),requests:()=>renderRequestDesk(state,selectedRequest),hr:()=>renderHr(workforce),morale:()=>renderMorale(workforce),qcdsm:()=>renderQcdsm(state,workforce,qcdsmDepartment,localDay()),reports:reportsView,bridge:bridgeView,audit:auditView};
+  purchasing:purchasingView,quality:qualityView,documents:documentsView,pm:()=>renderPm(state.pm,selectedPmMachineId),requests:()=>renderRequestDesk(state,selectedRequest),hr:()=>renderHr(workforce),morale:()=>renderMorale(workforce),pto:()=>renderPto(workforce),payroll:()=>renderPayroll(workforce,payPreviewResult),cam:()=>renderCam(job(),camEnvelopeResult),modules:renderModuleDirectory,qcdsm:()=>renderQcdsm(state,workforce,qcdsmDepartment,localDay()),cost:()=>renderCost(state,sessions),delivery:()=>renderDelivery(state),safety:()=>renderSafety(state,workforce,qcdsmDepartment,localDay()),reports:reportsView,bridge:bridgeView,audit:auditView};
 function rememberJob(id){
   if(!getJob(state,id))return;
   if(routeDraft&&routeDraft.jobId!==id)routeDraft=null;
@@ -506,6 +513,7 @@ document.addEventListener("click",event=>{
     }
     if(action==="clear-record-context"){selectedContext=null;selectedIntent="";flash="Record context cleared.";render();}
     if(action==="morale-close")workforceTransact(closeDemoAction(workforce,id),"morale.review.completed",id+" / FICTIONAL","Fictional workforce risk review marked complete.");
+    if(action==="pto-approve"||action==="pto-decline")workforceTransact(reviewDemoPto(workforce,id,action==="pto-approve"?"APPROVED_SIMULATION":"DECLINED"),"hr.pto.reviewed",id+" / FICTIONAL","Fictional PTO request reviewed in this browser only.");
     if(action==="morale-approve"||action==="morale-reject")workforceTransact(reviewDemoNomination(workforce,id,action==="morale-approve"?"APPROVED":"REJECTED"),"morale.recognition.reviewed",id+" / FICTIONAL","Demonstration recognition nomination reviewed.");
     if(action==="pm-csv") download(completionsCsv(state.pm),"text/csv;charset=utf-8","axiom-synthetic-pm-completions.csv");
     if(action==="download-report") download(reportCsv(reportWithContext(selectedReport)),"text/csv;charset=utf-8","axiom-demo-"+selectedReport+"-report.csv");
@@ -558,6 +566,12 @@ document.addEventListener("submit",event=>{
   const f=new FormData(form);
   try{
     switch(form.dataset.form){
+      case "pto-submit":
+        workforceTransact(submitDemoPto(workforce,Object.fromEntries(f)),"hr.pto.submitted","Fictional time-off request","Fictional PTO request added; no outside approval or notification.");break;
+      case "pay-preview":
+        payPreviewResult=previewDemoPay(workforce,Object.fromEntries(f));flash="Hypothetical payroll calculation only; no pay run or ledger created.";render();break;
+      case "cam-envelope":
+        camEnvelopeResult=camFacingEnvelope(Object.fromEntries(f));flash="Generic CAM envelope calculated. No CNC toolpath or job routing was changed.";render();break;
       case "hr-person":
         workforceTransact(addDemoPerson(workforce,String(f.get("role"))),"hr.demo.person.created","Fictional employee code created","Added a synthetic employee code.");break;
       case "hr-role":
