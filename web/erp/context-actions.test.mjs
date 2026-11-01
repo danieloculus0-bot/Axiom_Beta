@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {seedState,makePurchaseOrder,raiseQuality,createJob,CATALOG} from "./engine.mjs";
 import {resolveContext,contextActions,contextRelated,CONTEXT_TYPES} from "./context-actions.mjs";
 import {searchMenu} from "./navigation.mjs";
+import {jobQualityTarget,recordQualityFollowup,uniqueQualityCase} from "./quality-case.mjs";
+import {renderQualityCase} from "./quality-case-view.mjs";
 import {readFileSync} from "node:fs";
 
 test("all browser Open with actions resolve only to working registered ERP modules",()=>{
@@ -95,4 +97,38 @@ test("right click uses native-menu guards and typed records, not a global hijack
  assert.match(source,/e\.key==="Escape"/);
  assert.match(source,/onNavigate\(\{type,id\},action\)/);
  assert.match(source,/search\.addEventListener\("input"/);
+});
+
+test("ambiguous NCR IDs cannot redirect Open with, register, work-order link or case mutation",()=>{
+ let state=seedState();
+ const [first,second]=state.jobs;
+ state=raiseQuality(state,first.id,"Generic drawing revision conflict");
+ const id=state.quality[0].id;
+ assert.equal(uniqueQualityCase(state,id)?.jobId,first.id);
+ assert.equal(jobQualityTarget(state,first.id)?.caseId,id);
+ assert.ok(contextActions(state,"quality",id).some(action=>action.view==="quality"));
+ const duplicate=structuredClone(state);
+ duplicate.quality.push({...duplicate.quality[0],jobId:second.id,reason:"Illustrative separate-job record"});
+ assert.equal(uniqueQualityCase(duplicate,id),null);
+ assert.equal(resolveContext(duplicate,"quality",id),null);
+ assert.deepEqual(contextActions(duplicate,"quality",id),[]);
+ assert.equal(contextRelated(duplicate,{type:"quality",id},"quality"),null);
+ assert.equal(jobQualityTarget(duplicate,first.id),null);
+ assert.equal(jobQualityTarget(duplicate,second.id),null);
+ assert.doesNotMatch(renderQualityCase(duplicate,id),/data-case-id=/);
+ assert.throws(()=>recordQualityFollowup(duplicate,id,"Fictional follow-up observation"),
+   /not found/);
+ const orphan=structuredClone(state);
+ orphan.quality[0].jobId="not-a-job";
+ assert.equal(uniqueQualityCase(orphan,id),null);
+ assert.deepEqual(contextActions(orphan,"quality",id),[]);
+ const wrongStatus=structuredClone(state);
+ wrongStatus.quality[0].status="UNKNOWN";
+ assert.equal(uniqueQualityCase(wrongStatus,id),null);
+ assert.equal(uniqueQualityCase(state,""),null);
+ assert.equal(uniqueQualityCase(state,"not-an-id"),null);
+ // A valid second case still navigates normally if an unrelated record is corrupt.
+ const valid=raiseQuality(duplicate,second.id,"Generic drawing revision conflict");
+ assert.equal(uniqueQualityCase(valid,valid.quality.at(-1).id)?.jobId,second.id);
+ assert.equal(jobQualityTarget(valid,second.id)?.caseId,valid.quality.at(-1).id);
 });

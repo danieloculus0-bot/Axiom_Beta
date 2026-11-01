@@ -395,8 +395,14 @@ test("historical routing hints explain stale evidence without offering a mislead
    assert.deepEqual(qualityInspectionRoutingStatus(stale,q.id,inspectionId),{target:null,reason});
    assert.equal(qualityInspectionRoutingTarget(stale,q.id,inspectionId),null);
    const html=renderQualityCase(stale,q.id);
-   assert.ok(html.includes("Historical route: "+reason+" Current step link unavailable."));
-   assert.ok(html.includes("Fictional historical inspection observation"));
+   if(reason==="Linked fictional work order is unavailable."){
+     // Orphaned cases have no canonical identity-bearing destination.
+     assert.match(html,/Select a fictional nonconformance above/);
+     assert.doesNotMatch(html,/data-case-id=/);
+   }else{
+     assert.ok(html.includes("Historical route: "+reason+" Current step link unavailable."));
+     assert.ok(html.includes("Fictional historical inspection observation"));
+   }
    assert.ok(!html.includes('data-action="quality-routing-step"'));
    assert.equal(JSON.stringify(stale),before);
  }
