@@ -4,7 +4,7 @@
  * qualification, live BEAN service, draft mutation, or production release.
  */
 import {getJob,packetIssues,reservedTotal} from "./engine.mjs";
-import {DEMO_CENTER_OPTIONS} from "./routing-edit.mjs";
+import {DEMO_CENTER_OPTIONS,editableRouting,validateRoutingDraft} from "./routing-edit.mjs";
 import {assessAlternateCenters} from "./routing-capacity-advice.mjs";
 
 const h = value => String(value ?? "").replace(/[&<>"']/g, c =>
@@ -310,7 +310,44 @@ export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, sta
   return {knownRoutedCount,clockHistoryCount,jobId,partNumber:job.partNumber,revision:job.revision,step,centerId,
     startLocal,endLocal,evidenceSupplied:scenarioEvidence !== null,
     scenarioEvidence:scenarioEvidence===null?null:structuredClone(scenarioEvidence),
+    routingSnapshot:JSON.stringify(job.routing.operations),
+    scenarioSnapshot:JSON.stringify(scenarioEvidence),
     result,assessment:result.assessments[0] || null};
+}
+
+/** Review-only handoff into the existing UNSAVED routing editor.
+ * Recheck the current job, clock sessions and scenario. Never write or release.
+ */
+export function prepareCapacitySuggestionDraft(state,review,sessions){
+  if(!Array.isArray(sessions))
+    fail("Current browser-local clock history is required before opening a routing suggestion.");
+  if(!review?.evidenceSupplied || !review.scenarioEvidence ||
+     !review.result?.suggestions?.some(s=>s.center===review.centerId))
+    fail("No eligible, previously reviewed fictional routing suggestion is available.");
+  const job=getJob(state,review.jobId);
+  if(!job || job.status!=="OPEN" || job.partNumber!==review.partNumber ||
+     job.revision!==review.revision || job.routing?.revision!==job.revision)
+    fail("The selected fictional work order or revision is no longer eligible.");
+  if(typeof review.routingSnapshot!=="string" ||
+     review.routingSnapshot!==JSON.stringify(job.routing.operations) ||
+     review.scenarioSnapshot!==JSON.stringify(review.scenarioEvidence))
+    fail("Routing or scenario evidence changed; review the current scenario again.");
+  if(sessions.some(s=>s?.jobId===job.id))
+    fail("Clock history exists; the existing routing editor cannot change this job.");
+  const refreshed=inspectRoutingCapacityEvidence(state,job.id,review.step,review.centerId,
+    review.startLocal,review.endLocal,review.scenarioEvidence,sessions);
+  const suggestion=refreshed.result.suggestions.find(s=>s.center===review.centerId);
+  if(refreshed.assessment?.status!=="SCENARIO_ELIGIBLE" || !suggestion)
+    fail("Capacity, maintenance or job evidence no longer supports this fictional alternative.");
+  const operations=editableRouting(job);
+  const operation=operations.find(op=>op.step===review.step);
+  if(!operation || operation.center===review.centerId)
+    fail("The selected operation is no longer eligible for an alternate center.");
+  operation.center=review.centerId;
+  return {jobId:job.id,operations:validateRoutingDraft(job,operations),
+    proposal:{step:review.step,center:review.centerId,
+      evidenceRefs:[...suggestion.evidenceRefs],
+      capacityEstimateType:refreshed.assessment.capacityEstimateType||"UNKNOWN"}};
 }
 
 export function routingCapacityEvidenceHtml(job, review = null) {
@@ -397,7 +434,7 @@ export function routingCapacityEvidenceHtml(job, review = null) {
       (a?.notes?.length?'<p class="small">'+a.notes.map(h).join(' ')+'</p>':'')+
       (messages.length?'<ul>'+messages.map(message=>'<li>'+h(message)+'</li>').join('')+'</ul>':'')+
       (review.result.suggestions.length ?
-        '<p class="small">Scenario-only alternate identified for human draft review. No routing saved, approved or released.</p>' :
+        '<p class="small">Scenario-only alternate identified for human draft review. No routing saved, approved or released.</p>'+(review.clockHistoryCount===0 && review.assessment?.status==="SCENARIO_ELIGIBLE" ?'<button type="button" class="action secondary" data-action="routing-use-capacity-draft">Open suggestion in routing editor</button>'+'<p class="small">Opens an UNSAVED draft only. Verify sources before explicitly saving for review.</p>' : '') :
         '<p class="small">No alternate routing proposed or saved. Source evidence, scheduled load, '+
         'tooling, material, maintenance clearance and human review are required before a recommendation.</p>')+
       '</div>';

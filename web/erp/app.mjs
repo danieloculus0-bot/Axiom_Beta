@@ -16,7 +16,7 @@ import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,renderCost,renderDelivery,renderSafety,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
-import {inspectRoutingCapacityEvidence,routingCapacityEvidenceHtml,readRoutingCapacityScenario} from "./routing-capacity-review.mjs";
+import {inspectRoutingCapacityEvidence,routingCapacityEvidenceHtml,readRoutingCapacityScenario,prepareCapacitySuggestionDraft} from "./routing-capacity-review.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
  issueRequestPO,syncReceivedRequests,verifyPurchaseRequest,followupPurchaseRequest} from "./requests.mjs";
@@ -231,6 +231,13 @@ function routingView(){
     moduleLink("ewi","EWI","Clock operation")+'</div>'+
     '<h3 style="margin-top:20px">Source labels</h3><p>Routing: '+h(j.routing.source)+'<br>Drawing: '+h(j.drawing.number)+' / Rev '+h(j.drawing.revision)+'</p></section></div>';
   s+=routingEditorHtml(j,routeDraft?.jobId===j.id?routeDraft.operations:null,sessions.some(session=>session.jobId===j.id));
+  if(routeDraft?.jobId===j.id && routeDraft.proposal){
+    const p=routeDraft.proposal;
+    s+='<div class="receipt" role="status"><b>UNSAVED scenario suggestion:</b> step '+h(p.step)+
+      ' at '+h(p.center)+' · '+h(p.capacityEstimateType)+
+      '. Asserted sources: '+p.evidenceRefs.map(h).join(", ")+
+      '. Recheck capability, schedule and material. Scenario evidence is NOT saved in routing history.</div>';
+  }
   s+=routingCapacityEvidenceHtml(j,capacityReview?.jobId===j.id?capacityReview:null);
   return s;
 }
@@ -475,6 +482,14 @@ document.addEventListener("click",event=>{
   if(!button)return;
   const action=button.dataset.action,id=button.dataset.id;
   try{
+    if(action==="routing-use-capacity-draft"){
+      if(routeDraft)throw Error("Save or cancel the current unsaved routing edit first.");
+      routeDraft=prepareCapacitySuggestionDraft(state,capacityReview,sessions);
+      capacityReview=null;
+      flash="Fictional suggestion opened as an UNSAVED routing edit. No ERP record changed.";
+      render();
+      document.getElementById("routing-editor")?.scrollIntoView({block:"start"});
+    }
     if(action==="routing-start"){
       const j=job();
       if(sessions.some(s=>s.jobId===j.id))throw Error("Clocking history exists for this job. Use another fictional job for routing changes.");
@@ -493,6 +508,7 @@ document.addEventListener("click",event=>{
       if(action==="routing-remove")routeDraft.operations=removeRouteStep(routeDraft.operations,index);
       if(action==="routing-add")routeDraft.operations=addRouteStep(routeDraft.operations);
       capacityReview=null; // Reordered/added/removed operations invalidate prior evidence.
+      routeDraft.proposal=null; // Editor changes invalidate ephemeral suggestion provenance.
       flash="";
       render();
       document.getElementById("routing-editor")?.scrollIntoView({block:"start"});

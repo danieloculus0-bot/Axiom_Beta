@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {seedState} from "./engine.mjs";
 import {reviewPmWorkCenterAssociation} from "./pm-work-center-link.mjs";
 import {seedPm,completePmTask} from "./pm.mjs";
-import {inspectRoutingCapacityEvidence,routingCapacityEvidenceHtml,readRoutingCapacityScenario,conservativeCapacityPlaceholders} from "./routing-capacity-review.mjs";
+import {inspectRoutingCapacityEvidence,routingCapacityEvidenceHtml,readRoutingCapacityScenario,conservativeCapacityPlaceholders,prepareCapacitySuggestionDraft} from "./routing-capacity-review.mjs";
 
 const START="2026-11-02T08:00", END="2026-11-02T16:00";
 test("canonical routing and PM snapshot produce review-only UNKNOWN evidence without mutations",()=>{
@@ -609,4 +609,44 @@ test("contradictory hour origins are rejected while older scenarios remain suppo
   e.center.capacityHourSources.queuedHours="UNKNOWN";
   assert.throws(()=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]),
     /hour provenance must match/);
+});
+
+
+test("eligible fictional capacity suggestion opens a validated UNSAVED routing draft",()=>{
+  const {state,job,e}=packetReadyAlternate(),before=structuredClone(state);
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e,[]);
+  assert.equal(review.assessment.status,"SCENARIO_ELIGIBLE");
+  assert.match(routingCapacityEvidenceHtml(job,review),/data-action="routing-use-capacity-draft"/);
+  const draft=prepareCapacitySuggestionDraft(state,review,[]);
+  assert.equal(draft.jobId,job.id);
+  assert.equal(draft.operations.find(op=>op.step==="10").center,"DEMO-CUT");
+  assert.equal(job.routing.operations.find(op=>op.step==="10").center,"LASER-01");
+  assert.ok(draft.proposal.evidenceRefs.includes("SYN-CAP-001"));
+  assert.deepEqual(state,before);
+});
+test("handoff rejects stale routing, altered scenario, and newly clocked job",()=>{
+  for(const kind of ["route","scenario","clock"]){
+    const {state,job,e}=packetReadyAlternate();
+    const review=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e,[]);
+    const sessions=[];
+    if(kind==="route")job.routing.operations[1].check="Synthetic edited check";
+    if(kind==="scenario")review.scenarioEvidence.center.setupHours=5;
+    if(kind==="clock")sessions.push({id:"SYN-CLOCK-003",jobId:job.id,step:"10"});
+    assert.throws(()=>prepareCapacitySuggestionDraft(state,review,sessions),/changed|Clock history/);
+  }
+});
+test("handoff rejects UNKNOWN, wrong job, new quality hold and maintenance concern",()=>{
+  const {state,job,e}=packetReadyAlternate();
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e,[]);
+  const missing=inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,null,[]);
+  assert.doesNotMatch(routingCapacityEvidenceHtml(job,missing),/data-action="routing-use-capacity-draft"/);
+  assert.throws(()=>prepareCapacitySuggestionDraft(state,missing,[]),/No eligible/);
+  assert.throws(()=>prepareCapacitySuggestionDraft(state,review,null),/clock history/);
+  const wrong=structuredClone(review);wrong.jobId=state.jobs[1].id;
+  assert.throws(()=>prepareCapacitySuggestionDraft(state,wrong,[]),/work order or revision/);
+  state.quality.push({id:"q-handoff-synthetic",jobId:job.id,status:"OPEN",reason:"Synthetic hold"});
+  assert.throws(()=>prepareCapacitySuggestionDraft(state,review,[]),/no longer supports/);
+  state.quality.pop();
+  state.pm.machines[0].active=false;
+  assert.throws(()=>prepareCapacitySuggestionDraft(state,review,[]),/no longer supports/);
 });
