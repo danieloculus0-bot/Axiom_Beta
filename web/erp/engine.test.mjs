@@ -477,6 +477,9 @@ test("job routing evidence opens only uniquely linked fictional inspections, inc
   const ambiguousCase=structuredClone(state);
   ambiguousCase.quality.push(structuredClone(ambiguousCase.quality[0]));
   assert.equal(qualityJobInspectionTarget(ambiguousCase,"sample-1001",caseId,first),null);
+  const crossJobDuplicate=structuredClone(state);
+  crossJobDuplicate.quality.push({...structuredClone(state.quality[0]),jobId:"sample-1002"});
+  assert.equal(qualityJobInspectionTarget(crossJobDuplicate,"sample-1001",caseId,first),null);
   const missingJob=structuredClone(state);missingJob.jobs=[];
   assert.equal(qualityJobInspectionTarget(missingJob,"sample-1001",caseId,first),null);
   state=recordQualityDisposition(state,caseId,"SCRAP","Synthetic reviewed disposition",u);
