@@ -44,6 +44,17 @@ export function qualityCorrectiveInspectionTarget(record,actionId){
     .filter(item=>item?.id===inspectionId);
   return observations.length===1?{kind:"inspection",id:inspectionId}:null;
 }
+/* Reverse navigation from one inspection to its canonical corrective evidence.
+ * Use the same source resolver as corrective receipts; duplicate legacy IDs,
+ * missing observations and unrelated case-level actions are not guessed.
+ */
+export function qualityInspectionCorrectiveTargets(record,inspectionId){
+  if(typeof inspectionId!=="string"||!inspectionId)return [];
+  const actions=Array.isArray(record?.correctiveActions)?record.correctiveActions:[];
+  return actions.filter(action=>
+    qualityCorrectiveInspectionTarget(record,action?.id)?.id===inspectionId)
+    .map(action=>({kind:"corrective",id:action.id}));
+}
 /* An effectiveness review may point back to the inspection that actually
  * triggered its parent corrective action. Case-level actions, missing or
  * ambiguous legacy observations never get an invented inspection link.
@@ -297,8 +308,8 @@ export function renderQualityCase(state,id){
       h(QUALITY_INSPECTION_STAGES.find(stage=>stage.id===item.stage)?.label||item.stage)+' · '+
       h(item.result)+' · step '+h(item.step)+' / '+h(item.operation)+' ('+h(item.center)+')'+
       '<div class="small">Job rev '+h(item.jobRevision)+' · drawing rev '+h(item.drawingRevision??"unknown")+'</div>'+
-      '<div>'+h(item.observation)+'</div>'+routingStepButton(state,q,item)+inspectionCorrectiveButton(state,q,item.id)+evidenceWorkOrderButton(state,q,"inspection",item.id)+actions.filter(action=>action.sourceInspectionId===item.id).map(action=>
-        evidenceButton(q,"corrective",action.id,"View corrective action")).join(" ")+'</div>').join(""):
+      '<div>'+h(item.observation)+'</div>'+routingStepButton(state,q,item)+inspectionCorrectiveButton(state,q,item.id)+evidenceWorkOrderButton(state,q,"inspection",item.id)+qualityInspectionCorrectiveTargets(q,item.id).map(target=>
+        evidenceButton(q,target.kind,target.id,"View corrective action")).join(" ")+'</div>').join(""):
       '<p class="small">No fictional inspection observations recorded for this case.</p>')+
     '<h3>Case chronology</h3><p class="small">One read-only timeline of this NCR, its inspection evidence, dispositions, corrective actions, effectiveness reviews and follow-ups. Post-closure reviews do not reopen a case.</p>'+
     (timeline.length?timeline.map(entry=>'<div class="receipt"><b>'+h(entry.at||"Date unknown")+'</b> · '+h(entry.title)+
@@ -309,6 +320,8 @@ export function renderQualityCase(state,id){
       (entry.kind==="effectiveness"&&qualityEffectivenessInspectionTarget(q,entry.sourceId)?
         evidenceButton(q,"inspection",qualityEffectivenessInspectionTarget(q,entry.sourceId).id,"View source inspection"):"")+
       (entry.kind==="inspection"?routingStepButton(state,q,inspections.find(item=>item.id===entry.sourceId))+inspectionCorrectiveButton(state,q,entry.sourceId):"")+
+      (entry.kind==="inspection"?qualityInspectionCorrectiveTargets(q,entry.sourceId).map(target=>
+        evidenceButton(q,target.kind,target.id,"View corrective action")).join(" "):"")+
       (entry.kind==="corrective"?correctiveReviewButton(state,q,entry.sourceId):"")+
       (entry.kind==="corrective"&&qualityCorrectiveInspectionTarget(q,entry.sourceId)?
         evidenceButton(q,"inspection",qualityCorrectiveInspectionTarget(q,entry.sourceId).id,"View source inspection"):"")+
