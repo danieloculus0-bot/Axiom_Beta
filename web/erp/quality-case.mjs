@@ -43,8 +43,15 @@ export function recordQualityInspection(state,id,stage,step,result,observation,a
   const job=state.jobs.find(j=>j.id===record.jobId);
   if(!job)throw Error("Linked fictional work order is missing");
   if(!QUALITY_INSPECTION_STAGES.some(item=>item.id===stage))throw Error("Choose a listed fictional inspection stage");
-  const operation=job.routing?.operations?.find(op=>String(op.step)===String(step));
-  if(!operation)throw Error("Choose a routed operation on this fictional job");
+  // A legacy browser-local route can contain colliding step numbers. Never
+  // attach a new observation to whichever operation Array.find sees first.
+  const operations=Array.isArray(job.routing?.operations)?job.routing.operations:[];
+  const stepId=(typeof step==="string"||typeof step==="number")?String(step).trim():"";
+  const matches=stepId?operations.filter(op=>op?.step!==undefined&&
+    String(op.step)===stepId):[];
+  if(matches.length!==1)
+    throw Error("Choose one unambiguous routed operation on this fictional job");
+  const operation=matches[0];
   if(!QUALITY_INSPECTION_RESULTS.includes(result))throw Error("Choose a listed fictional inspection result");
   const detail=noteText(observation),time=timestamp(at);
   return change(state,"quality.inspection.recorded",record.number+" / "+stage+" / "+result,n=>{
