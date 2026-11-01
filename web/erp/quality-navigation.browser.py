@@ -273,6 +273,34 @@ def main():
                     )
                     expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
 
+                # Routing is a separate job-first entry point to the exact
+                # historical inspection. It must not substitute a different job.
+                page.locator('#module-nav a[data-nav="routing"]').click()
+                page.wait_for_function("location.hash === '#routing'")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                job_inspection_link = page.locator(
+                    f'button[data-action="job-quality-inspection"][data-case="{case_id}"]'
+                    f'[data-job="{job_id}"][data-id="{inspection_id}"]'
+                )
+                expect(job_inspection_link).to_have_count(1)
+                other_routing_job = page.locator("#job-context option").evaluate_all(
+                    "(options, selected) => options.map(o => o.value).find(v => v !== selected)", job_id
+                )
+                assert other_routing_job
+                page.locator("#job-context").select_option(other_routing_job)
+                expect(page.locator('button[data-action="job-quality-inspection"]')).to_have_count(0)
+                page.locator("#job-context").select_option(job_id)
+                expect(job_inspection_link).to_have_count(1)
+                job_inspection_link.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                focused_observation = panel.locator(
+                    f'[data-evidence-kind="inspection"][data-evidence-id="{inspection_id}"]'
+                ).first
+                assert focused_observation.evaluate("el => document.activeElement === el")
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+
                 editable = page.locator('form[data-form="quality-followup"] textarea')
                 native_menu = editable.evaluate("""el => {
                     const event = new MouseEvent('contextmenu', {bubbles: true, cancelable: true, button: 2});
