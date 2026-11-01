@@ -65,15 +65,18 @@ export function readRoutingCapacityScenario(fields,job,step,centerId,startLocal,
     if(!syntheticRef(s))fail("Scenario sources require fictional SYN- references.");
     return s;
   };
-  const hour=k=>{
+  const hour=(k,optional=false)=>{
     const raw=get(k);
+    // Blank booked/queued load is UNKNOWN, never assumed to be zero.
+    if(optional && raw==="")return null;
     if(!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(raw))
-      fail("All six scenario hour estimates must be explicitly supplied.");
+      fail("Calendar, maintenance, setup and run hours must be explicitly supplied; booked/queued hours may be blank for UNKNOWN.");
     const n=Number(raw);
     if(!Number.isFinite(n)||n<0||n>100000)
       fail("Scenario hours must be finite, nonnegative estimates.");
     return n;
   };
+  const bookedHours=hour("bookedHours",true),queuedHours=hour("queuedHours",true);
   const capability=get("capability");
   if(!["supported","unsupported"].includes(capability))
     fail("Select supported or unsupported fictional capability.");
@@ -90,8 +93,10 @@ export function readRoutingCapacityScenario(fields,job,step,centerId,startLocal,
     fail("Routed-operation count must be nonnegative or UNKNOWN.");
   const center={
     capability:{operation:operation.name,supported:capability==="supported",sourceRef:source("capability-ref")},
-    calendarHours:hour("calendarHours"),bookedHours:hour("bookedHours"),
-    queuedHours:hour("queuedHours"),maintenanceHours:hour("maintenanceHours"),
+    calendarHours:hour("calendarHours"),
+    ...(bookedHours===null?{}:{bookedHours}),
+    ...(queuedHours===null?{}:{queuedHours}),
+    maintenanceHours:hour("maintenanceHours"),
     setupHours:hour("setupHours"),runHours:hour("runHours"),
     capacitySourceRef:source("capacity-ref"),readinessSourceRef:source("readiness-ref"),...readiness
   };
@@ -226,8 +231,8 @@ export function routingCapacityEvidenceHtml(job, review = null) {
     pick("capability","Operation capability",["","supported","unsupported"],
       scenario?.capability?.supported===true?"supported":scenario?.capability?.supported===false?"unsupported":"")+
     ref("capability-ref","Capability source",scenario?.capability?.sourceRef)+
-    num("calendarHours","Calendar hours")+num("bookedHours","Booked hours")+
-    num("queuedHours","Queued hours")+num("maintenanceHours","PM downtime hours")+
+    num("calendarHours","Calendar hours")+num("bookedHours","Booked hours (blank = UNKNOWN)")+
+    num("queuedHours","Queued hours (blank = UNKNOWN)")+num("maintenanceHours","PM downtime hours")+
     num("setupHours","Setup hours")+num("runHours","Run hours")+
     ref("capacity-ref","Capacity source",scenario?.capacitySourceRef)+
     ref("readiness-ref","Readiness source",scenario?.readinessSourceRef)+
@@ -237,7 +242,7 @@ export function routingCapacityEvidenceHtml(job, review = null) {
     pick("material","Material",["UNKNOWN","READY","BLOCKED"],scenario?.material??"UNKNOWN")+
     pick("deliveryState","Delivery",["UNKNOWN","ON_TIME","LATE"],scenario?.deliveryState??"UNKNOWN")+
     num("routedOperationCount","Routed operations (blank = UNKNOWN)")+
-    '</div><p class="small">SYN- references are unverified. Zero routed operations does not establish availability or suitability.</p></details>';
+    '</div><p class="small">Booked and queued hours may be blank when UNKNOWN. Enter 0 only with an explicit estimate. Other four hour fields are required. SYN- references are unverified. Zero routed operations does not establish availability or suitability.</p></details>';
   let html = '<section class="panel" id="routing-capacity-review">'+
     '<div class="panel-head"><h2>Alternate work-center evidence</h2>'+
     '<span class="tag warn">REVIEW ONLY</span></div>'+
