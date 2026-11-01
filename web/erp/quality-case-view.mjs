@@ -19,6 +19,17 @@ export function qualityEvidenceTarget(record,kind,id){
     Array.isArray(action?.reviews)&&action.reviews.some(review=>review?.id===id)))return {kind,id};
   return null;
 }
+/* A review belongs to exactly one corrective action on this same fictional NCR.
+ * Legacy, ambiguous and unrelated review IDs never produce a guessed link.
+ */
+export function qualityEffectivenessParentTarget(record,reviewId){
+  if(!qualityEvidenceTarget(record,"effectiveness",reviewId))return null;
+  const actions=Array.isArray(record.correctiveActions)?record.correctiveActions:[];
+  const matches=actions.filter(action=>Array.isArray(action?.reviews)&&
+    action.reviews.some(review=>review?.id===reviewId));
+  if(matches.length!==1||!qualityEvidenceTarget(record,"corrective",matches[0].id))return null;
+  return {kind:"corrective",id:matches[0].id};
+}
 /* A work-order jump must originate from evidence on this exact canonical NCR.
  * Never offer a generic or unrelated job when the evidence/job is missing.
  */
@@ -200,7 +211,10 @@ export function renderQualityCase(state,id){
         (linked?routingStepButton(state,q,linked):"")+evidenceWorkOrderButton(state,q,"corrective",action.id)+
         (reviews.length?reviews.map(review=>
           '<div class="receipt"'+evidenceAttrs("effectiveness",review.id)+'><b>Effectiveness review:</b> '+h(review.result)+' · '+h(review.at)+
-          '<div>'+h(review.note)+'</div>'+evidenceWorkOrderButton(state,q,"effectiveness",review.id)+'</div>').join(""):
+          '<div>'+h(review.note)+'</div>'+
+          (qualityEffectivenessParentTarget(q,review.id)?
+            evidenceButton(q,"corrective",action.id,"View parent corrective action"):"")+
+          evidenceWorkOrderButton(state,q,"effectiveness",review.id)+'</div>').join(""):
           '<p class="small">Effectiveness not yet reviewed.</p>')+
         '<form class="controls" data-form="quality-effectiveness">'+
         '<input type="hidden" name="id" value="'+h(q.id)+'">'+
@@ -232,6 +246,8 @@ export function renderQualityCase(state,id){
     (timeline.length?timeline.map(entry=>'<div class="receipt"><b>'+h(entry.at||"Date unknown")+'</b> · '+h(entry.title)+
       (entry.sourceId?'<span class="small"> · '+h(entry.sourceId)+'</span>':"")+
       evidenceButton(q,entry.kind,entry.sourceId,"View evidence")+
+      (entry.kind==="effectiveness"?(qualityEffectivenessParentTarget(q,entry.sourceId)?
+        evidenceButton(q,"corrective",qualityEffectivenessParentTarget(q,entry.sourceId).id,"View parent corrective action"):""):"")+
       (entry.kind==="inspection"?routingStepButton(state,q,inspections.find(item=>item.id===entry.sourceId)):"")+
       '<div>'+h(entry.detail)+'</div></div>').join(""):
       '<p class="small">No dated case evidence recorded for this fictional case.</p>')+

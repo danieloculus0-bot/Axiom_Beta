@@ -85,6 +85,32 @@ def main():
                 assert review_id
                 expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
 
+                # From either the chronology or the review receipt, navigate to
+                # the exact corrective action without changing case or job.
+                parent = panel.locator(
+                    f'[data-evidence-kind="corrective"][data-evidence-id="{corrective_id}"]'
+                )
+                parent_links = panel.locator(
+                    f'button[data-action="quality-evidence-focus"][data-kind="corrective"][data-id="{corrective_id}"]'
+                )
+                assert parent_links.count() >= 2, "Review and chronology must expose parent action"
+                parent_links.last.click()
+                assert parent.evaluate("el => document.activeElement === el")
+                panel.locator(
+                    f'[data-evidence-kind="effectiveness"][data-evidence-id="{review_id}"] '
+                    'button[data-action="quality-evidence-focus"][data-kind="corrective"]'
+                ).click()
+                assert parent.evaluate("el => document.activeElement === el")
+                panel.locator(
+                    f'button[data-action="quality-evidence-focus"][data-kind="effectiveness"][data-id="{review_id}"]'
+                ).click()
+                review_receipt = panel.locator(
+                    f'[data-evidence-kind="effectiveness"][data-evidence-id="{review_id}"]'
+                )
+                assert review_receipt.evaluate("el => document.activeElement === el")
+                assert panel.get_attribute("data-case-id") == case_id
+                expect(page.locator("#job-context")).to_have_value(job_id)
+
                 # Follow-up evidence is recorded on the same closed NCR, then
                 # reached from its chronology without creating another case.
                 page.locator('form[data-form="quality-followup"] textarea[name="note"]').fill(
