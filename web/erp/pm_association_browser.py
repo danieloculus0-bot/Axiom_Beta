@@ -587,6 +587,44 @@ def browser_test() -> None:
                         "Cancel must leave canonical routing and event history unchanged"
                     )
 
+                    # A new fictional quality hold invalidates a previously
+                    # eligible review before its suggestion can reach the editor.
+                    review_eligible_handoff()
+                    before_hold = stored_routing()
+                    handoff_page.evaluate("location.hash='#quality'")
+                    quality_form = handoff_page.locator('form[data-form="new-ncr"]')
+                    quality_form.wait_for(state="visible")
+                    quality_form.locator('button[type="submit"]').click()
+                    hold_id = handoff_page.evaluate("""async () => {
+                        const {ERP_KEY} = await import('./engine.mjs');
+                        const state = JSON.parse(localStorage.getItem(ERP_KEY));
+                        return state.quality.filter(q => q.jobId === state.jobs[0].id &&
+                            q.status === 'OPEN').at(-1)?.id || null;
+                    }""")
+                    assert hold_id, "Synthetic quality hold was not recorded"
+                    assert stored_routing()["routing"] == before_hold["routing"]
+                    handoff_page.evaluate("location.hash='#routing'")
+                    handoff_page.locator('form[data-form="routing-capacity-review"]').wait_for(state="visible")
+                    assert handoff_page.locator("#routing-capacity-result").count() == 0
+                    assert handoff_page.locator('[data-action="routing-use-capacity-draft"]').count() == 0
+                    assert handoff_page.locator("#routing-editor-form").count() == 0
+                    assert stored_routing()["routing"] == before_hold["routing"], (
+                        "A quality hold must not mutate the saved routing"
+                    )
+                    # Close the fictional hold through the real UI, then prove
+                    # a fresh review is needed before an explicit draft save.
+                    handoff_page.evaluate("location.hash='#quality'")
+                    close_hold = handoff_page.locator(
+                        f'[data-action="close-ncr"][data-id="{hold_id}"]'
+                    )
+                    close_hold.wait_for(state="visible")
+                    close_hold.click()
+                    handoff_page.evaluate("location.hash='#routing'")
+                    handoff_page.locator('form[data-form="routing-capacity-review"]').wait_for(state="visible")
+                    assert handoff_page.locator('[data-action="routing-use-capacity-draft"]').count() == 0
+                    original = stored_routing()  # Quality events are legitimate; routing is unchanged.
+                    assert original["routing"] == before_hold["routing"]
+
                     review_eligible_handoff()
                     handoff_page.locator('[data-action="routing-use-capacity-draft"]').click()
                     editor = handoff_page.locator("#routing-editor-form")
