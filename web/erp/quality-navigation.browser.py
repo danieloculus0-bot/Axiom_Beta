@@ -541,7 +541,7 @@ def main():
                 expect(target_row).to_have_count(1)
                 details = target_row.locator("details.job-inspection-details")
                 expect(details).to_have_count(1)
-                expect(details.locator("summary")).to_have_text("Inspections (1)")
+                expect(details.locator("summary")).to_have_text("Quality evidence (2)")
                 unrelated_row = page.locator("#view table tbody tr").filter(
                     has=page.locator(f'a.cell-link[data-job="{other_job}"]')
                 )
@@ -568,6 +568,54 @@ def main():
                 expect(page.locator(
                     f'#view button[data-action="select-quality"][data-id="{case_id}"]'
                 )).to_have_count(1)
+
+                # Corrective evidence is reachable from routing and the job
+                # register, with the same case, action and job identity.
+                page.locator('#module-nav a[data-nav="routing"]').click()
+                page.wait_for_function("location.hash === '#routing'")
+                routed_corrective = page.locator(
+                    f'#view button[data-action="job-quality-corrective"][data-case="{case_id}"]'
+                    f'[data-job="{job_id}"][data-id="{corrective_id}"]'
+                )
+                expect(routed_corrective).to_have_count(1)
+                routed_corrective.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                corrective_receipt = panel.locator(
+                    f'[data-evidence-kind="corrective"][data-evidence-id="{corrective_id}"]'
+                ).first
+                assert corrective_receipt.evaluate("el => document.activeElement === el"), (
+                    "Routing jump must focus the exact corrective evidence"
+                )
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+
+                page.locator('#module-nav a[data-nav="jobs"]').click()
+                page.wait_for_function("location.hash === '#jobs'")
+                clear_context = page.locator('#view button[data-action="clear-record-context"]')
+                if clear_context.count():
+                    clear_context.click()
+                page.locator("#job-context").select_option(other_job)
+                target_row = page.locator("#view table tbody tr").filter(
+                    has=page.locator(f'a.cell-link[data-job="{job_id}"]')
+                )
+                details = target_row.locator("details.job-inspection-details")
+                expect(details.locator("summary")).to_have_text("Quality evidence (2)")
+                details.locator("summary").click()
+                register_corrective = details.locator(
+                    f'button[data-action="job-quality-corrective"][data-case="{case_id}"]'
+                    f'[data-job="{job_id}"][data-id="{corrective_id}"]'
+                )
+                expect(register_corrective).to_be_visible()
+                expect(page.locator("#job-context")).to_have_value(other_job)
+                register_corrective.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                assert corrective_receipt.evaluate("el => document.activeElement === el"), (
+                    "Register jump must focus the same canonical corrective action"
+                )
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
 
                 # Existing inline part records provide a real Open with entry
                 # point even while the separate record-row fix remains in #48.
