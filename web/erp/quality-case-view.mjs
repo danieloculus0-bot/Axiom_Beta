@@ -219,6 +219,21 @@ export function qualityJobCorrectiveTarget(state,jobId,caseId,actionId){
   if(actions.filter(item=>item?.id===actionId).length!==1)return null;
   return {caseId,jobId,kind:"corrective",id:actionId};
 }
+/* Follow-ups belong to the canonical fictional NCR, even when entered after
+ * closure. Only one exact job, case and follow-up ID can produce a link.
+ */
+export function qualityJobFollowupTarget(state,jobId,caseId,followupId){
+  if(typeof jobId!=="string"||!jobId||typeof caseId!=="string"||!caseId||
+     typeof followupId!=="string"||!followupId)return null;
+  if(!Array.isArray(state?.jobs)||state.jobs.filter(job=>job?.id===jobId).length!==1||
+     !Array.isArray(state?.quality))return null;
+  const cases=state.quality.filter(record=>record?.id===caseId);
+  if(cases.length!==1||cases[0].jobId!==jobId||
+     !["OPEN","CLOSED"].includes(cases[0].status))return null;
+  const followups=Array.isArray(cases[0].followUps)?cases[0].followUps:[];
+  if(followups.filter(item=>item?.id===followupId).length!==1)return null;
+  return {caseId,jobId,kind:"followup",id:followupId};
+}
 /* Direct links preserve the exact NCR identity, including closed cases.
  * No links are offered for a job without linked quality records.
  */
@@ -243,6 +258,12 @@ export function renderJobQualityEvidence(state,jobId){
         return target?'<button type="button" class="action secondary" data-action="job-quality-corrective" data-case="'+
           h(target.caseId)+'" data-job="'+h(target.jobId)+'" data-id="'+h(target.id)+
           '">Corrective action '+h(index+1)+' · '+h(action.ownerRole)+'</button>':"";
+      }).join(" "):"")+
+      (Array.isArray(record.followUps)?" "+record.followUps.map((item,index)=>{
+        const target=qualityJobFollowupTarget(state,jobId,record.id,item?.id);
+        return target?'<button type="button" class="action secondary" data-action="job-quality-followup" data-case="'+
+          h(target.caseId)+'" data-job="'+h(target.jobId)+'" data-id="'+h(target.id)+
+          '">Case follow-up '+h(index+1)+'</button>':"";
       }).join(" "):"")+'</div>';
   }).join("")+'</div>';
 }
@@ -388,7 +409,9 @@ export function renderJobRegisterInspectionEvidence(state,jobId){
       qualityJobInspectionTarget(state,jobId,record.id,item?.id)).length;
     const actions=(Array.isArray(record.correctiveActions)?record.correctiveActions:[])
       .filter(item=>qualityJobCorrectiveTarget(state,jobId,record.id,item?.id)).length;
-    return total+inspections+actions;
+    const followups=(Array.isArray(record.followUps)?record.followUps:[])
+      .filter(item=>qualityJobFollowupTarget(state,jobId,record.id,item?.id)).length;
+    return total+inspections+actions+followups;
   },0);
   if(!count)return "";
   return '<details class="job-inspection-details"><summary>Quality evidence ('+count+')</summary>'+
