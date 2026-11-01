@@ -350,6 +350,55 @@ test("inspection routing navigation rejects changed revisions, operations, missi
  }
 });
 
+test("inspection routing links require unique case, observation, job and operation identity",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
+  const caseId=state.quality[0].id,jobId=state.quality[0].jobId;
+  const step=state.jobs[0].routing.operations[0].step;
+  state=recordQualityInspection(state,caseId,"FIRST_PIECE",step,"FAIL",
+    "Synthetic routed observation","2026-10-30T12:01:00Z");
+  const inspectionId=state.quality[0].inspections[0].id;
+  state=recordQualityCorrectiveAction(state,caseId,"QUALITY",
+    "Synthetic source-linked corrective action",inspectionId,"2026-10-30T12:02:00Z");
+  const before=JSON.stringify(state);
+  assert.deepEqual(qualityInspectionRoutingTarget(state,caseId,inspectionId),
+    {caseId,inspectionId,jobId,step:String(step)});
+  assert.equal((renderQualityCase(state,caseId).match(/data-action="quality-routing-step"/g)||[]).length,3,
+    "Observation, linked corrective and chronology share the canonical route target");
+  const variants=[
+    ["duplicate case",s=>s.quality.push({...structuredClone(s.quality[0]),jobId:"sample-1002"})],
+    ["duplicate observation",s=>s.quality[0].inspections.push(
+      structuredClone(s.quality[0].inspections[0]))],
+    ["duplicate job",s=>s.jobs.push(structuredClone(s.jobs[0]))],
+    ["duplicate routed step",s=>s.jobs[0].routing.operations.push({
+      ...structuredClone(s.jobs[0].routing.operations[0]),name:"Alternative fictional operation"
+    })]
+  ];
+  for(const [name,mutate] of variants){
+    const legacy=structuredClone(state);
+    mutate(legacy);
+    const snapshot=JSON.stringify(legacy);
+    assert.equal(qualityInspectionRoutingTarget(legacy,caseId,inspectionId),null,name);
+    assert.doesNotMatch(renderQualityCase(legacy,caseId),
+      /data-action="quality-routing-step"/,name+" must not advertise a guessed destination");
+    assert.equal(JSON.stringify(legacy),snapshot,"Read-only resolution cannot mutate "+name);
+  }
+  const ambiguous=structuredClone(state);
+  ambiguous.jobs[0].routing.operations.push(
+    structuredClone(ambiguous.jobs[0].routing.operations[0]));
+  assert.deepEqual(qualityInspectionRoutingStatus(ambiguous,caseId,inspectionId),{
+    target:null,reason:"Recorded step is ambiguous in the current routing."
+  });
+  assert.match(renderQualityCase(ambiguous,caseId),
+    /Historical route: Recorded step is ambiguous in the current routing/);
+  assert.equal(JSON.stringify(state),before);
+  state=recordQualityDisposition(state,caseId,"SCRAP","Synthetic disposition",
+    "2026-10-30T12:03:00Z");
+  state=closeReviewedQuality(state,caseId,"2026-10-30T12:04:00Z");
+  assert.deepEqual(qualityInspectionRoutingTarget(state,caseId,inspectionId),
+    {caseId,inspectionId,jobId,step:String(step)},
+    "Valid closed-case evidence remains reachable");
+});
+
 test("closed fictional NCR retains read-only routing link without changing case status",()=>{
  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
  const id=state.quality[0].id,step=state.jobs[0].routing.operations[0].step;
