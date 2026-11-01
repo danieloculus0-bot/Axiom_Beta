@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {seedState,makePurchaseOrder,raiseQuality,createJob,CATALOG} from "./engine.mjs";
-import {resolveContext,contextActions,contextRelated,CONTEXT_TYPES} from "./context-actions.mjs";
+import {resolveContext,contextActions,contextRelated,CONTEXT_TYPES,contextAttrs} from "./context-actions.mjs";
 import {searchMenu} from "./navigation.mjs";
 import {readFileSync} from "node:fs";
 
@@ -95,4 +95,38 @@ test("right click uses native-menu guards and typed records, not a global hijack
  assert.match(source,/e\.key==="Escape"/);
  assert.match(source,/onNavigate\(\{type,id\},action\)/);
  assert.match(source,/search\.addEventListener\("input"/);
+});
+
+test("right-click rows and inline records use the same valid escaped attributes",()=>{
+ const attrs=contextAttrs("part",'SYN-" onmouseover="not-an-attribute');
+ assert.match(attrs,/^data-ctx-type="part" data-ctx-id="/);
+ assert.match(attrs,/SYN-&quot; onmouseover=&quot;not-an-attribute/);
+ assert.doesNotMatch(attrs,/^"/);
+ assert.doesNotMatch(attrs,/ data-ctx-id="[^"]*" onmouseover="/);
+ const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
+ assert.match(app,/import \{resolveContext,contextRelated,contextAttrs\} from "\.\/context-actions\.mjs"/);
+ assert.match(app,/const record=contexts\[i\],attr=record\?contextAttrs\(record\.type,record\.id\)/);
+ assert.match(app,/function ctxSpan\(type,id,text\).*contextAttrs\(type,id\)/);
+ assert.doesNotMatch(app,/function contextAttrs\(type,id\)\{return '"data-ctx-type=/);
+});
+test("Open with follows real job relationships rather than guessing a job",()=>{
+ let state=seedState();
+ const part=CATALOG[2].partNumber;
+ let actions=contextActions(state,"part",part);
+ assert.ok(actions.some(a=>a.intent==="new-job"),"new part should offer Job Entry");
+ assert.ok(!actions.some(a=>a.intent==="track"),"no empty matching-job tracker");
+ assert.ok(!actions.some(a=>["route","drawing","clock"].includes(a.intent)));
+ state=createJob(state,part,1).state;
+ actions=contextActions(state,"part",part);
+ assert.ok(actions.some(a=>a.intent==="track"));
+ assert.ok(actions.some(a=>a.intent==="route"),"one related job can open its routing");
+ state=createJob(state,part,2).state;
+ actions=contextActions(state,"part",part);
+ assert.equal(resolveContext(state,"part",part).relatedJobs.length,2);
+ assert.deepEqual(contextRelated(state,{type:"part",id:part},"jobs"),
+  resolveContext(state,"part",part).relatedJobs);
+ assert.ok(actions.some(a=>a.label==="Job Tracker (2 matching jobs)"));
+ assert.ok(!actions.some(a=>["route","drawing","clock"].includes(a.intent)),
+  "multiple possible jobs should require an explicit selection");
+ assert.ok(actions.some(a=>a.intent==="new-job"),"Job Entry remains accessible");
 });

@@ -7,6 +7,14 @@ import {CATALOG,getJob} from "./engine.mjs";
 import {getMachine,getTask} from "./pm.mjs";
 
 export const CONTEXT_TYPES=["job","part","stock","po","quality","drawing","machine","pm_task","pm_request","purchase_request"];
+// Shared, escaped record attributes for inline labels and table rows.
+export function contextAttrs(type,id){
+ const escape=value=>String(value??"").replace(/[&<>"']/g,c=>({
+  "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+ })[c]);
+ return 'data-ctx-type="'+escape(type)+'" data-ctx-id="'+escape(id)+
+   '" tabindex="0" title="Right-click for Open with"';
+}
 const TARGETS={
   job:[
     ["jobs","Job Tracker","track"],["routing","Routing & Planning","route"],
@@ -91,13 +99,20 @@ export function contextActions(state,type,id){
  const record=resolveContext(state,type,id);
  if(!record)return [];
  return TARGETS[type].filter(([view,,intent])=>{
-   if(["route","drawing","clock"].includes(intent)&&record.relatedJobs.length===0)return false;
+   // Never silently pick the first of several jobs attached to a part.
+   if(["route","drawing","clock"].includes(intent)&&
+      (!record.relatedJobs.length||(!record.jobId&&record.relatedJobs.length!==1)))return false;
    if(["new-po","purchase","material"].includes(intent)&&!record.itemId)return false;
    if(intent==="new-job"&&!record.part)return false;
-   if(intent==="track"&&type==="stock"&&!record.relatedJobs.length)return false;
-   if(intent==="track"&&type==="po"&&!record.relatedJobs.length)return false;
+   // A tracker filtered to zero jobs is not a useful destination.
+   if(intent==="track"&&["part","stock","po"].includes(type)&&!record.relatedJobs.length)return false;
    return true;
- }).map(([view,label,intent],index)=>({view,label,intent,id:type+":"+id+":"+intent,suggested:index<4}));
+ }).map(([view,label,intent],index)=>({
+   view,
+   label:type==="part"&&intent==="track"&&record.relatedJobs.length>1?
+     "Job Tracker ("+record.relatedJobs.length+" matching jobs)":label,
+   intent,id:type+":"+id+":"+intent,suggested:index<4
+ }));
 }
 export function contextRelated(state,context,view){
  const c=context&&resolveContext(state,context.type,context.id);
