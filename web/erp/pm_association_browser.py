@@ -523,8 +523,12 @@ def browser_test() -> None:
                     handoff_page.evaluate("location.hash='#routing'")
                     handoff_page.locator('form[data-form="routing-capacity-review"]').wait_for(state="visible")
 
-                    def review_eligible_handoff(expect_eligible: bool = True) -> None:
-                        form = handoff_page.locator('form[data-form="routing-capacity-review"]')
+                    def review_eligible_handoff(
+                        expect_eligible: bool = True, target_page=None,
+                        expected_blocker: str = "PM requests overlapping the planning window",
+                    ) -> None:
+                        target = target_page or handoff_page
+                        form = target.locator('form[data-form="routing-capacity-review"]')
                         details = form.locator("details")
                         if details.get_attribute("open") is None:
                             details.locator("summary").click()
@@ -552,16 +556,16 @@ def browser_test() -> None:
                         form.locator('input[name="window-end"]').fill("2026-11-02T16:00")
                         assert form.evaluate("element => element.checkValidity()")
                         form.locator('button[type="submit"]').click()
-                        result = handoff_page.locator("#routing-capacity-result")
+                        result = target.locator("#routing-capacity-result")
                         if expect_eligible:
                             assert "SCENARIO_ELIGIBLE" in result.inner_text(), result.inner_text()
-                            handoff_page.locator(
+                            target.locator(
                                 '[data-action="routing-use-capacity-draft"]'
                             ).wait_for(state="visible")
                         else:
                             assert "NEEDS_REVIEW" in result.inner_text(), result.inner_text()
-                            assert "PM requests overlapping the planning window" in result.inner_text()
-                            assert handoff_page.locator(
+                            assert expected_blocker in result.inner_text()
+                            assert target.locator(
                                 '[data-action="routing-use-capacity-draft"]'
                             ).count() == 0
 
@@ -695,6 +699,82 @@ def browser_test() -> None:
                     assert "REVIEW_REQUIRED" in handoff_page.locator("#view").inner_text()
                 finally:
                     handoff_context.close()
+
+                # Separate fictional browser storage verifies a genuine clock
+                # session blocks an otherwise eligible review-only handoff.
+                # The original save/cancel journey remains untouched.
+                clock_context = browser.new_context()
+                try:
+                    clock_page = clock_context.new_page()
+                    clock_page.goto(url, wait_until="domcontentloaded")
+                    completion = clock_page.locator('form[data-form="pm-complete"]')
+                    completion.wait_for(state="visible")
+                    completion.locator('select[name="task"]').select_option("DEMO-PM-001")
+                    completion.locator('input[name="confirmed"]').check()
+                    completion.locator('button[type="submit"]').click()
+                    pm_link = clock_page.locator(FORM)
+                    pm_link.locator('select[name="center"]').select_option("DEMO-CUT")
+                    pm_link.locator('input[name="source"]').fill("SYN-CLOCK-PM-001")
+                    pm_link.locator('input[name="confirmed"]').check()
+                    pm_link.locator('button[type="submit"]').click()
+                    clock_page.evaluate("location.hash='#routing'")
+                    clock_page.locator('form[data-form="routing-capacity-review"]').wait_for(state="visible")
+                    review_eligible_handoff(target_page=clock_page)
+                    assert clock_page.locator('[data-action="routing-use-capacity-draft"]').count() == 1
+                    canonical_before_clock = clock_page.evaluate("""async () => {
+                        const {ERP_KEY} = await import('./engine.mjs');
+                        return localStorage.getItem(ERP_KEY);
+                    }""")
+                    clock_page.evaluate("location.hash='#ewi'")
+                    clock_page.locator('[data-action="clock-in"]').wait_for(state="visible")
+                    clock_page.locator('[data-action="clock-in"]').click()
+                    assert clock_page.evaluate("""async () => {
+                        const {CLOCK_KEY,ERP_KEY} = await import('./engine.mjs');
+                        const state = JSON.parse(localStorage.getItem(ERP_KEY));
+                        const sessions = JSON.parse(localStorage.getItem(CLOCK_KEY));
+                        return sessions.length === 1 &&
+                            sessions[0].jobId === state.jobs[0].id && !sessions[0].end;
+                    }"""), "Clock IN must create a genuine browser-local same-job session"
+                    clock_page.evaluate("location.hash='#routing'")
+                    clock_page.locator('form[data-form="routing-capacity-review"]').wait_for(state="visible")
+                    assert clock_page.locator("#routing-capacity-result").count() == 0
+                    assert clock_page.locator('[data-action="routing-use-capacity-draft"]').count() == 0
+                    assert clock_page.locator("#routing-editor-form").count() == 0
+                    review_eligible_handoff(
+                        expect_eligible=False, target_page=clock_page,
+                        expected_blocker="browser-local EWI clock history",
+                    )
+                    assert "Browser-local EWI clock sessions on this job: 1" in (
+                        clock_page.locator("#routing-capacity-result").inner_text()
+                    )
+                    assert clock_page.locator('[data-action="routing-use-capacity-draft"]').count() == 0
+                    assert clock_page.evaluate("""async () => {
+                        const {ERP_KEY} = await import('./engine.mjs');
+                        return localStorage.getItem(ERP_KEY);
+                    }""") == canonical_before_clock, (
+                        "Clocking and rejected suggestions must not change canonical ERP routing"
+                    )
+                    clock_page.evaluate("location.hash='#ewi'")
+                    clock_page.locator('[data-action="clock-out"]').click()
+                    clock_page.evaluate("location.hash='#routing'")
+                    clock_page.locator('form[data-form="routing-capacity-review"]').wait_for(state="visible")
+                    assert clock_page.locator("#routing-capacity-result").count() == 0
+                    review_eligible_handoff(
+                        expect_eligible=False, target_page=clock_page,
+                        expected_blocker="browser-local EWI clock history",
+                    )
+                    assert clock_page.evaluate("""async () => {
+                        const {CLOCK_KEY} = await import('./engine.mjs');
+                        const sessions = JSON.parse(localStorage.getItem(CLOCK_KEY));
+                        return sessions.length === 1 && Boolean(sessions[0].end);
+                    }"""), "A stopped clock remains historical evidence"
+                    assert clock_page.locator('[data-action="routing-use-capacity-draft"]').count() == 0
+                    assert clock_page.evaluate("""async () => {
+                        const {ERP_KEY} = await import('./engine.mjs');
+                        return localStorage.getItem(ERP_KEY);
+                    }""") == canonical_before_clock
+                finally:
+                    clock_context.close()
 
                 context.close()
                 print("PASS: Chromium PM lifecycle, capacity review, and explicit routing handoff cancel/save")
