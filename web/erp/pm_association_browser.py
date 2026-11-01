@@ -776,6 +776,79 @@ def browser_test() -> None:
                 finally:
                     clock_context.close()
 
+                # A second tab can change EWI evidence while the planner's
+                # capacity review remains visible. Storage events must withdraw
+                # the old suggestion without navigation, refresh or a new click.
+                shared_context = browser.new_context()
+                try:
+                    planner = shared_context.new_page()
+                    planner.goto(url, wait_until="domcontentloaded")
+                    completion = planner.locator('form[data-form="pm-complete"]')
+                    completion.wait_for(state="visible")
+                    completion.locator('select[name="task"]').select_option("DEMO-PM-001")
+                    completion.locator('input[name="confirmed"]').check()
+                    completion.locator('button[type="submit"]').click()
+                    pm_link = planner.locator(FORM)
+                    pm_link.locator('select[name="center"]').select_option("DEMO-CUT")
+                    pm_link.locator('input[name="source"]').fill("SYN-TWO-TAB-PM-001")
+                    pm_link.locator('input[name="confirmed"]').check()
+                    pm_link.locator('button[type="submit"]').click()
+                    planner.evaluate("location.hash='#routing'")
+                    planner.locator('form[data-form="routing-capacity-review"]').wait_for(state="visible")
+                    review_eligible_handoff(target_page=planner)
+                    assert planner.locator('[data-action="routing-use-capacity-draft"]').count() == 1
+                    saved_before_other_tab = planner.evaluate("""async () => {
+                        const {ERP_KEY} = await import('./engine.mjs');
+                        return localStorage.getItem(ERP_KEY);
+                    }""")
+
+                    operator_tab = shared_context.new_page()
+                    operator_tab.goto(url.replace("#pm", "#ewi"), wait_until="domcontentloaded")
+                    operator_tab.locator('[data-action="clock-in"]').wait_for(state="visible")
+                    operator_tab.locator('[data-action="clock-in"]').click()
+                    assert operator_tab.evaluate("""async () => {
+                        const {ERP_KEY,CLOCK_KEY} = await import('./engine.mjs');
+                        const state = JSON.parse(localStorage.getItem(ERP_KEY));
+                        const clocks = JSON.parse(localStorage.getItem(CLOCK_KEY));
+                        return clocks.length === 1 &&
+                            clocks[0].jobId === state.jobs[0].id && !clocks[0].end;
+                    }"""), "The other tab must record a real synthetic same-job clock"
+                    planner.wait_for_function("""() =>
+                        !document.querySelector('#routing-capacity-result') &&
+                        !document.querySelector('[data-action="routing-use-capacity-draft"]')
+                    """)
+                    assert planner.locator("#routing-editor-form").count() == 0
+                    assert planner.evaluate("""async () => {
+                        const {ERP_KEY} = await import('./engine.mjs');
+                        return localStorage.getItem(ERP_KEY);
+                    }""") == saved_before_other_tab, (
+                        "Cross-tab clocking must not modify canonical ERP routing"
+                    )
+                    review_eligible_handoff(
+                        expect_eligible=False, target_page=planner,
+                        expected_blocker="browser-local EWI clock history",
+                    )
+                    assert "Browser-local EWI clock sessions on this job: 1" in (
+                        planner.locator("#routing-capacity-result").inner_text()
+                    )
+                    assert planner.locator('[data-action="routing-use-capacity-draft"]').count() == 0
+                    operator_tab.locator('[data-action="clock-out"]').click()
+                    planner.wait_for_function("""() =>
+                        !document.querySelector('#routing-capacity-result') &&
+                        !document.querySelector('[data-action="routing-use-capacity-draft"]')
+                    """)
+                    review_eligible_handoff(
+                        expect_eligible=False, target_page=planner,
+                        expected_blocker="browser-local EWI clock history",
+                    )
+                    assert planner.locator("#routing-editor-form").count() == 0
+                    assert planner.evaluate("""async () => {
+                        const {ERP_KEY} = await import('./engine.mjs');
+                        return localStorage.getItem(ERP_KEY);
+                    }""") == saved_before_other_tab
+                finally:
+                    shared_context.close()
+
                 context.close()
                 print("PASS: Chromium PM lifecycle, capacity review, and explicit routing handoff cancel/save")
             finally:
