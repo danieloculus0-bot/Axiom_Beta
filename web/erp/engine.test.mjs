@@ -728,7 +728,7 @@ test("Report Center opens exact canonical NCR rows even when displayed numbers c
   assert.equal(qualityReportCaseTarget(badStatus,row(repeated.quality[1]),1),null);
   assert.equal(JSON.stringify(repeated),before,"report navigation must be read-only");
   const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
-  assert.match(app,/qualityReportCaseTarget\\(state,row,rowIndex\\)/);
-  assert.match(app,/qualityReportCaseTarget\\(state,reportWithContext\\("quality"\\).rows\\[rowIndex\\],rowIndex\\)/);
+  assert.ok(app.includes("qualityReportCaseTarget(state,row,rowIndex)"));
+  assert.ok(app.includes('qualityReportCaseTarget(state,reportWithContext("quality").rows[rowIndex],rowIndex)'));
   assert.match(app,/target.caseId!==id/);
 });
