@@ -98,8 +98,10 @@ export function recordQualityCorrectiveAction(state,id,ownerRole,description,ins
   if(!state.jobs.some(j=>j.id===record.jobId))throw Error("Linked fictional work order is missing");
   if(!QUALITY_ACTION_ROLES.some(role=>role.id===ownerRole))throw Error("Choose a listed fictional owner role");
   const sourceId=String(inspectionId??"").trim();
-  if(sourceId&&!(record.inspections||[]).some(item=>item.id===sourceId))
-    throw Error("Choose an inspection observation on this fictional case");
+  const sourceMatches=sourceId?(Array.isArray(record.inspections)?record.inspections:[])
+    .filter(item=>item?.id===sourceId):[];
+  if(sourceId&&sourceMatches.length!==1)
+    throw Error("Choose one unambiguous inspection observation on this fictional case");
   const detail=noteText(description),time=timestamp(at);
   return change(state,"quality.corrective_action.recorded",record.number+" / "+ownerRole,n=>{
     const q=n.quality.find(item=>item.id===id);
@@ -116,8 +118,12 @@ export function recordQualityCorrectiveAction(state,id,ownerRole,description,ins
 export function reviewQualityCorrectiveAction(state,id,actionId,result,note,at=new Date().toISOString()){
   const record=recordFor(state,id);
   if(!record)throw Error("Fictional quality case not found");
-  const action=(record.correctiveActions||[]).find(item=>item.id===actionId);
-  if(!action)throw Error("Corrective action not found on this fictional quality case");
+  const actions=Array.isArray(record.correctiveActions)?record.correctiveActions:[];
+  const matches=typeof actionId==="string"&&actionId?
+    actions.filter(item=>item?.id===actionId):[];
+  if(matches.length!==1)
+    throw Error("Corrective action is missing or ambiguous on this fictional quality case");
+  const action=matches[0];
   if(!QUALITY_EFFECTIVENESS_RESULTS.some(item=>item.id===result))
     throw Error("Choose a listed fictional effectiveness result");
   const detail=noteText(note),time=timestamp(at);
