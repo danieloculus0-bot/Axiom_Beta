@@ -311,7 +311,7 @@ test("inspection and chronology start one corrective-action draft only on the ma
 });
 
 test("corrective action receipt and chronology open one exact effectiveness review draft after closure",()=>{
-  let state=raiseQuality(seedState(),"sample-1001","Fictional inspection follow-up",t);
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
   const caseId=state.quality[0].id;
   state=recordQualityCorrectiveAction(state,caseId,"QUALITY","Fictional corrective check one","",t);
   state=recordQualityCorrectiveAction(state,caseId,"ENGINEERING","Fictional corrective check two","",u);
