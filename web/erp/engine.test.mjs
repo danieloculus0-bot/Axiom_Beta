@@ -502,7 +502,7 @@ test("work-order register reveals only uniquely linked inspections and reuses ca
   const button='data-action="job-quality-inspection" data-case="'+caseId+
     '" data-job="sample-1001" data-id="'+inspectionId+'"';
   let html=renderJobRegisterInspectionEvidence(state,"sample-1001");
-  assert.match(html,/<details class="job-inspection-details"><summary>Inspections \\(1\\)<\\/summary>/);
+  assert.ok(html.includes('<details class="job-inspection-details"><summary>Inspections (1)</summary>'));
   assert.equal(html.split(button).length-1,1,"register links to exact existing inspection");
   assert.match(html,/data-action="report-quality-case"/,"case entry is the same canonical NCR");
   assert.equal(renderJobRegisterInspectionEvidence(state,"sample-1002"),"","unrelated job has no evidence");
@@ -520,8 +520,8 @@ test("work-order register reveals only uniquely linked inspections and reuses ca
   html=renderJobRegisterInspectionEvidence(state,"sample-1001");
   assert.equal(html.split(button).length-1,1,"closed-case inspection remains readable");
   const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
-  assert.match(app,/jobQualityCell\\(j\\)\\+renderJobRegisterInspectionEvidence\\(state,j\\.id\\)/,
+  assert.ok(app.includes("jobQualityCell(j)+renderJobRegisterInspectionEvidence(state,j.id)"),
     "the actual job register embeds the existing evidence projection");
-  assert.match(app,/view==="jobs"&&!?contextSelection\\("jobs",state\\.jobs\\)/,
+  assert.ok(app.includes('(view==="jobs"&&!contextSelection("jobs",state.jobs)'),
     "register navigation validates visible job identity");
 });
