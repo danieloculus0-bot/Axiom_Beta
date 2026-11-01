@@ -523,7 +523,7 @@ def browser_test() -> None:
                     handoff_page.evaluate("location.hash='#routing'")
                     handoff_page.locator('form[data-form="routing-capacity-review"]').wait_for(state="visible")
 
-                    def review_eligible_handoff() -> None:
+                    def review_eligible_handoff(expect_eligible: bool = True) -> None:
                         form = handoff_page.locator('form[data-form="routing-capacity-review"]')
                         details = form.locator("details")
                         if details.get_attribute("open") is None:
@@ -553,10 +553,17 @@ def browser_test() -> None:
                         assert form.evaluate("element => element.checkValidity()")
                         form.locator('button[type="submit"]').click()
                         result = handoff_page.locator("#routing-capacity-result")
-                        assert "SCENARIO_ELIGIBLE" in result.inner_text(), result.inner_text()
-                        handoff_page.locator(
-                            '[data-action="routing-use-capacity-draft"]'
-                        ).wait_for(state="visible")
+                        if expect_eligible:
+                            assert "SCENARIO_ELIGIBLE" in result.inner_text(), result.inner_text()
+                            handoff_page.locator(
+                                '[data-action="routing-use-capacity-draft"]'
+                            ).wait_for(state="visible")
+                        else:
+                            assert "NEEDS_REVIEW" in result.inner_text(), result.inner_text()
+                            assert "PM requests overlapping the planning window" in result.inner_text()
+                            assert handoff_page.locator(
+                                '[data-action="routing-use-capacity-draft"]'
+                            ).count() == 0
 
                     def stored_routing():
                         return handoff_page.evaluate("""async () => {
@@ -587,9 +594,52 @@ def browser_test() -> None:
                         "Cancel must leave canonical routing and event history unchanged"
                     )
 
+                    # A new fictional maintenance request for the linked machine
+                    # must invalidate a previously eligible alternate. Review the
+                    # same scenario while the request is open, then close it through
+                    # the PM UI. Closing is not itself an approval or routing edit.
+                    review_eligible_handoff()
+                    before_request = stored_routing()
+                    handoff_page.evaluate("location.hash='#pm'")
+                    maintenance_form = handoff_page.locator('form[data-form="pm-request"]')
+                    maintenance_form.wait_for(state="visible")
+                    maintenance_form.locator('select[name="machine"]').select_option("DEMO-M-001")
+                    maintenance_form.locator('button[type="submit"]').click()
+                    request_id = handoff_page.evaluate("""async () => {
+                        const {ERP_KEY} = await import('./engine.mjs');
+                        const pm = JSON.parse(localStorage.getItem(ERP_KEY)).pm;
+                        return pm.requests.find(r => r.machineId === 'DEMO-M-001' &&
+                            r.status === 'OPEN')?.id || null;
+                    }""")
+                    assert request_id, "Synthetic maintenance request was not recorded"
+                    handoff_page.evaluate("location.hash='#routing'")
+                    handoff_page.locator('form[data-form="routing-capacity-review"]').wait_for(state="visible")
+                    assert handoff_page.locator("#routing-capacity-result").count() == 0
+                    assert handoff_page.locator('[data-action="routing-use-capacity-draft"]').count() == 0
+                    assert stored_routing()["routing"] == before_request["routing"]
+                    review_eligible_handoff(expect_eligible=False)
+                    assert stored_routing()["routing"] == before_request["routing"], (
+                        "Maintenance concerns must not silently change saved routing"
+                    )
+                    handoff_page.evaluate("location.hash='#pm'")
+                    close_request = handoff_page.locator(
+                        f'[data-action="pm-close-request"][data-id="{request_id}"]'
+                    )
+                    close_request.wait_for(state="visible")
+                    close_request.click()
+                    assert handoff_page.evaluate("""async (requestId) => {
+                        const {ERP_KEY} = await import('./engine.mjs');
+                        const pm = JSON.parse(localStorage.getItem(ERP_KEY)).pm;
+                        return pm.requests.find(r => r.id === requestId)?.status === 'CLOSED';
+                    }""", request_id)
+                    handoff_page.evaluate("location.hash='#routing'")
+                    handoff_page.locator('form[data-form="routing-capacity-review"]').wait_for(state="visible")
+                    assert handoff_page.locator('[data-action="routing-use-capacity-draft"]').count() == 0
+                    assert stored_routing()["routing"] == before_request["routing"]
+                    review_eligible_handoff()
+
                     # A new fictional quality hold invalidates a previously
                     # eligible review before its suggestion can reach the editor.
-                    review_eligible_handoff()
                     before_hold = stored_routing()
                     handoff_page.evaluate("location.hash='#quality'")
                     quality_form = handoff_page.locator('form[data-form="new-ncr"]')
