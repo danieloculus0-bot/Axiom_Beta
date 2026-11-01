@@ -687,6 +687,6 @@ test("work-order effectiveness review links preserve exact closed-case evidence 
   const missingJob=structuredClone(state);missingJob.jobs=[];
   assert.equal(qualityJobEffectivenessTarget(missingJob,"sample-1001",caseId,second),null);
   const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
-  assert.match(app,/qualityJobEffectivenessTarget\\(state,button.dataset.job,button.dataset.case,id\\)/);
+  assert.ok(app.includes("qualityJobEffectivenessTarget(state,button.dataset.job,button.dataset.case,id)"));
   assert.match(app,/job-quality-effectiveness/);
 });
