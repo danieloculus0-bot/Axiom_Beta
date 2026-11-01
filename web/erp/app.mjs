@@ -13,7 +13,7 @@ import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction,qualityJobSummary,jobQualityTarget} from "./quality-case.mjs";
-import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction} from "./quality-case-view.mjs";
+import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionCorrectiveTarget,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction} from "./quality-case-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
@@ -589,6 +589,20 @@ document.addEventListener("click",event=>{
       target.setAttribute("tabindex","-1");
       target.scrollIntoView({block:"center"});
       target.focus({preventScroll:true});
+    }
+    if(action==="quality-inspection-corrective"){
+      const target=qualityInspectionCorrectiveTarget(state,button.dataset.case,id);
+      const panel=document.getElementById("quality-case-detail");
+      const form=panel?.querySelector('form[data-form="quality-corrective-action"]');
+      const picker=form?.querySelector('select[name="inspectionId"]');
+      const description=form?.querySelector('textarea[name="description"]');
+      if(currentView()!=="quality"||!target||panel?.dataset.caseId!==target.caseId||
+         form?.querySelector('input[name="id"]')?.value!==target.caseId||
+         !picker||![...picker.options].some(option=>option.value===target.inspectionId)||!description)
+        throw Error("This inspection cannot start a corrective action on the current fictional case");
+      picker.value=target.inspectionId;
+      description.scrollIntoView({block:"center"});
+      description.focus({preventScroll:true});
     }
     if(action==="quality-routing-step"){
       const target=qualityInspectionRoutingTarget(state,button.dataset.case,id);

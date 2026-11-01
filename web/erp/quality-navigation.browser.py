@@ -50,6 +50,24 @@ def main():
                 inspection_id = panel.locator('[data-evidence-kind="inspection"]').first.get_attribute("data-evidence-id")
                 assert inspection_id
 
+                # Both the observation receipt and case chronology must open
+                # the SAME existing corrective form with exact inspection context.
+                handoffs = panel.locator(
+                    f'button[data-action="quality-inspection-corrective"][data-case="{case_id}"][data-id="{inspection_id}"]'
+                )
+                assert handoffs.count() == 2, "Receipt and chronology should offer one canonical action draft"
+                corrective_picker = page.locator('form[data-form="quality-corrective-action"] select[name="inspectionId"]')
+                corrective_note = page.locator('form[data-form="quality-corrective-action"] textarea[name="description"]')
+                for handoff in (handoffs.first, handoffs.last):
+                    corrective_picker.select_option("")
+                    handoff.click()
+                    expect(corrective_picker).to_have_value(inspection_id)
+                    assert corrective_note.evaluate("el => document.activeElement === el")
+                    assert panel.get_attribute("data-case-id") == case_id
+                    expect(page.locator("#job-context")).to_have_value(job_id)
+                assert panel.locator('[data-evidence-kind="corrective"]').count() == 0, (
+                    "Selecting a handoff must not create an action before submission"
+                )
                 page.locator('form[data-form="quality-corrective-action"] select[name="inspectionId"]').select_option(index=1)
                 page.locator('form[data-form="quality-corrective-action"] textarea[name="description"]').fill(
                     "Synthetic corrective action tied to inspection"
@@ -65,6 +83,9 @@ def main():
                 page.locator('form[data-form="quality-disposition"] button[type="submit"]').click()
                 page.locator('form[data-form="quality-reviewed-close"] button[type="submit"]').click()
                 expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+                assert panel.locator('button[data-action="quality-inspection-corrective"]').count() == 0, (
+                    "Closed fictional cases cannot start new corrective actions"
+                )
 
                 # The current canonical disposition is reachable from its chronology
                 # and retains its original NCR identity after closure.
