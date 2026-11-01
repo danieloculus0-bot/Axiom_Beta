@@ -358,6 +358,25 @@ def browser_test() -> None:
                     assert expected in placeholder_text, (expected, placeholder_text)
                 assert capacity_form.locator('input[name="scenario-calendarHours"]').input_value() == ""
 
+                # A planner can edit the fictional interruption allowance. A
+                # larger buffer must reduce provisional hours, not fabricate
+                # availability or change any canonical ERP record.
+                buffer_field = capacity_form.locator('input[name="scenario-bufferPercent"]')
+                assert buffer_field.input_value() == "25"
+                buffer_field.fill("50")
+                capacity_form.locator('button[type="submit"]').click()
+                cautious_text = page.locator("#routing-capacity-result").inner_text()
+                for expected in (
+                    "EXCLUDED", "available 2.5 hours",
+                    "calendarHours: PLACEHOLDER", "50% interruption allowance",
+                    "No alternate routing proposed or saved",
+                ):
+                    assert expected in cautious_text, (expected, cautious_text)
+                assert buffer_field.input_value() == "50"
+                buffer_field.fill("25")
+                capacity_form.locator('button[type="submit"]').click()
+                assert "available 3.75 hours" in page.locator("#routing-capacity-result").inner_text()
+
                 # An explicit planner override changes only that field's origin.
                 capacity_form.locator('input[name="scenario-bookedHours"]').fill("1")
                 capacity_form.locator('button[type="submit"]').click()
