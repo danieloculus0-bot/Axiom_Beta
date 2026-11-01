@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {seedState,makePurchaseOrder,receivePurchaseOrder,raiseQuality,createJob} from "./engine.mjs";
 import {makeReport,reportCsv,REPORTS} from "./reports.mjs";
 import {qualityCaseTimeline} from "./quality-timeline.mjs";
-import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionRoutingStatus,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction} from "./quality-case-view.mjs";
+import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionRoutingStatus,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction,qualityEffectivenessParentTarget} from "./quality-case-view.mjs";
 import {startSession,stopSession} from "../ewi/engine.mjs";
 import {completePmTask} from "./pm.mjs";
 import {qualityJobSummary,jobQualityTarget,recordQualityInspection,recordQualityDisposition,closeReviewedQuality,
@@ -632,4 +632,51 @@ test("fictional NCR disposition is exact-case evidence with guarded work-order r
   delete legacy.quality[0].disposition;
   assert.equal(qualityEvidenceTarget(legacy.quality[0],"disposition",q.id),null);
   assert.ok(!renderQualityCase(legacy,q.id).includes('data-evidence-kind="disposition"'));
+});
+
+test("effectiveness evidence links back to its exact parent corrective action from receipt and chronology",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Synthetic inspection discrepancy",at);
+  state=raiseQuality(state,"sample-1002","Unrelated synthetic case",later);
+  const caseId=state.quality[0].id,otherCaseId=state.quality[1].id;
+  const step=state.jobs[0].routing.operations[0].step;
+  state=recordQualityInspection(state,caseId,"FIRST_PIECE",step,"FAIL","Fictional observation",later);
+  state=recordQualityCorrectiveAction(state,caseId,"QUALITY","Synthetic corrective action",
+    state.quality[0].inspections[0].id,"2026-10-30T12:01:00Z");
+  state=recordQualityCorrectiveAction(state,caseId,"ENGINEERING","Second synthetic action","",
+    "2026-10-30T12:02:00Z");
+  const [action,unrelatedAction]=state.quality[0].correctiveActions;
+  state=reviewQualityCorrectiveAction(state,caseId,action.id,"MORE_EVIDENCE",
+    "<script>synthetic review</script>","2026-10-30T12:03:00Z");
+  state=recordQualityDisposition(state,caseId,"SCRAP","Synthetic case disposition","2026-10-30T12:04:00Z");
+  state=closeReviewedQuality(state,caseId,"2026-10-30T12:05:00Z");
+  state=reviewQualityCorrectiveAction(state,caseId,action.id,"NOT_EFFECTIVE",
+    "Post-closure synthetic review","2026-10-30T12:06:00Z");
+  const q=state.quality[0],reviewIds=q.correctiveActions[0].reviews.map(review=>review.id);
+  const before=JSON.stringify(state);
+  for(const reviewId of reviewIds){
+    assert.deepEqual(qualityEffectivenessParentTarget(q,reviewId),{kind:"corrective",id:action.id});
+    assert.equal(qualityEffectivenessParentTarget(state.quality[1],reviewId),null);
+    assert.equal(qualityEffectivenessParentTarget(q,unrelatedAction.id),null);
+    const html=renderQualityCase(state,caseId);
+    const reviewReceipt=html.match(new RegExp('data-evidence-kind="effectiveness" data-evidence-id="'+reviewId+'"[^]*?</div>'));
+    assert.ok(reviewReceipt,"Review receipt must remain addressable");
+    assert.ok(reviewReceipt[0].includes('data-kind="corrective" data-id="'+action.id+'"'));
+    const entry=qualityCaseTimeline(q).find(item=>item.kind==="effectiveness"&&item.sourceId===reviewId);
+    assert.ok(entry);
+    assert.ok(html.includes('data-kind="effectiveness" data-id="'+reviewId+'"'));
+  }
+  const html=renderQualityCase(state,caseId);
+  assert.ok(html.includes("View parent corrective action"));
+  assert.ok(html.includes("&lt;script&gt;synthetic review&lt;/script&gt;"));
+  assert.ok(!html.includes("<script>"));
+  assert.equal(qualityEffectivenessParentTarget(q,"missing-review"),null);
+  assert.equal(qualityEffectivenessParentTarget(null,reviewIds[0]),null);
+  const legacy=structuredClone(q);
+  legacy.correctiveActions[0].reviews=[{result:"EFFECTIVE",at:later,note:"Legacy review"}];
+  assert.equal(qualityEffectivenessParentTarget(legacy,reviewIds[0]),null);
+  const ambiguous=structuredClone(q);
+  ambiguous.correctiveActions[1].reviews=[{id:reviewIds[0],result:"EFFECTIVE",at:later,note:"Duplicate ID"}];
+  assert.equal(qualityEffectivenessParentTarget(ambiguous,reviewIds[0]),null);
+  assert.equal(qualityEffectivenessParentTarget(state.quality.find(item=>item.id===otherCaseId),reviewIds[0]),null);
+  assert.equal(JSON.stringify(state),before,"Read-only navigation must not mutate NCR state");
 });
