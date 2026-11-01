@@ -447,6 +447,64 @@ test("placeholder arithmetic caps one fictional shift and rejects impossible win
   assert.throws(()=>conservativeCapacityPlaceholders(END,START),/positive duration/);
 });
 
+test("editable fictional interruption allowance changes provisional capacity without writing ERP records",()=>{
+  const state=seedState(),job=state.jobs[0],before=structuredClone(state);
+  const f=browserScenarioFields();
+  f.set("scenario-enabled","yes");f.set("scenario-placeholder","yes");
+  for(const key of ["calendarHours","bookedHours","queuedHours","capacity-ref"])
+    f.delete("scenario-"+key);
+  f.set("scenario-bufferPercent","50");
+  const cautious=readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END);
+  assert.deepEqual([cautious.center.calendarHours,cautious.center.bookedHours,
+    cautious.center.queuedHours,cautious.center.placeholderBufferPercent],[4,1,0.5,50]);
+  assert.equal(cautious.center.capacityHourSources.calendarHours,"PLACEHOLDER");
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,cautious,[]);
+  assert.equal(review.assessment.availableHours,2.5);
+  assert.equal(review.assessment.status,"EXCLUDED"); // Three required hours do not fit.
+  assert.equal(review.result.suggestions.length,0);
+  assert.equal(review.result.canAutoApply,false);
+  const html=routingCapacityEvidenceHtml(job,review);
+  assert.match(html,/name="scenario-bufferPercent" value="50"/);
+  assert.match(html,/50% interruption allowance/);
+  f.set("scenario-bufferPercent","0");
+  const optimistic=readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END);
+  assert.deepEqual([optimistic.center.calendarHours,optimistic.center.bookedHours,
+    optimistic.center.queuedHours],[8,2,1]);
+  assert.equal(optimistic.center.placeholderBufferPercent,0);
+  assert.equal(inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,
+    optimistic,[]).assessment.availableHours,5);
+  // A manual effective-hour override does not subtract the buffer again.
+  f.set("scenario-calendarHours","7");f.set("scenario-bufferPercent","50");
+  const manualCalendar=readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END);
+  assert.equal(manualCalendar.center.calendarHours,7);
+  assert.equal(manualCalendar.center.bookedHours,1.75);
+  assert.equal(manualCalendar.center.queuedHours,0.88);
+  assert.equal(manualCalendar.center.capacityHourSources.calendarHours,"MANUAL");
+  assert.equal(Object.hasOwn(manualCalendar.center,"placeholderBufferPercent"),false);
+  assert.match(routingCapacityEvidenceHtml(job,inspectRoutingCapacityEvidence(
+    state,job.id,"10","PRESS-02",START,END,manualCalendar,[])),
+    /manually entered effective calendar hours/);
+  for(const invalid of ["-1","91","garbage"]){
+    f.set("scenario-bufferPercent",invalid);
+    assert.throws(()=>readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END),
+      /interruption allowance/);
+  }
+  assert.throws(()=>conservativeCapacityPlaceholders(START,END,Infinity),/interruption allowance/);
+  assert.deepEqual(state,before);
+});
+test("external placeholder buffer metadata cannot claim a manual calendar or exceed bounds",()=>{
+  const state=seedState(),job=state.jobs[0],e=scopedEvidence(job);
+  e.center.placeholderBufferPercent=50;
+  assert.throws(()=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]),
+    /Placeholder interruption allowance/);
+  e.center.capacityEstimateType="PLACEHOLDER_ASSISTED";
+  e.center.capacityHourSources={calendarHours:"PLACEHOLDER",bookedHours:"MANUAL",queuedHours:"MANUAL"};
+  e.center.placeholderBufferPercent=91;
+  assert.throws(()=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]),
+    /Placeholder interruption allowance/);
+  e.center.placeholderBufferPercent=50;
+  assert.doesNotThrow(()=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]));
+});
 test("placeholder provenance remains field-specific and recalculates in a new window",()=>{
   const state=seedState(),job=state.jobs[0],before=structuredClone(state);
   const f=browserScenarioFields();f.set("scenario-enabled","yes");f.set("scenario-placeholder","yes");
