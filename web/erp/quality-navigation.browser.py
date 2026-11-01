@@ -531,6 +531,9 @@ def main():
                 # job selection may point at a different fictional work order.
                 page.locator('#module-nav a[data-nav="jobs"]').click()
                 page.wait_for_function("location.hash === '#jobs'")
+                clear_context = page.locator('#view button[data-action="clear-record-context"]')
+                if clear_context.count():
+                    clear_context.click()
                 page.locator("#job-context").select_option(other_job)
                 target_row = page.locator("#view table tbody tr").filter(
                     has=page.locator(f'a.cell-link[data-job="{job_id}"]')
