@@ -875,10 +875,18 @@ def main():
                 assert panel.get_attribute("data-case-id") is None, (
                     "Ambiguous IDs must not render a different job's case"
                 )
-                ambiguous_row = page.locator(
-                    f'tr[data-ctx-type="quality"][data-ctx-id="{case_id}"]'
-                ).first
-                ambiguous_row.click(button="right")
+                # Probe the real Open with event handler using explicit
+                # context attributes, independent of table-row markup.
+                page.evaluate("""id => {
+                    const probe = document.createElement("span");
+                    probe.id = "ambiguous-quality-context-probe";
+                    probe.className = "context-record";
+                    probe.dataset.ctxType = "quality";
+                    probe.dataset.ctxId = id;
+                    probe.textContent = "Fictional NCR context";
+                    document.querySelector("#view").append(probe);
+                }""", case_id)
+                page.locator("#ambiguous-quality-context-probe").click(button="right")
                 expect(page.locator("#axiom-record-menu")).to_be_hidden()
                 page.goto(f"http://127.0.0.1:{server.server_port}/erp/#jobs")
                 assert page.locator('button[data-action="job-quality-cases"]').count() == 0, (
