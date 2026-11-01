@@ -13,7 +13,7 @@ export function routingEditorHtml(job,draft,hasClockHistory){
    '<p>Edit the selected fictional job routing, operation order, work centers, source checks and instructions. Changes are saved to the same work order record used by EWI.</p>'+
    (hasClockHistory?'<div class="alert">This job already has clocking history. Edit a new fictional work order instead to preserve the original execution record.</div>':
     '<button class="action" type="button" data-action="routing-start">Edit this routing</button>')+
-   (state==="REVIEW_REQUIRED"?'<div class="alert">Edited routing awaits demo review. Clocking is blocked until reviewed.</div>'+
+   (state==="REVIEW_REQUIRED"?'<div class="alert">Edited routing awaits optional demo review. Synthetic clocking can proceed during beta; no production release is implied.</div>'+
     '<button class="action secondary" type="button" data-action="routing-review">Mark demo review complete</button>':"")+
    '<p class="small">No live BEAN analysis, drawing extraction or certified work-center availability is connected to this browser demo. Routing review is not production release.</p></section>';
  }
