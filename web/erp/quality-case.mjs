@@ -121,8 +121,10 @@ export function reviewQualityCorrectiveAction(state,id,actionId,result,note,at=n
   const actions=Array.isArray(record.correctiveActions)?record.correctiveActions:[];
   const matches=typeof actionId==="string"&&actionId?
     actions.filter(item=>item?.id===actionId):[];
-  if(matches.length!==1)
-    throw Error("Corrective action is missing or ambiguous on this fictional quality case");
+  if(matches.length===0)
+    throw Error("Corrective action not found on this fictional quality case");
+  if(matches.length>1)
+    throw Error("Corrective action identity is ambiguous on this fictional quality case");
   const action=matches[0];
   if(!QUALITY_EFFECTIVENESS_RESULTS.some(item=>item.id===result))
     throw Error("Choose a listed fictional effectiveness result");
