@@ -503,7 +503,42 @@ test("external placeholder buffer metadata cannot claim a manual calendar or exc
   assert.throws(()=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]),
     /Placeholder interruption allowance/);
   e.center.placeholderBufferPercent=50;
+  e.center.calendarHours=4; // 8 nominal hours less the asserted 50% interruption allowance.
   assert.doesNotThrow(()=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]));
+});
+
+test("fictional placeholder labels cannot launder inconsistent capacity hours into a review",()=>{
+  const state=seedState(),job=state.jobs[0],before=structuredClone(state);
+  const f=browserScenarioFields();
+  f.set("scenario-enabled","yes");f.set("scenario-placeholder","yes");
+  for(const key of ["calendarHours","bookedHours","queuedHours","capacity-ref"])
+    f.delete("scenario-"+key);
+  const valid=readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END);
+  const inspect=e=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]);
+  assert.deepEqual([valid.center.calendarHours,valid.center.bookedHours,valid.center.queuedHours],[6,1.5,0.75]);
+  assert.doesNotThrow(()=>inspect(valid));
+  for(const [field,value,pattern] of [
+    ["calendarHours",8,/Placeholder calendar hours must match/],
+    ["bookedHours",2,/Placeholder booked and queued hours must match/],
+    ["queuedHours",1,/Placeholder booked and queued hours must match/],
+    ["placeholderBufferPercent",50,/Placeholder calendar hours must match/]
+  ]){
+    const forged=structuredClone(valid);
+    forged.center[field]=value;
+    assert.throws(()=>inspect(forged),pattern,field);
+  }
+  // A planner can still enter different manual estimates, but they are not
+  // mislabeled as system-calculated placeholders or verified scheduling.
+  const manual=structuredClone(valid);
+  manual.center.calendarHours=7;
+  manual.center.bookedHours=2;
+  manual.center.queuedHours=1;
+  manual.center.capacityHourSources={
+    calendarHours:"MANUAL",bookedHours:"MANUAL",queuedHours:"MANUAL"};
+  manual.center.capacityEstimateType="MANUAL";
+  delete manual.center.placeholderBufferPercent;
+  assert.doesNotThrow(()=>inspect(manual));
+  assert.deepEqual(state,before);
 });
 test("placeholder provenance remains field-specific and recalculates in a new window",()=>{
   const state=seedState(),job=state.jobs[0],before=structuredClone(state);
