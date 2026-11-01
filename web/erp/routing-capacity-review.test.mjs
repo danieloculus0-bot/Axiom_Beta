@@ -575,6 +575,28 @@ test("fully manual capacity values are labeled MANUAL even when placeholder chec
     inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]));
   assert.doesNotMatch(html,/name="scenario-placeholder" value="yes" checked/);
 });
+test("placeholder-assisted claims without field provenance are rejected, legacy manual stays valid",()=>{
+  const state=seedState(),job=state.jobs[0],before=structuredClone(state),e=scopedEvidence(job);
+  const inspect=()=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]);
+  // A correctly scoped external scenario cannot call arbitrary hours a
+  // system-suggested placeholder without documenting their field origins.
+  e.center.capacityEstimateType="PLACEHOLDER_ASSISTED";
+  e.center.calendarHours=8;
+  e.center.bookedHours=0;
+  e.center.queuedHours=0;
+  assert.throws(inspect,/requires per-field capacity hour provenance/);
+  e.center.capacityEstimateType="MANUAL";
+  assert.doesNotThrow(inspect);
+  delete e.center.capacityEstimateType; // Existing untagged callers still work.
+  assert.doesNotThrow(inspect);
+  // Correctly labeled mixed scenarios retain the conservative arithmetic gate.
+  e.center.capacityEstimateType="PLACEHOLDER_ASSISTED";
+  e.center.capacityHourSources={
+    calendarHours:"PLACEHOLDER",bookedHours:"MANUAL",queuedHours:"MANUAL"};
+  e.center.calendarHours=6;
+  assert.doesNotThrow(inspect);
+  assert.deepEqual(state,before);
+});
 test("contradictory hour origins are rejected while older scenarios remain supported",()=>{
   const state=seedState(),job=state.jobs[0],e=scopedEvidence(job);
   assert.doesNotThrow(()=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]));

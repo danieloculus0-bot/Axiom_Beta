@@ -55,6 +55,10 @@ function scopedScenarioCenter(e,job,op,id,startLocal,endLocal){
     fail("Scenario center contains unsupported or missing evidence fields.");
   if(c.capacityEstimateType!==undefined && !["MANUAL","PLACEHOLDER_ASSISTED"].includes(c.capacityEstimateType))
     fail("Capacity estimate type must identify manual or placeholder-assisted scenario values.");
+  // A placeholder claim without field-level origins bypasses the arithmetic
+  // gate below. Legacy untagged and explicitly MANUAL scenarios stay valid.
+  if(c.capacityEstimateType==="PLACEHOLDER_ASSISTED" && c.capacityHourSources===undefined)
+    fail("Placeholder-assisted scenario requires per-field capacity hour provenance.");
   // Per-field origins describe estimates, not independently verified scheduling.
   // The metadata is optional to preserve existing scenario callers.
   if(c.capacityHourSources!==undefined){
