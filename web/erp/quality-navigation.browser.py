@@ -66,6 +66,17 @@ def main():
                 page.locator('form[data-form="quality-reviewed-close"] button[type="submit"]').click()
                 expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
 
+                # The current canonical disposition is reachable from its chronology
+                # and retains its original NCR identity after closure.
+                disposition_receipt = panel.locator(
+                    f'[data-evidence-kind="disposition"][data-evidence-id="{case_id}"]'
+                )
+                expect(disposition_receipt).to_have_count(1)
+                panel.locator(
+                    f'button[data-action="quality-evidence-focus"][data-kind="disposition"][data-id="{case_id}"]'
+                ).click()
+                assert disposition_receipt.evaluate("el => document.activeElement === el")
+
                 page.locator('form[data-form="quality-effectiveness"] textarea[name="note"]').fill(
                     "Synthetic post-closure effectiveness review"
                 )
@@ -93,6 +104,7 @@ def main():
 
                 for kind, evidence_id in (
                     ("inspection", inspection_id),
+                    ("disposition", case_id),
                     ("corrective", corrective_id),
                     ("effectiveness", review_id),
                     ("followup", followup_id),
@@ -108,7 +120,7 @@ def main():
                     assert return_button.get_attribute("data-kind") == kind
                     assert return_button.get_attribute("data-id") == evidence_id
 
-                    if kind in ("inspection", "followup"):
+                    if kind in ("inspection", "disposition", "followup"):
                         other_job = page.locator("#job-context option").evaluate_all(
                             "(options, selected) => options.map(o => o.value).find(v => v !== selected)", job_id
                         )
