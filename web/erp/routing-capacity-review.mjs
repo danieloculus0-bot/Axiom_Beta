@@ -109,7 +109,8 @@ export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, sta
   // whether the existing routing editor permits changes to this job.
   if (sessions !== null && !Array.isArray(sessions))
     fail("Browser-local EWI sessions must be an array when provided.");
-  const clockHistoryCount = sessions === null ? null :
+  const clockHistoryUnknown = sessions === null;
+  const clockHistoryCount = clockHistoryUnknown ? null :
     sessions.filter(session => session && typeof session === "object" && session.jobId === jobId).length;
   const clockHistoryConflict = clockHistoryCount > 0;
   const job = getJob(state,jobId);
@@ -162,7 +163,7 @@ export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, sta
   // Reuse the canonical EWI/job packet checks that gate clocking. Scenario
   // assertions cannot override drawing, quality, job status or draft review.
   const packetConcerns = packetIssues(state,jobId);
-  if (contradictedZero || materialConflict || stockConflict || packetConcerns.length || clockHistoryConflict) {
+  if (clockHistoryUnknown || contradictedZero || materialConflict || stockConflict || packetConcerns.length || clockHistoryConflict) {
     const assessment = result.assessments.find(item => item.center === centerId);
     if (assessment) {
       if (contradictedZero) {
@@ -180,6 +181,10 @@ export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, sta
           "Scenario material READY conflicts with aggregate fictional reservations exceeding recorded on-hand stock; stock readiness is UNKNOWN." :
           "Scenario material READY lacks valid fictional on-hand or aggregate reservation quantities; stock readiness is UNKNOWN.");
         assessment.notes.push("Browser-local stock and reservations do not prove physical material availability or operation-level readiness.");
+      }
+      if (clockHistoryUnknown) {
+        assessment.unknown.push("Browser-local EWI clock history was not supplied; routing edit eligibility is UNKNOWN.");
+        assessment.notes.push("An absent session snapshot cannot establish that a job has no clock history.");
       }
       if (clockHistoryConflict) {
         assessment.unknown.push("This fictional job has browser-local EWI clock history; the existing routing editor blocks changes after any clock session.");
