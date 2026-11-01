@@ -165,8 +165,10 @@ export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, sta
       .every(item => Number.isSafeInteger(item.reserved) && item.reserved >= 0);
   const stockConflict = center.material === "READY" && materialKnown &&
     (!stockKnown || reservedTotal(state,job.materialId) > materialItem.onHand);
-  // Reuse the canonical EWI/job packet checks that gate clocking. Scenario
-  // assertions cannot override drawing, quality, job status or draft review.
+  // Reuse the canonical EWI/job packet checks. Scenario assertions cannot
+  // override drawing, quality holds or job status. BETA: the existing
+  // REVIEW_REQUIRED routing flag is advisory for synthetic operator clocking;
+  // preserve the former draft-review restriction for later restoration only.
   const packetConcerns = packetIssues(state,jobId);
   if (clockHistoryUnknown || contradictedZero || materialConflict || stockConflict || packetConcerns.length || clockHistoryConflict) {
     const assessment = result.assessments.find(item => item.center === centerId);
