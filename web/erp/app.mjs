@@ -13,7 +13,7 @@ import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction,qualityJobSummary,jobQualityTarget,uniqueQualityCase} from "./quality-case.mjs";
-import {renderQualityCase,renderJobQualityEvidence,renderJobRegisterInspectionEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction,qualityJobInspectionTarget,qualityJobCorrectiveTarget,qualityJobFollowupTarget,qualityJobDispositionTarget,qualityJobEffectivenessTarget,qualityReportCaseTarget} from "./quality-case-view.mjs";
+import {renderQualityCase,renderJobQualityEvidence,renderJobRegisterInspectionEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction,qualityJobInspectionTarget,qualityJobCorrectiveTarget,qualityJobFollowupTarget,qualityJobDispositionTarget,qualityJobEffectivenessTarget,qualityReportCaseTarget,qualityJobCaseTarget} from "./quality-case-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
@@ -489,7 +489,12 @@ function render(){
     const focus=pendingQualityFocus;
     pendingQualityFocus=null;
     const panel=document.getElementById("quality-case-detail");
-    if(panel?.dataset.caseId===focus.caseId&&
+    if(panel?.dataset.caseId===focus.caseId&&focus.kind==="case"&&
+       uniqueQualityCase(state,focus.caseId)){
+      panel.setAttribute("tabindex","-1");
+      panel.scrollIntoView({block:"start"});
+      panel.focus({preventScroll:true});
+    }else if(panel?.dataset.caseId===focus.caseId&&
        qualityEvidenceReturnTarget(state,focus,selectedJobId)){
       const target=[...panel.querySelectorAll("[data-evidence-kind][data-evidence-id]")]
         .find(element=>element.dataset.evidenceKind===focus.kind&&element.dataset.evidenceId===focus.id);
@@ -670,9 +675,11 @@ document.addEventListener("click",event=>{
       if(location.hash==="#quality")render();
       else location.hash="#quality";
     }
-    if(["job-quality-inspection","job-quality-corrective","job-quality-followup","job-quality-disposition","job-quality-effectiveness"].includes(action)){
-      const target=action==="job-quality-inspection"?
-        qualityJobInspectionTarget(state,button.dataset.job,button.dataset.case,id):
+    if(["job-quality-case","job-quality-inspection","job-quality-corrective","job-quality-followup","job-quality-disposition","job-quality-effectiveness"].includes(action)){
+      const target=action==="job-quality-case"?
+        qualityJobCaseTarget(state,button.dataset.job,id):
+        action==="job-quality-inspection"?
+          qualityJobInspectionTarget(state,button.dataset.job,button.dataset.case,id):
         action==="job-quality-corrective"?
           qualityJobCorrectiveTarget(state,button.dataset.job,button.dataset.case,id):
           action==="job-quality-followup"?
@@ -688,7 +695,7 @@ document.addEventListener("click",event=>{
       selectedContext={type:"job",id:target.jobId};
       selectedIntent="quality";
       selectedQualityId=target.caseId;
-      pendingQualityFocus=target;
+      pendingQualityFocus=action==="job-quality-case"?{caseId:target.caseId,kind:"case",id:target.caseId}:target;
       rememberJob(target.jobId);
       if(location.hash==="#quality")render();
       else location.hash="#quality";

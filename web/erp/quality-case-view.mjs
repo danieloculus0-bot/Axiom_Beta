@@ -288,14 +288,24 @@ export function qualityJobFollowupTarget(state,jobId,caseId,followupId){
 /* Direct links preserve the exact NCR identity, including closed cases.
  * No links are offered for a job without linked quality records.
  */
+/* Resolve a work-order NCR entry to one canonical case before advertising a link.
+ * The report-only action is deliberately not reused outside Report Center.
+ */
+export function qualityJobCaseTarget(state,jobId,caseId){
+  if(typeof jobId!=="string"||!jobId||typeof caseId!=="string"||!caseId)return null;
+  const record=uniqueQualityCase(state,caseId);
+  return record?.jobId===jobId?{caseId,jobId}:null;
+}
 export function renderJobQualityEvidence(state,jobId){
   const cases=state.quality.filter(record=>record.jobId===jobId);
   if(!cases.length)return '<p class="small muted">No fictional NCR evidence for this work order.</p>';
   return '<div class="quality-evidence-index">'+cases.map(record=>{
     const evidence=qualityCaseEvidenceSummary(record);
     const disposition=qualityJobDispositionTarget(state,jobId,record.id);
-    return '<div class="receipt"><button type="button" class="action secondary" '+
-      'data-action="report-quality-case" data-id="'+h(record.id)+'">Open '+h(record.number)+'</button> '+
+    const caseTarget=qualityJobCaseTarget(state,jobId,record.id);
+    return '<div class="receipt">'+(caseTarget?'<button type="button" class="action secondary" '+
+      'data-action="job-quality-case" data-job="'+h(caseTarget.jobId)+'" data-id="'+h(caseTarget.caseId)+
+      '">Open '+h(record.number)+'</button> ':'<span class="small muted">Case unavailable</span> ')+
       '<span class="small">'+h(record.status)+' · '+h(evidence.inspections)+' inspections · '+
       h(evidence.correctiveActions)+' corrective actions · effectiveness: '+
       h(evidence.latestEffectiveness)+'</span>'+
