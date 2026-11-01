@@ -376,15 +376,15 @@ export function renderQualityCase(state,id){
   return html;
 }
 
-/* The work-order register reuses the same canonical inspection evidence
- * projection as Routing & Planning. Only uniquely resolved job/case/inspection
- * links are shown; no separate register, record, or approval is created.
+/* The work-order register reuses the canonical inspection and corrective
+ * evidence projection from Routing & Planning. A corrective-only case remains
+ * discoverable even if legacy inspection arrays are absent.
  */
 export function renderJobRegisterInspectionEvidence(state,jobId){
   if(!Array.isArray(state?.quality))return "";
   const count=state.quality.reduce((total,record)=>{
-    if(record?.jobId!==jobId||!Array.isArray(record.inspections))return total;
-    const inspections=record.inspections.filter(item=>
+    if(record?.jobId!==jobId)return total;
+    const inspections=(Array.isArray(record.inspections)?record.inspections:[]).filter(item=>
       qualityJobInspectionTarget(state,jobId,record.id,item?.id)).length;
     const actions=(Array.isArray(record.correctiveActions)?record.correctiveActions:[])
       .filter(item=>qualityJobCorrectiveTarget(state,jobId,record.id,item?.id)).length;
