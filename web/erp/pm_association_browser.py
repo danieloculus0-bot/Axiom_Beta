@@ -849,6 +849,73 @@ def browser_test() -> None:
                 finally:
                     shared_context.close()
 
+                # An already-open UNSAVED routing editor must not save after a
+                # second tab clocks the same fictional job. This tests the
+                # actual form-submit guard, not just suggestion visibility.
+                stale_context = browser.new_context()
+                try:
+                    stale_planner = stale_context.new_page()
+                    stale_planner.goto(url, wait_until="domcontentloaded")
+                    completion = stale_planner.locator('form[data-form="pm-complete"]')
+                    completion.wait_for(state="visible")
+                    completion.locator('select[name="task"]').select_option("DEMO-PM-001")
+                    completion.locator('input[name="confirmed"]').check()
+                    completion.locator('button[type="submit"]').click()
+                    pm_link = stale_planner.locator(FORM)
+                    pm_link.locator('select[name="center"]').select_option("DEMO-CUT")
+                    pm_link.locator('input[name="source"]').fill("SYN-OPEN-EDITOR-PM-001")
+                    pm_link.locator('input[name="confirmed"]').check()
+                    pm_link.locator('button[type="submit"]').click()
+                    stale_planner.evaluate("location.hash='#routing'")
+                    stale_planner.locator('form[data-form="routing-capacity-review"]').wait_for(state="visible")
+                    review_eligible_handoff(target_page=stale_planner)
+                    stale_planner.locator('[data-action="routing-use-capacity-draft"]').click()
+                    stale_editor = stale_planner.locator("#routing-editor-form")
+                    stale_editor.wait_for(state="visible")
+                    stale_editor.locator('input[name="name-0"]').fill("Synthetic unsaved stale editor")
+                    original_erp = stale_planner.evaluate("""async () => {
+                        const {ERP_KEY} = await import('./engine.mjs');
+                        return localStorage.getItem(ERP_KEY);
+                    }""")
+
+                    second_operator = stale_context.new_page()
+                    second_operator.goto(url.replace("#pm", "#ewi"), wait_until="domcontentloaded")
+                    second_operator.locator('[data-action="clock-in"]').wait_for(state="visible")
+                    second_operator.locator('[data-action="clock-in"]').click()
+                    stale_planner.wait_for_function("""() =>
+                        document.querySelector('#routing-editor-form') !== null &&
+                        !document.querySelector('#routing-capacity-result')
+                    """)
+                    assert stale_planner.evaluate("""async () => {
+                        const {ERP_KEY,CLOCK_KEY} = await import('./engine.mjs');
+                        const state = JSON.parse(localStorage.getItem(ERP_KEY));
+                        const clocks = JSON.parse(localStorage.getItem(CLOCK_KEY));
+                        return clocks.length === 1 &&
+                            clocks[0].jobId === state.jobs[0].id && !clocks[0].end;
+                    }"""), "Other-tab clock IN must be visible in shared browser storage"
+                    stale_planner.locator('button[form="routing-editor-form"]').click()
+                    assert "This job has recorded clocking" in (
+                        stale_planner.locator("#flash").inner_text()
+                    ), "A previously opened editor must reject saving after another tab clocks the job"
+                    assert stale_planner.evaluate("""async () => {
+                        const {ERP_KEY} = await import('./engine.mjs');
+                        return localStorage.getItem(ERP_KEY);
+                    }""") == original_erp, "Rejected stale save must not write routing or events"
+
+                    second_operator.locator('[data-action="clock-out"]').click()
+                    stale_planner.locator('button[form="routing-editor-form"]').click()
+                    assert "This job has recorded clocking" in (
+                        stale_planner.locator("#flash").inner_text()
+                    ), "Clock OUT must not clear the historical routing-edit interlock"
+                    assert stale_planner.evaluate("""async () => {
+                        const {ERP_KEY} = await import('./engine.mjs');
+                        return localStorage.getItem(ERP_KEY);
+                    }""") == original_erp
+                    stale_planner.locator('[data-action="routing-cancel"]').click()
+                    assert stale_planner.locator("#routing-editor-form").count() == 0
+                finally:
+                    stale_context.close()
+
                 context.close()
                 print("PASS: Chromium PM lifecycle, capacity review, and explicit routing handoff cancel/save")
             finally:
