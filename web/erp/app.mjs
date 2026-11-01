@@ -39,10 +39,11 @@ const stateViews={
 let workforce=seedWorkforce();
 let payPreviewResult=null,camEnvelopeResult=null;
 let qcdsmDepartment="Assembly";
-let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""},routeDraft=null,capacityReview=null;
+let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""},routeDraft=null,capacityReview=null,erpStorageSnapshot=null;
 function load(){
   try{
     const raw=localStorage.getItem(ERP_KEY);
+    erpStorageSnapshot=raw;
     if(raw && raw.length<1800000) state=validateState(JSON.parse(raw));
     const clocks=localStorage.getItem(CLOCK_KEY);
     if(clocks && clocks.length<2500000){
@@ -57,7 +58,7 @@ function load(){
     }
     const k=ERP_KEY+"_test";localStorage.setItem(k,"ok");localStorage.removeItem(k);
     stored=true;
-  }catch{stored=false;state=seedState();sessions=[];}
+  }catch{stored=false;state=seedState();sessions=[];erpStorageSnapshot=null;}
   try{
     const raw=localStorage.getItem(WORKFORCE_KEY);
     workforce=raw&&raw.length<800000?validateWorkforce(JSON.parse(raw)):seedWorkforce();
@@ -65,13 +66,27 @@ function load(){
 }
 function persist(){
   if(!stored) return;
-  try{localStorage.setItem(ERP_KEY,JSON.stringify(state));localStorage.setItem(CLOCK_KEY,JSON.stringify(sessions));localStorage.setItem(WORKFORCE_KEY,JSON.stringify(workforce));}
+  try{
+    const erpJson=JSON.stringify(state);
+    localStorage.setItem(ERP_KEY,erpJson);
+    erpStorageSnapshot=erpJson;
+    localStorage.setItem(CLOCK_KEY,JSON.stringify(sessions));
+    localStorage.setItem(WORKFORCE_KEY,JSON.stringify(workforce));
+  }
   catch{stored=false;flash="Local storage unavailable. Export records before refreshing.";}
 }
 // Read shared browser storage at the instant a routing draft is submitted.
 // Storage/focus notifications can be delayed while another tab clocks a job.
 // Fail closed on changed or malformed clock snapshots rather than saving from
 // stale in-memory sessions (or overwriting newer clock history via persist).
+// Bind every unsaved routing edit to the canonical ERP snapshot it opened from.
+// A quality hold, revision or maintenance change in another tab must not be
+// overwritten by an old editor, even before storage notifications arrive.
+function assertFreshErpForRoutingSave(draft){
+  if(!stored)return;
+  if(localStorage.getItem(ERP_KEY)!==draft.erpSnapshot)
+    throw Error("Browser-local ERP records changed since routing edit opened. Review current job before saving routing.");
+}
 function assertFreshClockHistoryForRoutingSave(){
   if(!stored)return; // The in-memory-only demo has no shared browser storage.
   const current=localStorage.getItem(CLOCK_KEY);
@@ -495,7 +510,7 @@ document.addEventListener("click",event=>{
   try{
     if(action==="routing-use-capacity-draft"){
       if(routeDraft)throw Error("Save or cancel the current unsaved routing edit first.");
-      routeDraft=prepareCapacitySuggestionDraft(state,capacityReview,sessions);
+      routeDraft={...prepareCapacitySuggestionDraft(state,capacityReview,sessions),erpSnapshot:erpStorageSnapshot};
       capacityReview=null;
       flash="Fictional suggestion opened as an UNSAVED routing edit. No ERP record changed.";
       render();
@@ -504,7 +519,7 @@ document.addEventListener("click",event=>{
     if(action==="routing-start"){
       const j=job();
       if(sessions.some(s=>s.jobId===j.id))throw Error("Clocking history exists for this job. Use another fictional job for routing changes.");
-      routeDraft={jobId:j.id,operations:editableRouting(j)};
+      routeDraft={jobId:j.id,operations:editableRouting(j),erpSnapshot:erpStorageSnapshot};
       capacityReview=null; // A saved-route assessment cannot describe an unsaved draft.
       flash="Edit fictional routing, then save for demo review.";
       render();
@@ -633,6 +648,7 @@ document.addEventListener("submit",event=>{
       }
       case "routing-save":{
         if(!routeDraft||routeDraft.jobId!==job().id)throw Error("No active routing edit for this job");
+        assertFreshErpForRoutingSave(routeDraft);
         assertFreshClockHistoryForRoutingSave();
         const updated=saveRoutingDraft(state,routeDraft.jobId,readRoutingEditor(form),sessions);
         routeDraft=null;
