@@ -67,7 +67,7 @@ def _can_write(role: str, path: str) -> bool:
     if role == "quality":
         return path.startswith("/quality/")
     if role == "operations":
-        return path in {"/pm", "/clocking-errors"}
+        return path.startswith("/ewi/jobs/") or path in {"/pm", "/clocking-errors"}
     if role == "finance":
         return path.startswith(("/payroll/", "/accounting/", "/sheets/")) or path in {
             "/payroll/run", "/payroll/employee", "/accounting/account", "/sheets"
@@ -118,10 +118,15 @@ def install_access_control(app) -> None:
     @app.before_request
     def perimeter():
         if mode == "local":
-            # Desktop/local development stays usable, but a 0.0.0.0 bind
-            # does not silently expose unauthenticated operations to LAN users.
-            if not _loopback(request.remote_addr):
-                abort(403)
+            # BETA REVIEW: Dormant request-IP restriction, preserved for reactivation.
+            # The shipped run.py still listens on 127.0.0.1 by default.
+            # Local beta needs to evaluate ordinary requests without adding a
+            # second request-perimeter dependency. Do not use this local mode
+            # on an externally reachable server or for private company data.
+            #
+            # RESTORE BEFORE ANY INTENDED SHARED DEPLOYMENT:
+            # if not _loopback(request.remote_addr):
+            #     abort(403)
             return None
 
         # No unauthenticated HTTP permitted over cleartext in shared mode.

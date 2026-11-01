@@ -6,20 +6,24 @@ import {
 } from "./engine.mjs";
 import {startSession,stopSession,durationSeconds,sessionsCsv} from "../ewi/engine.mjs";
 import {renderPm} from "./pm-view.mjs";
+import {reviewPmWorkCenterAssociation} from "./pm-work-center-link.mjs";
 import {renderRequestDesk} from "./request-view.mjs";
 import {WORKFORCE_KEY,seedWorkforce,validateWorkforce,addDemoPerson,assignDemoRole,recordDemoPulse,completeDemoTraining,nominateDemoRecognition,reviewDemoNomination,closeDemoAction} from "./workforce.mjs";
 import {renderHr,renderMorale} from "./workforce-view.mjs";
+import {submitDemoPto,reviewDemoPto,previewDemoPay,renderPto,renderPayroll} from "./people-workflows.mjs";
+import {renderModuleDirectory,renderCam,camFacingEnvelope} from "./portfolio-view.mjs";
 import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
-import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
+import {renderQcdsm,renderCost,renderDelivery,renderSafety,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality} from "./quality-case.mjs";
 import {renderQualityCase} from "./quality-case-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
+import {inspectRoutingCapacityEvidence,routingCapacityEvidenceHtml,readRoutingCapacityScenario} from "./routing-capacity-review.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
  issueRequestPO,syncReceivedRequests,verifyPurchaseRequest,followupPurchaseRequest} from "./requests.mjs";
 import {installContextMenu} from "./context-ui.mjs";
-import {resolveContext,contextRelated} from "./context-actions.mjs";
+import {resolveContext,contextRelated,contextAttrs} from "./context-actions.mjs";
 import {installMenu} from "./navigation-ui.mjs";
 import {REPORTS,makeReport,reportCsv} from "./reports.mjs";
 import {getMachine,getTask,pmOverview,createMachine,addPmTask,completePmTask,requestMaintenance,
@@ -32,11 +36,12 @@ const deep=v=>structuredClone(v);
 const stateViews={
  dashboard:"Command Center",jobs:"Work Orders",routing:"Routing & Planning",
  ewi:"EWI & Clocking",inventory:"Inventory",purchasing:"Purchasing",
- quality:"Quality Control",documents:"Drawing Control",pm:"PM Tracker",requests:"Request Desk",hr:"Human Resources",morale:"Morale & Recognition",qcdsm:"QCDSM Wheel",reports:"Report Center",bridge:"ERP Emulator",audit:"Event History"
+ quality:"Quality Control",documents:"Drawing Control",pm:"PM Tracker",requests:"Request Desk",hr:"Human Resources",morale:"Morale & Recognition",pto:"PTO Requests",payroll:"Payroll Preview",cam:"CAM Preparation",modules:"All Workbenches",qcdsm:"QCDSM",cost:"Cost",delivery:"Delivery",safety:"Safety",reports:"Report Center",bridge:"ERP Emulator",audit:"Event History"
 };
 let workforce=seedWorkforce();
+let payPreviewResult=null,camEnvelopeResult=null;
 let qcdsmDepartment="Assembly";
-let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""},routeDraft=null,selectedQualityId="";
+let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""},routeDraft=null,capacityReview=null,selectedQualityId="";
 function load(){
   try{
     const raw=localStorage.getItem(ERP_KEY);
@@ -65,7 +70,7 @@ function persist(){
   try{localStorage.setItem(ERP_KEY,JSON.stringify(state));localStorage.setItem(CLOCK_KEY,JSON.stringify(sessions));localStorage.setItem(WORKFORCE_KEY,JSON.stringify(workforce));}
   catch{stored=false;flash="Local storage unavailable. Export records before refreshing.";}
 }
-function transact(next,message){state=next;flash=message;persist();render();}
+function transact(next,message){state=next;capacityReview=null;flash=message;persist();render();}
 function workforceTransact(next,type,detail,message){
   workforce=next;
   state=change(state,type,detail,()=>{});
@@ -90,8 +95,7 @@ function metric(label,val,detail=""){return '<div class="metric"><small>'+h(labe
 function moduleLink(view,label,detail){
   return '<a href="#'+view+'"><b>'+h(label)+'</b><span>'+h(detail)+'</span></a>';
 }
-function contextAttrs(type,id){return '"data-ctx-type="'+h(type)+'" data-ctx-id="'+h(id)+'" tabindex="0" title="Right-click for Open with"';}
-function ctxSpan(type,id,text){return '<span class="context-record" data-ctx-type="'+h(type)+'" data-ctx-id="'+h(id)+'" tabindex="0" title="Right-click for Open with">'+h(text)+'</span>';}
+function ctxSpan(type,id,text){return '<span class="context-record" '+contextAttrs(type,id)+'>'+h(text)+'</span>';}
 function table(headers,rows,empty="No synthetic records yet.",contexts=[]){
   if(!rows.length)return '<div class="empty">'+h(empty)+'</div>';
   return '<div class="tablewrap"><table><thead><tr>'+headers.map(x=>'<th>'+h(x)+'</th>').join("")+'</tr></thead><tbody>'+rows.map((r,i)=>{
@@ -170,7 +174,11 @@ function dashboard(){
     moduleLink("requests","Request Desk","Track assignments and follow-ups")+
     moduleLink("hr","Human Resources","Demo roles and training")+
     moduleLink("morale","Morale","Company pulse and recognition")+
-    moduleLink("qcdsm","QCDSM Wheel","Quality, Cost, Delivery, Safety & Morale")+
+    moduleLink("pto","PTO Requests","Fictional time-off review")+
+    moduleLink("payroll","Payroll Preview","Hourly and salary pay calculation")+
+    moduleLink("cam","CAM Preparation","Generic facing exercise and job context")+
+    moduleLink("modules","All Workbenches","Audited Axiom and SuperForge capabilities")+
+    moduleLink("qcdsm","QCDSM","Select any of five live operational sections")+
     moduleLink("reports","Reports","Live synthetic operational reports")+
     moduleLink("purchasing","Purchasing","Receive demo inventory")+
     moduleLink("bridge","ERP Bridge","Emulated import and time receipt")+
@@ -225,6 +233,7 @@ function routingView(){
     moduleLink("ewi","EWI","Clock operation")+'</div>'+
     '<h3 style="margin-top:20px">Source labels</h3><p>Routing: '+h(j.routing.source)+'<br>Drawing: '+h(j.drawing.number)+' / Rev '+h(j.drawing.revision)+'</p></section></div>';
   s+=routingEditorHtml(j,routeDraft?.jobId===j.id?routeDraft.operations:null,sessions.some(session=>session.jobId===j.id));
+  s+=routingCapacityEvidenceHtml(j,capacityReview?.jobId===j.id?capacityReview:null);
   return s;
 }
 function drawingSvg(j){
@@ -437,10 +446,11 @@ function auditView(){
   return s;
 }
 const renderers={dashboard,jobs:jobsView,routing:routingView,ewi:clockView,inventory:inventoryView,
-  purchasing:purchasingView,quality:qualityView,documents:documentsView,pm:()=>renderPm(state.pm,selectedPmMachineId),requests:()=>renderRequestDesk(state,selectedRequest),hr:()=>renderHr(workforce),morale:()=>renderMorale(workforce),qcdsm:()=>renderQcdsm(state,workforce,qcdsmDepartment,localDay()),reports:reportsView,bridge:bridgeView,audit:auditView};
+  purchasing:purchasingView,quality:qualityView,documents:documentsView,pm:()=>renderPm(state.pm,selectedPmMachineId),requests:()=>renderRequestDesk(state,selectedRequest),hr:()=>renderHr(workforce),morale:()=>renderMorale(workforce),pto:()=>renderPto(workforce),payroll:()=>renderPayroll(workforce,payPreviewResult),cam:()=>renderCam(job(),camEnvelopeResult),modules:renderModuleDirectory,qcdsm:()=>renderQcdsm(state,workforce,qcdsmDepartment,localDay()),cost:()=>renderCost(state,sessions),delivery:()=>renderDelivery(state),safety:()=>renderSafety(state,workforce,qcdsmDepartment,localDay()),reports:reportsView,bridge:bridgeView,audit:auditView};
 function rememberJob(id){
   if(!getJob(state,id))return;
   if(routeDraft&&routeDraft.jobId!==id)routeDraft=null;
+  if(selectedJobId!==id)capacityReview=null;
   selectedJobId=id;selectedStep=job().routing.operations[0].step;
   history.replaceState(null,"",location.pathname+"?job="+encodeURIComponent(id)+location.hash);
 }
@@ -473,6 +483,7 @@ document.addEventListener("click",event=>{
       const j=job();
       if(sessions.some(s=>s.jobId===j.id))throw Error("Clocking history exists for this job. Use another fictional job for routing changes.");
       routeDraft={jobId:j.id,operations:editableRouting(j)};
+      capacityReview=null; // A saved-route assessment cannot describe an unsaved draft.
       flash="Edit fictional routing, then save for demo review.";
       render();
       document.getElementById("routing-editor")?.scrollIntoView({block:"start"});
@@ -485,11 +496,12 @@ document.addEventListener("click",event=>{
       if(action==="routing-down")routeDraft.operations=moveRouteStep(routeDraft.operations,index,1);
       if(action==="routing-remove")routeDraft.operations=removeRouteStep(routeDraft.operations,index);
       if(action==="routing-add")routeDraft.operations=addRouteStep(routeDraft.operations);
+      capacityReview=null; // Reordered/added/removed operations invalidate prior evidence.
       flash="";
       render();
       document.getElementById("routing-editor")?.scrollIntoView({block:"start"});
     }
-    if(action==="routing-cancel"){routeDraft=null;flash="Routing edit cancelled, no changes saved.";render();}
+    if(action==="routing-cancel"){routeDraft=null;capacityReview=null;flash="Routing edit cancelled, no changes saved.";render();}
     if(action==="routing-review"){
       if(routeDraft)throw Error("Save or cancel draft edits before review");
       transact(reviewRoutingDraft(state,job().id,sessions),"Sample routing reviewed. This is not a production release.");
@@ -504,6 +516,7 @@ document.addEventListener("click",event=>{
     }
     if(action==="clear-record-context"){selectedContext=null;selectedIntent="";flash="Record context cleared.";render();}
     if(action==="morale-close")workforceTransact(closeDemoAction(workforce,id),"morale.review.completed",id+" / FICTIONAL","Fictional workforce risk review marked complete.");
+    if(action==="pto-approve"||action==="pto-decline")workforceTransact(reviewDemoPto(workforce,id,action==="pto-approve"?"APPROVED_SIMULATION":"DECLINED"),"hr.pto.reviewed",id+" / FICTIONAL","Fictional PTO request reviewed in this browser only.");
     if(action==="morale-approve"||action==="morale-reject")workforceTransact(reviewDemoNomination(workforce,id,action==="morale-approve"?"APPROVED":"REJECTED"),"morale.recognition.reviewed",id+" / FICTIONAL","Demonstration recognition nomination reviewed.");
     if(action==="pm-csv") download(completionsCsv(state.pm),"text/csv;charset=utf-8","axiom-synthetic-pm-completions.csv");
     if(action==="download-report") download(reportCsv(reportWithContext(selectedReport)),"text/csv;charset=utf-8","axiom-demo-"+selectedReport+"-report.csv");
@@ -535,6 +548,7 @@ document.addEventListener("click",event=>{
       const j=job();const clockIssues=packetIssues(state,j.id);if(clockIssues.length)throw Error("Clock start blocked: "+clockIssues.join("; "));
       const step=$("clock-step").value;operator=$("operator-code").value.trim().toUpperCase();
       sessions=startSession(sessions,{id:crypto.randomUUID(),employee:operator,job:deep(j),step,timestamp:new Date().toISOString()});
+      capacityReview=null; // Clock history changes the routing editor's eligibility.
       selectedStep=step;flash="Clock IN recorded locally. Nothing sent to a live ERP.";persist();render();
     }
     if(action==="clock-out"){
@@ -542,13 +556,14 @@ document.addEventListener("click",event=>{
       const active=sessions.find(s=>s.employee===operator&&!s.end);
       if(!active)throw Error("No active local clock for this demo operator");
       sessions=stopSession(sessions,{id:active.id,employee:operator,timestamp:new Date().toISOString()});
+      capacityReview=null; // Never display a review computed from older clock state.
       flash="Clock OUT saved locally. Time ticket NOT posted to JobBOSS².";persist();render();
     }
     if(action==="export-json")download(JSON.stringify({demo:true,erp_connected:false,exportedAt:new Date().toISOString(),
       state,sessions,workforce},null,2),"application/json","axiom-erp-synthetic-demo.json");
     if(action==="export-csv")download(sessionsCsv(sessions),"text/csv;charset=utf-8","axiom-erp-demo-clock.csv");
     if(action==="reset" && confirm("Delete all fictional Axiom ERP and EWI clock records in this browser and reset the demo?")){
-      state=seedState();sessions=[];workforce=seedWorkforce();selectedContext=null;selectedIntent="";rememberJob(state.jobs[0].id);
+      state=seedState();sessions=[];workforce=seedWorkforce();capacityReview=null;selectedContext=null;selectedIntent="";rememberJob(state.jobs[0].id);
       flash="Local demo reset to fictional starter records.";persist();render();
     }
   }catch(e){flash=e.message;render();}
@@ -559,6 +574,12 @@ document.addEventListener("submit",event=>{
   const f=new FormData(form);
   try{
     switch(form.dataset.form){
+      case "pto-submit":
+        workforceTransact(submitDemoPto(workforce,Object.fromEntries(f)),"hr.pto.submitted","Fictional time-off request","Fictional PTO request added; no outside approval or notification.");break;
+      case "pay-preview":
+        payPreviewResult=previewDemoPay(workforce,Object.fromEntries(f));flash="Hypothetical payroll calculation only; no pay run or ledger created.";render();break;
+      case "cam-envelope":
+        camEnvelopeResult=camFacingEnvelope(Object.fromEntries(f));flash="Generic CAM envelope calculated. No CNC toolpath or job routing was changed.";render();break;
       case "hr-person":
         workforceTransact(addDemoPerson(workforce,String(f.get("role"))),"hr.demo.person.created","Fictional employee code created","Added a synthetic employee code.");break;
       case "hr-role":
@@ -581,6 +602,17 @@ document.addEventListener("submit",event=>{
         transact(captureQualityContext(state,workforce,String(f.get("qualityId")),qcdsmDepartment),"QCDSM evidence linked to a synthetic quality investigation. Root cause remains unconfirmed.");break;
       case "morale-nominate":
         workforceTransact(nominateDemoRecognition(workforce,String(f.get("person")),String(f.get("category")),String(f.get("reason")),Number(f.get("points"))),"morale.recognition.nominated","Fictional recognition nomination","Nomination added for demonstration review.");break;
+      case "routing-capacity-review": {
+        const j=job();
+        if(routeDraft?.jobId===j.id)
+          throw Error("Save or cancel unsaved routing edits before capacity review.");
+        const step=String(f.get("step")||""),center=String(f.get("center")||""),
+          start=String(f.get("window-start")||""),end=String(f.get("window-end")||"");
+        const evidence=readRoutingCapacityScenario(f,j,step,center,start,end);
+        capacityReview=inspectRoutingCapacityEvidence(state,j.id,step,center,start,end,evidence,sessions);
+        flash="Fictional estimates reviewed, not verified or saved. No routing changed.";
+        render();break;
+      }
       case "routing-save":{
         if(!routeDraft||routeDraft.jobId!==job().id)throw Error("No active routing edit for this job");
         const updated=saveRoutingDraft(state,routeDraft.jobId,readRoutingEditor(form),sessions);
@@ -591,6 +623,22 @@ document.addEventListener("submit",event=>{
         const result=createMachine(state.pm,String(f.get("machine-type")),String(f.get("criticality")));
         selectedPmMachineId=result.id;
         pmTransact(result.pm,"pm.asset.created",result.id+" / FICTIONAL","Added a generic demonstration machine.");
+        break;
+      }
+      case "pm-work-center-link": {
+        const machineId=String(f.get("machine")||"");
+        if(!getMachine(state.pm,machineId))throw Error("Select an existing fictional PM machine.");
+        if(f.get("confirmed")===null)throw Error("Explicit fictional association review is required.");
+        const centerId=String(f.get("center")||"")||null;
+        const result=reviewPmWorkCenterAssociation(state.pm,{
+          machineId,centerId,sourceRef:String(f.get("source")||"").trim(),
+          reviewedBy:String(f.get("reviewer")||"").trim().toUpperCase(),
+          at:new Date().toISOString()
+        });
+        selectedPmMachineId=machineId;
+        pmTransact(result.pm,centerId?"pm.work_center.demo_link_reviewed":"pm.work_center.demo_unlinked",
+          machineId+" / "+(centerId||"UNMAPPED")+" / "+result.change.sourceRef+" / FICTIONAL",
+          "Fictional work-center association review recorded. No machine qualification or release.");
         break;
       }
       case "pm-new-task": {
@@ -665,17 +713,40 @@ document.addEventListener("submit",event=>{
         transact(postEmulatorTicket(state,session),"Fictional time ticket accepted by the in-browser emulator ONLY.");break;
       }
     }
-  }catch(e){flash=e.message;render();}
+  }catch(e){
+    flash=e.message;
+    if(form.dataset.form==="routing-capacity-review"){
+      // A rejected read-only scenario must retain the user's unsaved inputs.
+      // Re-rendering replaces the form and silently discards every field.
+      const banner=document.getElementById("flash");
+      if(banner){banner.textContent=flash;banner.setAttribute("role","alert");}
+    }else render();
+  }
 });
 $("job-context").addEventListener("change",e=>{rememberJob(e.target.value);flash="";render();});
+// An edited input invalidates the old read-only assessment, without replacing
+// the form or silently recalculating against different scenario assumptions.
+function invalidateCapacityReviewOnFormEdit(event){
+  if(!capacityReview || !event.target.closest?.('form[data-form="routing-capacity-review"]'))return;
+  capacityReview=null;
+  const prior=document.getElementById("routing-capacity-result");
+  if(!prior)return;
+  const notice=document.createElement("p");
+  notice.id="routing-capacity-stale";
+  notice.className="small";
+  notice.setAttribute("role","status");
+  notice.textContent="Scenario inputs changed. Submit again to review current evidence.";
+  prior.replaceWith(notice);
+}
 document.addEventListener("change",e=>{
+  invalidateCapacityReviewOnFormEdit(e);
   if(e.target.id==="clock-step")selectedStep=e.target.value;
   if(e.target.id==="report-select") {selectedReport=e.target.value;render();}
 });
-document.addEventListener("input",e=>{if(e.target.id==="operator-code")operator=e.target.value;});
+document.addEventListener("input",e=>{invalidateCapacityReviewOnFormEdit(e);if(e.target.id==="operator-code")operator=e.target.value;});
 window.addEventListener("hashchange",()=>{flash="";render();});
-window.addEventListener("storage",e=>{if(e.key===ERP_KEY||e.key===CLOCK_KEY||e.key===WORKFORCE_KEY){load();render();}});
-window.addEventListener("focus",()=>{if(stored){load();render();}});
+window.addEventListener("storage",e=>{if(e.key===ERP_KEY||e.key===CLOCK_KEY||e.key===WORKFORCE_KEY){capacityReview=null;load();render();}});
+window.addEventListener("focus",()=>{if(stored){capacityReview=null;load();render();}});
 setInterval(()=>{
   document.querySelectorAll("[data-live-clock]").forEach(el=>{
     const active=sessions.find(s=>s.employee===operator&&!s.end);

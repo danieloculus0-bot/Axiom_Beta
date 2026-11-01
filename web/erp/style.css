@@ -61,3 +61,12 @@
 .record-menu-footer{border-top:1px solid var(--line);margin:9px 2px 0;padding:9px 8px 2px;color:var(--muted);font-size:10px}
 .record-menu-empty{padding:7px 11px;color:var(--muted);font-size:12px}
 @media(max-width:600px){.context-trail{gap:7px}.context-trail .action{margin:0}.record-menu{max-height:65vh}}
+
+/* Five-domain wheel is navigation, including touch and keyboard interaction. */
+.wheel-panel{padding:12px 8px}
+.wheel-graphic{width:100%;max-width:560px;margin:auto}
+.wheel-sector{cursor:pointer;outline:none}
+.wheel-sector path{transition:filter .14s ease,stroke-width .14s ease}
+.wheel-sector:hover path,.wheel-sector:focus-visible path{filter:brightness(1.27);stroke-width:4}
+.wheel-sector:focus-visible path{stroke:var(--lime)}
+@media(prefers-reduced-motion:reduce){.wheel-sector path{transition:none}}
