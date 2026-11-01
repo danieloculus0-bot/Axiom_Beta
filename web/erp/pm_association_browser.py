@@ -974,7 +974,16 @@ def browser_test() -> None:
                         return localStorage.getItem(ERP_KEY);
                     }""") == hold_snapshot, "Rejected save must preserve newer quality and event records"
 
-                    quality_tab.locator('[data-action="close-ncr"]').first.click()
+                    hold_id = quality_tab.evaluate("""async () => {
+                        const {ERP_KEY} = await import('./engine.mjs');
+                        const state = JSON.parse(localStorage.getItem(ERP_KEY));
+                        return state.quality.filter(q =>
+                            q.jobId === state.jobs[0].id && q.status === 'OPEN').at(-1)?.id || null;
+                    }""")
+                    assert hold_id, "The synthetic hold must have a stable record ID"
+                    quality_tab.locator(
+                        f'[data-action="close-ncr"][data-id="{hold_id}"]'
+                    ).click()
                     closed_snapshot = quality_tab.evaluate("""async () => {
                         const {ERP_KEY} = await import('./engine.mjs');
                         return localStorage.getItem(ERP_KEY);
