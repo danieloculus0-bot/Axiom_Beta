@@ -1,5 +1,5 @@
 /* One job-linked fictional quality case, using existing ERP context and events. */
-import {QUALITY_DISPOSITIONS,QUALITY_INSPECTION_STAGES,QUALITY_INSPECTION_RESULTS,QUALITY_ACTION_ROLES,QUALITY_EFFECTIVENESS_RESULTS} from "./quality-case.mjs";
+import {QUALITY_DISPOSITIONS,QUALITY_INSPECTION_STAGES,QUALITY_INSPECTION_RESULTS,QUALITY_ACTION_ROLES,QUALITY_EFFECTIVENESS_RESULTS,uniqueQualityCase} from "./quality-case.mjs";
 import {qualityCaseTimeline} from "./quality-timeline.mjs";
 const h=value=>String(value??"").replace(/[&<>"']/g,c=>({
   "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
@@ -330,7 +330,7 @@ export function renderJobQualityEvidence(state,jobId){
   }).join("")+'</div>';
 }
 export function renderQualityCase(state,id){
-  const q=state.quality.find(record=>record.id===id);
+  const q=uniqueQualityCase(state,id);
   if(!q)return '<section class="panel" id="quality-case-detail"><h2>Case review</h2><p class="small">Select a fictional nonconformance above to review its linked record.</p></section>';
   const j=state.jobs.find(job=>job.id===q.jobId);
   const links=j?'<a class="action secondary" href="#jobs" data-job="'+h(j.id)+'">Work order</a> '+
