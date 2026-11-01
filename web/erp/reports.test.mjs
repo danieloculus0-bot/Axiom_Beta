@@ -539,11 +539,11 @@ test("NCR evidence work-order and return links reject duplicate canonical or rec
       'data-action="quality-evidence-work-order" data-case="'+caseId+
       '" data-kind="'+kind+'" data-id="'+id+'"'));
   }
+  assert.equal(JSON.stringify(state),before,"Read-only guards must not mutate evidence");
   state=closeReviewedQuality(state,caseId,"2026-10-30T12:05:00Z");
   for(const [kind,id] of evidence)
     assert.deepEqual(qualityEvidenceWorkOrderTarget(state,caseId,kind,id),
       {caseId,kind,id,jobId},"Closed fictional evidence stays accessible");
-  assert.equal(JSON.stringify(state).startsWith(before.slice(0,20)),true);
 });
 
 test("NCR evidence return keeps exact inspection, corrective and effectiveness identity on the same work order",()=>{
