@@ -263,7 +263,7 @@ export function renderQualityCase(state,id){
         ' · '+h(action.createdAt)+
         '<div>'+h(action.description)+'</div>'+
         '<div class="small">Linked observation: '+h(action.sourceInspectionId?(linked?
-          linked.stage+' / step '+linked.step+' / '+linked.result:'Missing or ambiguous fictional observation'):'None (case-level)')+'</div>'+(linked?evidenceButton(q,"inspection",linked.id,"View source inspection"):"")+
+          linked.stage+' / step '+linked.step+' / '+linked.result:'Missing or ambiguous fictional observation'):'None (case-level)')+'</div>'+(linked?evidenceButton(q,"inspection",linked.id,"View observation"):"")+
         (linked?routingStepButton(state,q,linked):"")+evidenceWorkOrderButton(state,q,"corrective",action.id)+correctiveReviewButton(state,q,action.id)+
         (reviews.length?reviews.map(review=>
           '<div class="receipt"'+evidenceAttrs("effectiveness",review.id)+'><b>Effectiveness review:</b> '+h(review.result)+' · '+h(review.at)+
