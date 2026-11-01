@@ -1,5 +1,6 @@
 /* Read-only capacity evidence preflight for the selected fictional Axiom job.
- * Reuses the existing advisor and PM snapshot. No invented hours, machine
+ * Reuses the existing advisor and PM snapshot. Optional labeled placeholders are
+ * planning assumptions, never verified machine load. No actual hours, machine
  * qualification, live BEAN service, draft mutation, or production release.
  */
 import {getJob,packetIssues,reservedTotal} from "./engine.mjs";
@@ -11,6 +12,22 @@ const h = value => String(value ?? "").replace(/[&<>"']/g, c =>
 const localStamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 const fail = message => {throw Error(message);};
 const syntheticRef = x => typeof x === "string" && /^SYN-[A-Z0-9-]{1,60}$/.test(x);
+const roundHours = n => Math.round(n * 100) / 100;
+/** One fictional shift maximum; 25% interruption buffer is subtracted once
+ * from nominal capacity before separate hypothetical booked/queued load.
+ */
+export function conservativeCapacityPlaceholders(startLocal,endLocal) {
+  if(!localStamp.test(startLocal)||!localStamp.test(endLocal))fail("Enter a valid fictional planning window.");
+  const duration=(new Date(endLocal)-new Date(startLocal))/3600000;
+  if(!Number.isFinite(duration)||duration<=0)fail("Planning window must have positive duration.");
+  const nominalHours=Math.min(8,duration);
+  const calendarHours=roundHours(nominalHours*0.75);
+  if(calendarHours<=0)fail("Planning window is too short for rounded scenario hours.");
+  return {nominalHours:roundHours(nominalHours),calendarHours,
+    bookedHours:roundHours(calendarHours*0.25),
+    queuedHours:roundHours(calendarHours*0.125),
+    basis:"FICTIONAL one-shift estimate: 25% interruption buffer; 25% booked and 12.5% queued of effective hours."};
+}
 // Caller-supplied scenario assertions are never verified, persisted or auto-applied.
 function scopedScenarioCenter(e,job,op,id,startLocal,endLocal){
   if(e === null)return {id};
@@ -27,10 +44,25 @@ function scopedScenarioCenter(e,job,op,id,startLocal,endLocal){
   const allowed=["capability","calendarHours","bookedHours","queuedHours",
     "maintenanceHours","setupHours","runHours","capacitySourceRef",
     "readinessSourceRef","maintenanceState","tooling","fixture","material",
-    "deliveryState","routedOperationCount"];
+    "deliveryState","routedOperationCount","capacityEstimateType","capacityHourSources"];
   if(!c || typeof c!=="object" || Array.isArray(c) ||
       Object.keys(c).some(k=>!allowed.includes(k)))
     fail("Scenario center contains unsupported or missing evidence fields.");
+  if(c.capacityEstimateType!==undefined && !["MANUAL","PLACEHOLDER_ASSISTED"].includes(c.capacityEstimateType))
+    fail("Capacity estimate type must identify manual or placeholder-assisted scenario values.");
+  // Per-field origins describe estimates, not independently verified scheduling.
+  // The metadata is optional to preserve existing scenario callers.
+  if(c.capacityHourSources!==undefined){
+    const sources=c.capacityHourSources,keys=["calendarHours","bookedHours","queuedHours"];
+    if(!sources || typeof sources!=="object" || Array.isArray(sources) ||
+       Object.keys(sources).length!==3 ||
+       keys.some(k=>!["MANUAL","PLACEHOLDER","UNKNOWN"].includes(sources[k])) ||
+       keys.some(k=>sources[k]==="UNKNOWN" ? c[k]!==undefined : c[k]===undefined) ||
+       keys.some(k=>sources[k]!=="UNKNOWN" && c[k]===undefined) ||
+       (keys.some(k=>sources[k]==="PLACEHOLDER") !==
+        (c.capacityEstimateType==="PLACEHOLDER_ASSISTED")))
+      fail("Capacity hour provenance must match supplied values and estimate type.");
+  }
   const cap=c.capability;
   if(!cap || typeof cap!=="object" || Array.isArray(cap) ||
       Object.keys(cap).some(k=>!["operation","supported","sourceRef"].includes(k)) ||
@@ -76,7 +108,19 @@ export function readRoutingCapacityScenario(fields,job,step,centerId,startLocal,
       fail("Scenario hours must be finite, nonnegative estimates.");
     return n;
   };
-  const bookedHours=hour("bookedHours",true),queuedHours=hour("queuedHours",true);
+  const placeholderMode=fields.has("scenario-placeholder");
+  const suggested=placeholderMode?conservativeCapacityPlaceholders(startLocal,endLocal):null;
+  const calendarInput=hour("calendarHours",placeholderMode);
+  const calendarHours=calendarInput??suggested?.calendarHours;
+  const bookedInput=hour("bookedHours",true),queuedInput=hour("queuedHours",true);
+  const bookedHours=bookedInput??(placeholderMode?roundHours(calendarHours*0.25):null);
+  const queuedHours=queuedInput??(placeholderMode?roundHours(calendarHours*0.125):null);
+  const capacityHourSources={
+    calendarHours:calendarInput===null?"PLACEHOLDER":"MANUAL",
+    bookedHours:bookedInput===null?(placeholderMode?"PLACEHOLDER":"UNKNOWN"):"MANUAL",
+    queuedHours:queuedInput===null?(placeholderMode?"PLACEHOLDER":"UNKNOWN"):"MANUAL"
+  };
+  const usedPlaceholder=Object.values(capacityHourSources).includes("PLACEHOLDER");
   const capability=get("capability");
   if(!["supported","unsupported"].includes(capability))
     fail("Select supported or unsupported fictional capability.");
@@ -93,12 +137,16 @@ export function readRoutingCapacityScenario(fields,job,step,centerId,startLocal,
     fail("Routed-operation count must be nonnegative or UNKNOWN.");
   const center={
     capability:{operation:operation.name,supported:capability==="supported",sourceRef:source("capability-ref")},
-    calendarHours:hour("calendarHours"),
+    calendarHours,
     ...(bookedHours===null?{}:{bookedHours}),
     ...(queuedHours===null?{}:{queuedHours}),
     maintenanceHours:hour("maintenanceHours"),
     setupHours:hour("setupHours"),runHours:hour("runHours"),
-    capacitySourceRef:source("capacity-ref"),readinessSourceRef:source("readiness-ref"),...readiness
+    capacitySourceRef:usedPlaceholder && !get("capacity-ref")?
+      "SYN-PLACEHOLDER-ONE-SHIFT":source("capacity-ref"),
+    capacityEstimateType:usedPlaceholder?"PLACEHOLDER_ASSISTED":"MANUAL",
+    capacityHourSources,
+    readinessSourceRef:source("readiness-ref"),...readiness
   };
   if(count!=="")center.routedOperationCount=Number(count);
   return {scope:{jobId:job.id,partNumber:job.partNumber,revision:job.revision,
@@ -145,6 +193,16 @@ export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, sta
     // Deliberately omit unverified capability, capacity and readiness facts.
     centers:[center],pmContext:{state:state.pm}
   });
+  // Provenance is review-only; placeholders never certify a dated schedule.
+  const capacityAssessment=result.assessments.find(item=>item.center===centerId);
+  if(capacityAssessment && center.capacityEstimateType){
+    capacityAssessment.capacityEstimateType=center.capacityEstimateType;
+    if(center.capacityEstimateType==="PLACEHOLDER_ASSISTED")
+      capacityAssessment.notes.push("PLACEHOLDER-ASSISTED: one fictional shift, 25% capacity buffer, 25% booked and 12.5% queued assumptions when blank; review actual load.");
+    else capacityAssessment.notes.push("MANUAL scenario hours; not independently verified.");
+    for(const suggestion of result.suggestions)
+      if(suggestion.center===centerId)suggestion.capacityEstimateType=center.capacityEstimateType;
+  }
   // Browser-local reservations can contradict a claimed material READY state,
   // but even full reservation does not prove material is physically at the center.
   // There is no canonical dated production schedule in this ERP demo.
@@ -223,12 +281,17 @@ export function routingCapacityEvidenceHtml(job, review = null) {
     '<option value="'+h(id)+'"'+(selected?' selected':'')+'>'+h(label)+'</option>';
 
   const scenario=review?.jobId===job.id?review.scenarioEvidence?.center:null;
-  const num=(k,label)=>'<label>'+h(label)+'<input type="number" min="0" max="100000" step="any" name="scenario-'+k+'" value="'+h(scenario?.[k]??"")+'"></label>';
+  const hourSources=scenario?.capacityHourSources;
+  const num=(k,label)=>'<label>'+h(label)+'<input type="number" min="0" max="100000" step="any" name="scenario-'+k+'" value="'+h(scenario?.capacityHourSources?.[k]==="PLACEHOLDER"?"":scenario?.[k]??"")+'"></label>';
   const ref=(k,label,value)=>'<label>'+h(label)+'<input name="scenario-'+k+'" maxlength="64" pattern="SYN-[A-Z0-9-]{1,60}" placeholder="SYN-EXAMPLE-001" value="'+h(value??"")+'"></label>';
   const pick=(k,label,choices,value)=>'<label>'+h(label)+'<select name="scenario-'+k+'">'+choices.map(x=>option(x,x,x===value)).join('')+'</select></label>';
   const scenarioFields='<details'+(scenario?' open':'')+'><summary>Optional fictional capacity scenario</summary>'+
     '<p class="small">Manually asserted estimates only. No live machine, schedule, BEAN, or qualification connection. Leave unchecked for UNKNOWN. Nothing saved.</p>'+
     '<label><input type="checkbox" name="scenario-enabled" value="yes"'+(scenario?' checked':'')+'> Evaluate fictional estimates</label>'+
+    '<label><input type="checkbox" name="scenario-placeholder" value="yes"'+
+      (scenario?.capacityEstimateType==="PLACEHOLDER_ASSISTED"?' checked':'')+
+      '> Use conservative placeholders for blank capacity/booked/queued hours</label>'+
+    '<p class="small">Optional fictional one-shift assumption: at most 8 nominal hours, 25% interruption allowance, then hypothetical booked 25% and queued 12.5% of effective hours. Enter hours manually to override. PM downtime and setup/run time still require explicit input. NOT actual scheduled hours.</p>'+
     '<div class="controls">'+
     pick("capability","Operation capability",["","supported","unsupported"],
       scenario?.capability?.supported===true?"supported":scenario?.capability?.supported===false?"unsupported":"")+
@@ -269,6 +332,10 @@ export function routingCapacityEvidenceHtml(job, review = null) {
     const messages = [...(a?.blocked || []),...(a?.unknown || [])];
     html += '<div id="routing-capacity-result" class="receipt" role="status">'+
       '<h3>Read-only assessment: '+h(review.step)+' / '+h(review.centerId)+'</h3>'+
+      '<p><b>Capacity basis:</b> '+h(a?.capacityEstimateType || 'UNKNOWN')+'</p>'+
+      (hourSources?'<p class="small"><b>Hour inputs:</b> '+
+        ["calendarHours","bookedHours","queuedHours"].map(k=>
+          h(k)+': '+h(hourSources[k]??"UNKNOWN")).join('; ')+'</p>':'')+
       '<p><b>Result:</b> '+h(a?.status || review.result.status)+
       ' · <b>PM association:</b> '+h(a?.pmEvidence?.status || 'UNKNOWN')+'</p>'+
       '<p class="small">Existing fictional job routing references to this center: '+
@@ -284,6 +351,7 @@ export function routingCapacityEvidenceHtml(job, review = null) {
         '%. Capability and availability still require independent review.</p>'+
         '<p class="small"><b>Asserted evidence:</b> '+(a?.evidenceRefs || []).map(h).join(', ')+'</p>' :
         '<p><b>Capacity and qualification:</b> UNKNOWN. No capacity figures were supplied or inferred.</p>')+
+      (a?.notes?.length?'<p class="small">'+a.notes.map(h).join(' ')+'</p>':'')+
       (messages.length?'<ul>'+messages.map(message=>'<li>'+h(message)+'</li>').join('')+'</ul>':'')+
       (review.result.suggestions.length ?
         '<p class="small">Scenario-only alternate identified for human draft review. No routing saved, approved or released.</p>' :
