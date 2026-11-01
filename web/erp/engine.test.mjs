@@ -567,7 +567,7 @@ test("canonical work-order corrective evidence is reachable without guessing or 
 });
 
 test("work-order follow-up links preserve exact post-closure evidence from routing and register",()=>{
-  let state=raiseQuality(seedState(),"sample-1001","Generic fictional case review",t);
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
   const caseId=state.quality[0].id;
   state=recordQualityFollowup(state,caseId,"Synthetic initial follow-up",t);
   state=recordQualityDisposition(state,caseId,"SCRAP","Synthetic reviewed disposition",u);
