@@ -186,6 +186,23 @@ export function qualityCaseEvidenceSummary(record){
     latestEffectiveness:effectiveness?effectiveness.title.replace(/^Effectiveness: /,""):
       (correctiveActions?"NOT REVIEWED":"NO ACTION")};
 }
+/* Report Center rows are projections of the canonical NCR array, not lookup keys.
+ * Identical displayed NCR numbers must never redirect both rows to the first
+ * case. Bind the original row position, exact job, and unique case ID instead.
+ * The same resolver is used at render and click time to reject stale links.
+ */
+export function qualityReportCaseTarget(state,row,rowIndex){
+  if(!Array.isArray(state?.quality)||!Array.isArray(state?.jobs)||
+     !Array.isArray(row)||!Number.isSafeInteger(rowIndex)||rowIndex<0)return null;
+  const record=state.quality[rowIndex];
+  if(!record||typeof record.id!=="string"||!record.id||
+     typeof record.number!=="string"||!record.number||
+     row[0]!==record.number||!["OPEN","CLOSED"].includes(record.status)||
+     state.quality.filter(item=>item?.id===record.id).length!==1)return null;
+  const jobs=state.jobs.filter(item=>item?.id===record.jobId);
+  if(jobs.length!==1||row[1]!==jobs[0].jobNumber)return null;
+  return {caseId:record.id,jobId:record.jobId,rowIndex};
+}
 /* A job workspace may drill into a specific recorded inspection only when
  * the canonical job, case and inspection are all uniquely identifiable.
  * Historical closed-case evidence stays available without implying that its
