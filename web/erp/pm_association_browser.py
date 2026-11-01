@@ -926,6 +926,73 @@ def browser_test() -> None:
                 finally:
                     stale_context.close()
 
+                # A second tab can introduce a canonical quality hold while
+                # an UNSAVED routing editor remains open. Even with storage and
+                # focus notifications suppressed, Save must not overwrite the
+                # newer ERP record or its quality/event history.
+                erp_race_context = browser.new_context()
+                try:
+                    erp_planner = erp_race_context.new_page()
+                    erp_planner.add_init_script("""(() => {
+                        const original = window.addEventListener;
+                        window.addEventListener = function(type, listener, options) {
+                            if (type === 'storage' || type === 'focus') return;
+                            return original.call(this, type, listener, options);
+                        };
+                    })()""")
+                    erp_planner.goto(url.replace("#pm", "#routing"), wait_until="domcontentloaded")
+                    erp_planner.locator('[data-action="routing-start"]').click()
+                    erp_editor = erp_planner.locator("#routing-editor-form")
+                    erp_editor.wait_for(state="visible")
+                    erp_editor.locator('input[name="name-0"]').fill("Synthetic stale ERP editor")
+                    erp_before = erp_planner.evaluate("""async () => {
+                        const {ERP_KEY} = await import('./engine.mjs');
+                        return localStorage.getItem(ERP_KEY);
+                    }""")
+
+                    quality_tab = erp_race_context.new_page()
+                    quality_tab.goto(url.replace("#pm", "#quality"), wait_until="domcontentloaded")
+                    quality_tab.locator('form[data-form="new-ncr"] button[type="submit"]').click()
+                    hold_snapshot = quality_tab.evaluate("""async () => {
+                        const {ERP_KEY} = await import('./engine.mjs');
+                        return localStorage.getItem(ERP_KEY);
+                    }""")
+                    assert hold_snapshot != erp_before, "Other tab must change canonical ERP state"
+                    assert quality_tab.evaluate("""async () => {
+                        const {ERP_KEY} = await import('./engine.mjs');
+                        const state = JSON.parse(localStorage.getItem(ERP_KEY));
+                        return state.quality.some(q =>
+                            q.jobId === state.jobs[0].id && q.status === 'OPEN');
+                    }"""), "Other tab must record a fictional quality hold"
+
+                    erp_planner.locator('button[form="routing-editor-form"]').click()
+                    assert "Browser-local ERP records changed since routing edit opened" in (
+                        erp_planner.locator("#flash").inner_text()
+                    ), "Direct ERP snapshot preflight must reject stale save"
+                    assert erp_planner.evaluate("""async () => {
+                        const {ERP_KEY} = await import('./engine.mjs');
+                        return localStorage.getItem(ERP_KEY);
+                    }""") == hold_snapshot, "Rejected save must preserve newer quality and event records"
+
+                    quality_tab.locator('[data-action="close-ncr"]').first.click()
+                    closed_snapshot = quality_tab.evaluate("""async () => {
+                        const {ERP_KEY} = await import('./engine.mjs');
+                        return localStorage.getItem(ERP_KEY);
+                    }""")
+                    assert closed_snapshot != hold_snapshot
+                    erp_planner.locator('button[form="routing-editor-form"]').click()
+                    assert "Browser-local ERP records changed since routing edit opened" in (
+                        erp_planner.locator("#flash").inner_text()
+                    ), "Closing the hold cannot validate an editor opened before the change"
+                    assert erp_planner.evaluate("""async () => {
+                        const {ERP_KEY} = await import('./engine.mjs');
+                        return localStorage.getItem(ERP_KEY);
+                    }""") == closed_snapshot
+                    erp_planner.locator('[data-action="routing-cancel"]').click()
+                    assert erp_planner.locator("#routing-editor-form").count() == 0
+                finally:
+                    erp_race_context.close()
+
                 context.close()
                 print("PASS: Chromium PM lifecycle, capacity review, and explicit routing handoff cancel/save")
             finally:
