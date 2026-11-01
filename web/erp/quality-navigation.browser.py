@@ -98,6 +98,29 @@ def main():
                 ).click()
                 assert disposition_receipt.evaluate("el => document.activeElement === el")
 
+                # The inspection receipt and its chronology independently
+                # locate the same corrective evidence without changing state.
+                inspection_receipt_action = panel.locator(
+                    f'[data-evidence-kind="inspection"][data-evidence-id="{inspection_id}"] '
+                    f'button[data-action="quality-evidence-focus"][data-kind="corrective"][data-id="{corrective_id}"]'
+                )
+                inspection_chronology_action = panel.locator(
+                    'h3:has-text("Case chronology") ~ div.receipt'
+                ).filter(has_text="Inspection:").locator(
+                    f'button[data-action="quality-evidence-focus"][data-kind="corrective"][data-id="{corrective_id}"]'
+                )
+                expect(inspection_receipt_action).to_have_count(1)
+                expect(inspection_chronology_action).to_have_count(1)
+                for action_link in (inspection_receipt_action, inspection_chronology_action):
+                    action_link.click()
+                    corrective_evidence = panel.locator(
+                        f'[data-evidence-kind="corrective"][data-evidence-id="{corrective_id}"]'
+                    ).first
+                    assert corrective_evidence.evaluate("el => document.activeElement === el")
+                    assert panel.get_attribute("data-case-id") == case_id
+                    expect(page.locator("#job-context")).to_have_value(job_id)
+                    expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+
                 # Corrective receipt and chronology return to the exact
                 # source inspection without writing or reopening the case.
                 corrective_receipt_source = panel.locator(
