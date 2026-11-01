@@ -1,5 +1,5 @@
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction} from "./quality-case.mjs";
-import {renderQualityCase,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEffectivenessInspectionTarget} from "./quality-case-view.mjs";
+import {renderQualityCase,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEffectivenessInspectionTarget,qualityCorrectiveInspectionTarget} from "./quality-case-view.mjs";
 import {contextActions,contextRelated} from "./context-actions.mjs";
 import {readFileSync} from "node:fs";
 import test from "node:test";
@@ -359,7 +359,7 @@ test("effectiveness evidence traces only its own linked source inspection throug
   const html=renderQualityCase(state,caseId);
   const link='data-action="quality-evidence-focus" data-case="'+caseId+
     '" data-kind="inspection" data-id="'+inspectionId+'">View source inspection';
-  assert.equal(html.split(link).length-1,2,"review receipt and chronology share one source observation");
+  assert.equal(html.split(link).length-1,3,"review receipt and chronology plus corrective chronology share source evidence");
   assert.equal(state.quality[0].inspections.length,1,"read-only links must not duplicate evidence");
   const missing=structuredClone(record);missing.inspections=[];
   assert.equal(qualityEffectivenessInspectionTarget(missing,reviewId),null);
@@ -368,6 +368,45 @@ test("effectiveness evidence traces only its own linked source inspection throug
   state=recordQualityDisposition(state,caseId,"SCRAP","Synthetic disposition reviewed",v);
   state=closeReviewedQuality(state,caseId,v);
   assert.equal(state.quality[0].status,"CLOSED");
-  assert.equal(renderQualityCase(state,caseId).split(link).length-1,2,
+  assert.equal(renderQualityCase(state,caseId).split(link).length-1,3,
     "historical inspection remains reachable after fictional case closure");
+});
+
+test("corrective receipt and chronology link only an unambiguous source inspection",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
+  const caseId=state.quality[0].id,step=state.jobs[0].routing.operations[0].step;
+  state=recordQualityInspection(state,caseId,"FIRST_PIECE",step,"FAIL","Synthetic observation",t);
+  const inspectionId=state.quality[0].inspections[0].id;
+  state=recordQualityCorrectiveAction(state,caseId,"QUALITY","Synthetic inspection response",inspectionId,u);
+  state=recordQualityCorrectiveAction(state,caseId,"ENGINEERING","Synthetic case-level response","",u);
+  const record=state.quality[0],actionId=record.correctiveActions[0].id;
+  assert.deepEqual(qualityCorrectiveInspectionTarget(record,actionId),{kind:"inspection",id:inspectionId});
+  assert.equal(qualityCorrectiveInspectionTarget(record,record.correctiveActions[1].id),null);
+  assert.equal(qualityCorrectiveInspectionTarget(record,"unrelated-action"),null);
+  const link='data-action="quality-evidence-focus" data-case="'+caseId+
+    '" data-kind="inspection" data-id="'+inspectionId+'">View source inspection';
+  const receiptLink='data-action="quality-evidence-focus" data-case="'+caseId+
+    '" data-kind="inspection" data-id="'+inspectionId+'">View observation';
+  assert.equal(renderQualityCase(state,caseId).split(link).length-1,1,
+    "corrective chronology navigates to the source inspection");
+  assert.equal(renderQualityCase(state,caseId).split(receiptLink).length-1,1,
+    "corrective receipt preserves its existing observation link");
+  const missing=structuredClone(record);missing.inspections=[];
+  assert.equal(qualityCorrectiveInspectionTarget(missing,actionId),null);
+  const stale=structuredClone(record);stale.correctiveActions[0].sourceInspectionId="missing-inspection";
+  assert.equal(qualityCorrectiveInspectionTarget(stale,actionId),null);
+  const ambiguous=structuredClone(record);ambiguous.inspections.push({...ambiguous.inspections[0]});
+  assert.equal(qualityCorrectiveInspectionTarget(ambiguous,actionId),null);
+  assert.doesNotMatch(renderQualityCase({...state,quality:[ambiguous]},caseId),
+    /View source inspection|View observation/,"ambiguous evidence must not create a misleading link");
+  const duplicateAction=structuredClone(record);
+  duplicateAction.correctiveActions.push({...duplicateAction.correctiveActions[0]});
+  assert.equal(qualityCorrectiveInspectionTarget(duplicateAction,actionId),null);
+  state=recordQualityDisposition(state,caseId,"SCRAP","Synthetic disposition reviewed",u);
+  state=closeReviewedQuality(state,caseId,u);
+  assert.equal(state.quality[0].status,"CLOSED");
+  assert.equal(renderQualityCase(state,caseId).split(link).length-1,1,
+    "closed-case chronology remains navigable without reopening the case");
+  assert.equal(renderQualityCase(state,caseId).split(receiptLink).length-1,1,
+    "closed-case corrective receipt remains navigable");
 });
