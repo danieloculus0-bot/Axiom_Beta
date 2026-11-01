@@ -529,7 +529,7 @@ test("work-order register reveals only uniquely linked inspections and reuses ca
 
 test("work-order NCR case entry opens the exact canonical case, never the report-only action",()=>{
   let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
-  state=raiseQuality(state,"sample-1002","Fictional second-job quality observation",u);
+  state=raiseQuality(state,"sample-1002","Generic drawing revision conflict",u);
   const [first,second]=state.quality;
   second.number=first.number; // Legacy displayed numbers can collide across jobs.
   const button=(caseId,jobId)=>'data-action="job-quality-case" data-job="'+jobId+'" data-id="'+caseId+'"';
