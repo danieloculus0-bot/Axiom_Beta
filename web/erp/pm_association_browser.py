@@ -855,6 +855,16 @@ def browser_test() -> None:
                 stale_context = browser.new_context()
                 try:
                     stale_planner = stale_context.new_page()
+                    # Simulate the narrow race where browser storage/focus
+                    # notifications have NOT reached the already-open editor.
+                    # Shared localStorage itself still contains the new clock.
+                    stale_planner.add_init_script("""(() => {
+                        const original = window.addEventListener;
+                        window.addEventListener = function(type, listener, options) {
+                            if (type === 'storage' || type === 'focus') return;
+                            return original.call(this, type, listener, options);
+                        };
+                    })()""")
                     stale_planner.goto(url, wait_until="domcontentloaded")
                     completion = stale_planner.locator('form[data-form="pm-complete"]')
                     completion.wait_for(state="visible")
@@ -894,9 +904,9 @@ def browser_test() -> None:
                             clocks[0].jobId === state.jobs[0].id && !clocks[0].end;
                     }"""), "Other-tab clock IN must be visible in shared browser storage"
                     stale_planner.locator('button[form="routing-editor-form"]').click()
-                    assert "This job has recorded clocking" in (
+                    assert "Browser-local clock history changed in another tab" in (
                         stale_planner.locator("#flash").inner_text()
-                    ), "A previously opened editor must reject saving after another tab clocks the job"
+                    ), "Direct storage preflight must reject the save even with notifications suppressed"
                     assert stale_planner.evaluate("""async () => {
                         const {ERP_KEY} = await import('./engine.mjs');
                         return localStorage.getItem(ERP_KEY);
@@ -904,9 +914,9 @@ def browser_test() -> None:
 
                     second_operator.locator('[data-action="clock-out"]').click()
                     stale_planner.locator('button[form="routing-editor-form"]').click()
-                    assert "This job has recorded clocking" in (
+                    assert "Browser-local clock history changed in another tab" in (
                         stale_planner.locator("#flash").inner_text()
-                    ), "Clock OUT must not clear the historical routing-edit interlock"
+                    ), "Clock OUT must not clear the changed-clock-history preflight"
                     assert stale_planner.evaluate("""async () => {
                         const {ERP_KEY} = await import('./engine.mjs');
                         return localStorage.getItem(ERP_KEY);
