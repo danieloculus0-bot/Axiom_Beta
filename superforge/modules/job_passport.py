@@ -128,7 +128,7 @@ def job_passport_page(job_id: int):
         "<h1>Job Passport: " + _esc(j["job_number"]) + "</h1>"
         "<p class='sub'>Only explicitly job-linked records are treated as evidence for this job. "
         "Part-level references below are NOT job assignments, approvals, or completed operations.</p>"
-        "</div><a class='button secondary' href='/jobs'>Back to Jobs</a></section>"
+        "</div><a class='button' href='/ewi/jobs/" + str(job_id) + "'>Open EWI</a> <a class='button secondary' href='/jobs'>Back to Jobs</a></section>"
     )
     body += (
         "<div class='grid'>"
