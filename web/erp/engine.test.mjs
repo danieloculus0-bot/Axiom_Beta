@@ -1,5 +1,5 @@
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction} from "./quality-case.mjs";
-import {renderQualityCase,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEffectivenessInspectionTarget,qualityCorrectiveInspectionTarget,qualityInspectionCorrectiveTargets,qualityJobInspectionTarget,qualityJobCorrectiveTarget,renderJobQualityEvidence,renderJobRegisterInspectionEvidence} from "./quality-case-view.mjs";
+import {renderQualityCase,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEffectivenessInspectionTarget,qualityCorrectiveInspectionTarget,qualityInspectionCorrectiveTargets,qualityJobInspectionTarget,qualityJobCorrectiveTarget,qualityJobFollowupTarget,renderJobQualityEvidence,renderJobRegisterInspectionEvidence} from "./quality-case-view.mjs";
 import {contextActions,contextRelated} from "./context-actions.mjs";
 import {readFileSync} from "node:fs";
 import test from "node:test";
@@ -491,7 +491,7 @@ test("job routing evidence opens only uniquely linked fictional inspections, inc
   assert.equal(html.split(button(first)).length-1,1);
   assert.equal(state.quality[0].inspections.length,2,"read-only job links cannot write evidence");
   assert.match(readFileSync(new URL("./app.mjs",import.meta.url),"utf8"),
-    /if\(action==="job-quality-inspection"\|\|action==="job-quality-corrective"\)/);
+    /if\(\["job-quality-inspection","job-quality-corrective","job-quality-followup"\]\.includes\(action\)\)/);
 });
 
 test("work-order register reveals only uniquely linked inspections and reuses canonical case links",()=>{
@@ -562,6 +562,43 @@ test("canonical work-order corrective evidence is reachable without guessing or 
   assert.equal(renderJobQualityEvidence(state,"sample-1001").split(button(second)).length-1,1);
   assert.equal(state.quality[0].correctiveActions.length,2,"navigation is read-only");
   const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
-  assert.match(app,/if\(action==="job-quality-inspection"\|\|action==="job-quality-corrective"\)/);
+  assert.match(app,/if\(\["job-quality-inspection","job-quality-corrective","job-quality-followup"\]\.includes\(action\)\)/);
   assert.match(app,/qualityJobCorrectiveTarget\(state,button.dataset.job,button.dataset.case,id\)/);
+});
+
+test("work-order follow-up links preserve exact post-closure evidence from routing and register",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic fictional case review",t);
+  const caseId=state.quality[0].id;
+  state=recordQualityFollowup(state,caseId,"Synthetic initial follow-up",t);
+  state=recordQualityDisposition(state,caseId,"SCRAP","Synthetic reviewed disposition",u);
+  state=closeReviewedQuality(state,caseId,u);
+  state=recordQualityFollowup(state,caseId,"Synthetic post-closure follow-up",u);
+  const [first,second]=state.quality[0].followUps.map(item=>item.id);
+  const expected={caseId,jobId:"sample-1001",kind:"followup",id:second};
+  assert.deepEqual(qualityJobFollowupTarget(state,"sample-1001",caseId,second),expected);
+  assert.equal(qualityJobFollowupTarget(state,"sample-1002",caseId,second),null);
+  assert.equal(qualityJobFollowupTarget(state,"sample-1001",caseId,"missing"),null);
+  assert.equal(qualityJobFollowupTarget(state,"sample-1001",caseId,undefined),null);
+  const button=id=>'data-action="job-quality-followup" data-case="'+caseId+
+    '" data-job="sample-1001" data-id="'+id+'"';
+  const routing=renderJobQualityEvidence(state,"sample-1001");
+  assert.equal(routing.split(button(first)).length-1,1);
+  assert.equal(routing.split(button(second)).length-1,1);
+  const register=renderJobRegisterInspectionEvidence(state,"sample-1001");
+  assert.match(register,/<summary>Quality evidence \(2\)<\/summary>/);
+  assert.equal(register.split(button(second)).length-1,1);
+  assert.equal(renderJobRegisterInspectionEvidence(state,"sample-1002"),"");
+  const duplicate=structuredClone(state);
+  duplicate.quality[0].followUps.push({...duplicate.quality[0].followUps[0]});
+  assert.equal(qualityJobFollowupTarget(duplicate,"sample-1001",caseId,first),null);
+  assert.ok(!renderJobQualityEvidence(duplicate,"sample-1001").includes(button(first)));
+  const duplicateCase=structuredClone(state);
+  duplicateCase.quality.push({...structuredClone(state.quality[0]),jobId:"sample-1002"});
+  assert.equal(qualityJobFollowupTarget(duplicateCase,"sample-1001",caseId,second),null);
+  assert.equal(renderJobRegisterInspectionEvidence(duplicateCase,"sample-1001"),"");
+  const missingJob=structuredClone(state);missingJob.jobs=[];
+  assert.equal(qualityJobFollowupTarget(missingJob,"sample-1001",caseId,second),null);
+  assert.equal(state.quality[0].followUps.length,2,"navigation cannot append evidence");
+  const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
+  assert.match(app,/qualityJobFollowupTarget\(state,button.dataset.job,button.dataset.case,id\)/);
 });
