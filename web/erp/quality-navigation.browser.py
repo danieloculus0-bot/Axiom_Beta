@@ -98,6 +98,22 @@ def main():
                 ).click()
                 assert disposition_receipt.evaluate("el => document.activeElement === el")
 
+                # The corrective receipt and case chronology must reach the
+                # SAME existing review form after closure without writing evidence.
+                review_handoffs = panel.locator(
+                    f'button[data-action="quality-corrective-review"][data-case="{case_id}"][data-id="{corrective_id}"]'
+                )
+                assert review_handoffs.count() == 2, "Both entry points should target one corrective action"
+                review_note = page.locator('form[data-form="quality-effectiveness"] textarea[name="note"]')
+                for handoff in (review_handoffs.first, review_handoffs.last):
+                    handoff.click()
+                    assert review_note.evaluate("el => document.activeElement === el")
+                    assert panel.get_attribute("data-case-id") == case_id
+                    expect(page.locator("#job-context")).to_have_value(job_id)
+                    assert panel.locator('[data-evidence-kind="effectiveness"]').count() == 0, (
+                        "Review navigation must not create evidence before submission"
+                    )
+
                 page.locator('form[data-form="quality-effectiveness"] textarea[name="note"]').fill(
                     "Synthetic post-closure effectiveness review"
                 )
