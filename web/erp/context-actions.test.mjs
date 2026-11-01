@@ -128,7 +128,7 @@ test("ambiguous NCR IDs cannot redirect Open with, register, work-order link or 
  assert.equal(uniqueQualityCase(state,""),null);
  assert.equal(uniqueQualityCase(state,"not-an-id"),null);
  // A valid second case still navigates normally if an unrelated record is corrupt.
- const valid=raiseQuality(duplicate,second.id,"Illustrative separate observation");
+ const valid=raiseQuality(duplicate,second.id,"Generic drawing revision conflict");
  assert.equal(uniqueQualityCase(valid,valid.quality.at(-1).id)?.jobId,second.id);
  assert.equal(jobQualityTarget(valid,second.id)?.caseId,valid.quality.at(-1).id);
 });
