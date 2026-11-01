@@ -339,6 +339,57 @@ def browser_test() -> None:
                     return localStorage.getItem(ERP_KEY);
                 }"""), "Rejected scenario must not write ERP state"
 
+                # Browser-level regression for conservative placeholder scenarios.
+                # A placeholder is a labeled assumption, never a scheduled job.
+                capacity_form.locator('input[name="scenario-placeholder"]').check()
+                for field in ("calendarHours", "bookedHours", "queuedHours"):
+                    capacity_form.locator(f'input[name="scenario-{field}"]').fill("")
+                capacity_form.locator('button[type="submit"]').click()
+                placeholder_text = page.locator("#routing-capacity-result").inner_text()
+                for expected in (
+                    "PLACEHOLDER_ASSISTED",
+                    "calendarHours: PLACEHOLDER",
+                    "bookedHours: PLACEHOLDER",
+                    "queuedHours: PLACEHOLDER",
+                    "available 3.75 hours",
+                    "utilization 37.5%",
+                    "No alternate routing proposed or saved",
+                ):
+                    assert expected in placeholder_text, (expected, placeholder_text)
+                assert capacity_form.locator('input[name="scenario-calendarHours"]').input_value() == ""
+
+                # An explicit planner override changes only that field's origin.
+                capacity_form.locator('input[name="scenario-bookedHours"]').fill("1")
+                capacity_form.locator('button[type="submit"]').click()
+                mixed_text = page.locator("#routing-capacity-result").inner_text()
+                for expected in (
+                    "calendarHours: PLACEHOLDER",
+                    "bookedHours: MANUAL",
+                    "queuedHours: PLACEHOLDER",
+                    "available 4.25 hours",
+                ):
+                    assert expected in mixed_text, (expected, mixed_text)
+
+                # Reset to unknown rather than silently treating blanks as zero.
+                capacity_form.locator('input[name="scenario-placeholder"]').uncheck()
+                capacity_form.locator('input[name="scenario-calendarHours"]').fill("8")
+                capacity_form.locator('input[name="scenario-bookedHours"]').fill("")
+                capacity_form.locator('input[name="scenario-queuedHours"]').fill("")
+                capacity_form.locator('button[type="submit"]').click()
+                unknown_origin_text = page.locator("#routing-capacity-result").inner_text()
+                for expected in (
+                    "calendarHours: MANUAL",
+                    "bookedHours: UNKNOWN",
+                    "queuedHours: UNKNOWN",
+                    "available UNKNOWN hours",
+                    "utilization UNKNOWN%",
+                ):
+                    assert expected in unknown_origin_text, (expected, unknown_origin_text)
+                assert scenario_before == page.evaluate("""async () => {
+                    const {ERP_KEY} = await import('./engine.mjs');
+                    return localStorage.getItem(ERP_KEY);
+                }"""), "Placeholder, manual and unknown reviews must not write ERP state"
+
                 page.reload(wait_until="domcontentloaded")
                 assert page.locator("#routing-capacity-result").count() == 0
                 capacity_form = page.locator('form[data-form="routing-capacity-review"]')
