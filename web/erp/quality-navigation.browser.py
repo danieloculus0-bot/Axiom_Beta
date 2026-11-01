@@ -889,8 +889,7 @@ def main():
                 register_case = page.locator(
                     f'button[data-action="job-quality-case"][data-id="{case_id}"][data-job="{job_id}"]'
                 )
-                register_case.evaluate("el => el.dataset.job = 'wrong-job'")
-                register_case.click()
+                register_case.evaluate("el => { el.dataset.job = 'wrong-job'; el.click(); }")
                 assert page.url.endswith("#jobs"), "Stale job binding must not redirect"
                 # Duplicate canonical IDs are ambiguous even if the visible
                 # numbers differ. Neither register nor right-click may guess.
