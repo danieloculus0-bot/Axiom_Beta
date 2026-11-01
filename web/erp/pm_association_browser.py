@@ -492,8 +492,118 @@ def browser_test() -> None:
                 assert page.locator("#routing-capacity-result").count() == 0, (
                     "Clock OUT must invalidate stale routing evidence"
                 )
+
+                # Chromium handoff: explicit cancel and save using only the
+                # existing fictional PM, capacity and routing UI controls.
+                # This second browser context starts from untouched demo data.
+                handoff_context = browser.new_context()
+                try:
+                    handoff_page = handoff_context.new_page()
+                    handoff_page.goto(url, wait_until="domcontentloaded")
+                    pm_completion = handoff_page.locator('form[data-form="pm-complete"]')
+                    pm_completion.wait_for(state="visible")
+                    pm_completion.locator('select[name="task"]').select_option("DEMO-PM-001")
+                    pm_completion.locator('input[name="confirmed"]').check()
+                    pm_completion.locator('button[type="submit"]').click()
+                    assert "DEMO-COMP-0001" in handoff_page.locator("#view").inner_text()
+
+                    pm_link = handoff_page.locator(FORM)
+                    pm_link.locator('select[name="center"]').select_option("DEMO-CUT")
+                    pm_link.locator('input[name="source"]').fill("SYN-HANDOFF-PM-001")
+                    pm_link.locator('input[name="confirmed"]').check()
+                    pm_link.locator('button[type="submit"]').click()
+                    assert "DEMO-CUT" in handoff_page.locator("#view").inner_text()
+
+                    handoff_page.evaluate("location.hash='#routing'")
+                    handoff_page.locator('form[data-form="routing-capacity-review"]').wait_for(state="visible")
+
+                    def review_eligible_handoff() -> None:
+                        form = handoff_page.locator('form[data-form="routing-capacity-review"]')
+                        details = form.locator("details")
+                        if details.get_attribute("open") is None:
+                            details.locator("summary").click()
+                        form.locator('input[name="scenario-enabled"]').check()
+                        form.locator('select[name="scenario-capability"]').select_option("supported")
+                        for name, value in {
+                            "capability-ref": "SYN-HANDOFF-CAP-001",
+                            "calendarHours": "8", "bookedHours": "1",
+                            "queuedHours": "1", "maintenanceHours": "0",
+                            "setupHours": "1", "runHours": "2",
+                            "capacity-ref": "SYN-HANDOFF-CAL-001",
+                            "readiness-ref": "SYN-HANDOFF-READY-001",
+                            "routedOperationCount": "0",
+                        }.items():
+                            form.locator(f'input[name="scenario-{name}"]').fill(value)
+                        for name, value in {
+                            "maintenanceState": "CLEAR", "tooling": "READY",
+                            "fixture": "READY", "material": "READY",
+                            "deliveryState": "ON_TIME",
+                        }.items():
+                            form.locator(f'select[name="scenario-{name}"]').select_option(value)
+                        form.locator('select[name="step"]').select_option("10")
+                        form.locator('select[name="center"]').select_option("DEMO-CUT")
+                        form.locator('input[name="window-start"]').fill("2026-11-02T08:00")
+                        form.locator('input[name="window-end"]').fill("2026-11-02T16:00")
+                        assert form.evaluate("element => element.checkValidity()")
+                        form.locator('button[type="submit"]').click()
+                        result = handoff_page.locator("#routing-capacity-result")
+                        assert "SCENARIO_ELIGIBLE" in result.inner_text(), result.inner_text()
+                        handoff_page.locator(
+                            '[data-action="routing-use-capacity-draft"]'
+                        ).wait_for(state="visible")
+
+                    def stored_routing():
+                        return handoff_page.evaluate("""async () => {
+                            const {ERP_KEY} = await import('./engine.mjs');
+                            const state = JSON.parse(localStorage.getItem(ERP_KEY));
+                            return {
+                                raw: localStorage.getItem(ERP_KEY),
+                                routing: state.jobs[0].routing,
+                                events: state.events.map(event => event.type)
+                            };
+                        }""")
+
+                    review_eligible_handoff()
+                    original = stored_routing()
+                    assert original["routing"]["operations"][0]["center"] == "LASER-01"
+                    handoff_page.locator('[data-action="routing-use-capacity-draft"]').click()
+                    editor = handoff_page.locator("#routing-editor-form")
+                    assert editor.count() == 1
+                    assert editor.locator('select[name="center-0"]').input_value() == "DEMO-CUT"
+                    assert "UNSAVED scenario suggestion" in handoff_page.locator("#view").inner_text()
+                    assert handoff_page.locator("#routing-capacity-result").count() == 0
+                    assert stored_routing()["raw"] == original["raw"], (
+                        "Opening a proposed routing must not persist it"
+                    )
+                    handoff_page.locator('[data-action="routing-cancel"]').click()
+                    assert handoff_page.locator("#routing-editor-form").count() == 0
+                    assert stored_routing()["raw"] == original["raw"], (
+                        "Cancel must leave canonical routing and event history unchanged"
+                    )
+
+                    review_eligible_handoff()
+                    handoff_page.locator('[data-action="routing-use-capacity-draft"]').click()
+                    editor = handoff_page.locator("#routing-editor-form")
+                    editor.locator('input[name="name-0"]').fill("Synthetic alternate cut review")
+                    assert stored_routing()["raw"] == original["raw"]
+                    handoff_page.locator('button[form="routing-editor-form"]').click()
+                    saved = stored_routing()
+                    assert saved["routing"]["operations"][0]["center"] == "DEMO-CUT"
+                    assert saved["routing"]["operations"][0]["name"] == "Synthetic alternate cut review"
+                    assert saved["routing"]["operations"][1:] == original["routing"]["operations"][1:]
+                    assert saved["routing"]["reviewState"] == "REVIEW_REQUIRED"
+                    assert saved["routing"]["source"] == "BROWSER-LOCAL ROUTING DRAFT"
+                    assert saved["routing"]["history"][-1]["kind"] == "DRAFT_EDIT"
+                    assert saved["events"] == original["events"] + ["routing.draft_edited"]
+                    assert handoff_page.locator("#routing-editor-form").count() == 0
+                    handoff_page.reload(wait_until="domcontentloaded")
+                    assert stored_routing()["routing"]["operations"][0]["center"] == "DEMO-CUT"
+                    assert "REVIEW_REQUIRED" in handoff_page.locator("#view").inner_text()
+                finally:
+                    handoff_context.close()
+
                 context.close()
-                print("PASS: Chromium PM lifecycle and read-only routing capacity scenario")
+                print("PASS: Chromium PM lifecycle, capacity review, and explicit routing handoff cancel/save")
             finally:
                 browser.close()
     finally:
