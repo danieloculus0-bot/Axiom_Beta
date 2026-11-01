@@ -203,6 +203,22 @@ export function qualityJobInspectionTarget(state,jobId,caseId,inspectionId){
   if(observations.filter(item=>item?.id===inspectionId).length!==1)return null;
   return {caseId,jobId,kind:"inspection",id:inspectionId};
 }
+/* Resolve a corrective action from a work order only when the fictional job,
+ * NCR and action IDs each identify one canonical record. Historical closed
+ * cases remain readable, but ambiguous legacy evidence is never guessed.
+ */
+export function qualityJobCorrectiveTarget(state,jobId,caseId,actionId){
+  if(typeof jobId!=="string"||!jobId||typeof caseId!=="string"||!caseId||
+     typeof actionId!=="string"||!actionId)return null;
+  if(!Array.isArray(state?.jobs)||state.jobs.filter(job=>job?.id===jobId).length!==1||
+     !Array.isArray(state?.quality))return null;
+  const cases=state.quality.filter(record=>record?.id===caseId);
+  if(cases.length!==1||cases[0].jobId!==jobId||
+     !["OPEN","CLOSED"].includes(cases[0].status))return null;
+  const actions=Array.isArray(cases[0].correctiveActions)?cases[0].correctiveActions:[];
+  if(actions.filter(item=>item?.id===actionId).length!==1)return null;
+  return {caseId,jobId,kind:"corrective",id:actionId};
+}
 /* Direct links preserve the exact NCR identity, including closed cases.
  * No links are offered for a job without linked quality records.
  */
@@ -221,6 +237,12 @@ export function renderJobQualityEvidence(state,jobId){
         return target?'<button type="button" class="action secondary" data-action="job-quality-inspection" data-case="'+
           h(target.caseId)+'" data-job="'+h(target.jobId)+'" data-id="'+h(target.id)+
           '">Inspection step '+h(inspection.step)+' · '+h(inspection.result)+'</button>':"";
+      }).join(" "):"")+
+      (Array.isArray(record.correctiveActions)?" "+record.correctiveActions.map((action,index)=>{
+        const target=qualityJobCorrectiveTarget(state,jobId,record.id,action?.id);
+        return target?'<button type="button" class="action secondary" data-action="job-quality-corrective" data-case="'+
+          h(target.caseId)+'" data-job="'+h(target.jobId)+'" data-id="'+h(target.id)+
+          '">Corrective action '+h(index+1)+' · '+h(action.ownerRole)+'</button>':"";
       }).join(" "):"")+'</div>';
   }).join("")+'</div>';
 }
@@ -362,10 +384,13 @@ export function renderJobRegisterInspectionEvidence(state,jobId){
   if(!Array.isArray(state?.quality))return "";
   const count=state.quality.reduce((total,record)=>{
     if(record?.jobId!==jobId||!Array.isArray(record.inspections))return total;
-    return total+record.inspections.filter(item=>
+    const inspections=record.inspections.filter(item=>
       qualityJobInspectionTarget(state,jobId,record.id,item?.id)).length;
+    const actions=(Array.isArray(record.correctiveActions)?record.correctiveActions:[])
+      .filter(item=>qualityJobCorrectiveTarget(state,jobId,record.id,item?.id)).length;
+    return total+inspections+actions;
   },0);
   if(!count)return "";
-  return '<details class="job-inspection-details"><summary>Inspections ('+count+')</summary>'+
+  return '<details class="job-inspection-details"><summary>Quality evidence ('+count+')</summary>'+
     renderJobQualityEvidence(state,jobId)+'</details>';
 }
