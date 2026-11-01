@@ -658,9 +658,9 @@ test("effectiveness evidence links back to its exact parent corrective action fr
     assert.equal(qualityEffectivenessParentTarget(state.quality[1],reviewId),null);
     assert.equal(qualityEffectivenessParentTarget(q,unrelatedAction.id),null);
     const html=renderQualityCase(state,caseId);
-    const reviewReceipt=html.match(new RegExp('data-evidence-kind="effectiveness" data-evidence-id="'+reviewId+'"[^]*?</div>'));
-    assert.ok(reviewReceipt,"Review receipt must remain addressable");
-    assert.ok(reviewReceipt[0].includes('data-kind="corrective" data-id="'+action.id+'"'));
+    const receiptAt=html.indexOf('data-evidence-kind="effectiveness" data-evidence-id="'+reviewId+'"');
+    assert.ok(receiptAt>=0,"Review receipt must remain addressable");
+    assert.ok(html.slice(receiptAt,receiptAt+650).includes('data-kind="corrective" data-id="'+action.id+'"'));
     const entry=qualityCaseTimeline(q).find(item=>item.kind==="effectiveness"&&item.sourceId===reviewId);
     assert.ok(entry);
     assert.ok(html.includes('data-kind="effectiveness" data-id="'+reviewId+'"'));
