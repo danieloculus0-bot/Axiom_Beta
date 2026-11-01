@@ -879,16 +879,19 @@ def main():
                     f'button[data-action="job-quality-case"][data-id="{case_id}"][data-job="{job_id}"]'
                 )
                 expect(register_case).to_have_count(1)
-                register_case.evaluate("el => el.dataset.job = 'wrong-job'")
                 register_case.click()
-                assert page.url.endswith("#jobs"), "Stale job binding must not redirect"
-                page.locator(".job-inspection-details summary").click()
-                page.locator(
-                    f'button[data-action="job-quality-case"][data-id="{case_id}"][data-job="{job_id}"]'
-                ).click()
                 page.wait_for_function("location.hash === '#quality'")
                 expect(panel).to_have_attribute("data-case-id", case_id)
                 expect(page.locator("#job-context")).to_have_value(job_id)
+                page.locator('#module-nav a[data-nav="jobs"]').click()
+                page.wait_for_function("location.hash === '#jobs'")
+                page.locator(".job-inspection-details summary").click()
+                register_case = page.locator(
+                    f'button[data-action="job-quality-case"][data-id="{case_id}"][data-job="{job_id}"]'
+                )
+                register_case.evaluate("el => el.dataset.job = 'wrong-job'")
+                register_case.click()
+                assert page.url.endswith("#jobs"), "Stale job binding must not redirect"
                 # Duplicate canonical IDs are ambiguous even if the visible
                 # numbers differ. Neither register nor right-click may guess.
                 page.evaluate("""({originalId, otherId}) => {
