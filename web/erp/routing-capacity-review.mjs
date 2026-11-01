@@ -13,20 +13,24 @@ const localStamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 const fail = message => {throw Error(message);};
 const syntheticRef = x => typeof x === "string" && /^SYN-[A-Z0-9-]{1,60}$/.test(x);
 const roundHours = n => Math.round(n * 100) / 100;
-/** One fictional shift maximum; 25% interruption buffer is subtracted once
- * from nominal capacity before separate hypothetical booked/queued load.
+/** One fictional shift maximum. An editable interruption allowance is taken
+ * once from nominal capacity; booked/queued assumptions are separate.
  */
-export function conservativeCapacityPlaceholders(startLocal,endLocal) {
+export function conservativeCapacityPlaceholders(startLocal,endLocal,bufferPercent=25) {
   if(!localStamp.test(startLocal)||!localStamp.test(endLocal))fail("Enter a valid fictional planning window.");
+  if(typeof bufferPercent!=="number"||!Number.isFinite(bufferPercent)||
+     bufferPercent<0||bufferPercent>90)
+    fail("Fictional interruption allowance must be between 0 and 90 percent.");
   const duration=(new Date(endLocal)-new Date(startLocal))/3600000;
   if(!Number.isFinite(duration)||duration<=0)fail("Planning window must have positive duration.");
   const nominalHours=Math.min(8,duration);
-  const calendarHours=roundHours(nominalHours*0.75);
+  const calendarHours=roundHours(nominalHours*(1-bufferPercent/100));
   if(calendarHours<=0)fail("Planning window is too short for rounded scenario hours.");
   return {nominalHours:roundHours(nominalHours),calendarHours,
     bookedHours:roundHours(calendarHours*0.25),
     queuedHours:roundHours(calendarHours*0.125),
-    basis:"FICTIONAL one-shift estimate: 25% interruption buffer; 25% booked and 12.5% queued of effective hours."};
+    bufferPercent,
+    basis:"FICTIONAL one-shift estimate: "+bufferPercent+"% interruption allowance; 25% booked and 12.5% queued of effective hours."};
 }
 // Caller-supplied scenario assertions are never verified, persisted or auto-applied.
 function scopedScenarioCenter(e,job,op,id,startLocal,endLocal){
@@ -44,7 +48,8 @@ function scopedScenarioCenter(e,job,op,id,startLocal,endLocal){
   const allowed=["capability","calendarHours","bookedHours","queuedHours",
     "maintenanceHours","setupHours","runHours","capacitySourceRef",
     "readinessSourceRef","maintenanceState","tooling","fixture","material",
-    "deliveryState","routedOperationCount","capacityEstimateType","capacityHourSources"];
+    "deliveryState","routedOperationCount","capacityEstimateType","capacityHourSources",
+     "placeholderBufferPercent"];
   if(!c || typeof c!=="object" || Array.isArray(c) ||
       Object.keys(c).some(k=>!allowed.includes(k)))
     fail("Scenario center contains unsupported or missing evidence fields.");
@@ -63,6 +68,12 @@ function scopedScenarioCenter(e,job,op,id,startLocal,endLocal){
         (c.capacityEstimateType==="PLACEHOLDER_ASSISTED")))
       fail("Capacity hour provenance must match supplied values and estimate type.");
   }
+  if(c.placeholderBufferPercent!==undefined &&
+     (c.capacityHourSources?.calendarHours!=="PLACEHOLDER" ||
+      typeof c.placeholderBufferPercent!=="number" ||
+      !Number.isFinite(c.placeholderBufferPercent) ||
+      c.placeholderBufferPercent<0 || c.placeholderBufferPercent>90))
+    fail("Placeholder interruption allowance must be 0 to 90 percent and apply only to placeholder calendar hours.");
   const cap=c.capability;
   if(!cap || typeof cap!=="object" || Array.isArray(cap) ||
       Object.keys(cap).some(k=>!["operation","supported","sourceRef"].includes(k)) ||
@@ -109,7 +120,13 @@ export function readRoutingCapacityScenario(fields,job,step,centerId,startLocal,
     return n;
   };
   const placeholderMode=fields.has("scenario-placeholder");
-  const suggested=placeholderMode?conservativeCapacityPlaceholders(startLocal,endLocal):null;
+  const bufferRaw=get("bufferPercent");
+  const bufferPercent=bufferRaw===""?25:Number(bufferRaw);
+  if(placeholderMode &&
+     (bufferRaw!==""&&!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(bufferRaw) ||
+      !Number.isFinite(bufferPercent)||bufferPercent<0||bufferPercent>90))
+    fail("Fictional interruption allowance must be between 0 and 90 percent.");
+  const suggested=placeholderMode?conservativeCapacityPlaceholders(startLocal,endLocal,bufferPercent):null;
   const calendarInput=hour("calendarHours",placeholderMode);
   const calendarHours=calendarInput??suggested?.calendarHours;
   const bookedInput=hour("bookedHours",true),queuedInput=hour("queuedHours",true);
@@ -146,6 +163,7 @@ export function readRoutingCapacityScenario(fields,job,step,centerId,startLocal,
       "SYN-PLACEHOLDER-ONE-SHIFT":source("capacity-ref"),
     capacityEstimateType:usedPlaceholder?"PLACEHOLDER_ASSISTED":"MANUAL",
     capacityHourSources,
+    ...(capacityHourSources.calendarHours==="PLACEHOLDER"?{placeholderBufferPercent:bufferPercent}:{}),
     readinessSourceRef:source("readiness-ref"),...readiness
   };
   if(count!=="")center.routedOperationCount=Number(count);
@@ -197,8 +215,13 @@ export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, sta
   const capacityAssessment=result.assessments.find(item=>item.center===centerId);
   if(capacityAssessment && center.capacityEstimateType){
     capacityAssessment.capacityEstimateType=center.capacityEstimateType;
-    if(center.capacityEstimateType==="PLACEHOLDER_ASSISTED")
-      capacityAssessment.notes.push("PLACEHOLDER-ASSISTED: one fictional shift, 25% capacity buffer, 25% booked and 12.5% queued assumptions when blank; review actual load.");
+    if(center.capacityEstimateType==="PLACEHOLDER_ASSISTED") {
+      const calendarBasis=center.capacityHourSources?.calendarHours==="PLACEHOLDER" ?
+        "one fictional shift, "+(center.placeholderBufferPercent??25)+"% interruption allowance; " :
+        "manually entered effective calendar hours (no added interruption buffer); ";
+      capacityAssessment.notes.push("PLACEHOLDER-ASSISTED: "+calendarBasis+
+        "25% booked and 12.5% queued estimates only when blank; review actual load.");
+    }
     else capacityAssessment.notes.push("MANUAL scenario hours; not independently verified.");
     for(const suggestion of result.suggestions)
       if(suggestion.center===centerId)suggestion.capacityEstimateType=center.capacityEstimateType;
@@ -291,12 +314,13 @@ export function routingCapacityEvidenceHtml(job, review = null) {
     '<label><input type="checkbox" name="scenario-placeholder" value="yes"'+
       (scenario?.capacityEstimateType==="PLACEHOLDER_ASSISTED"?' checked':'')+
       '> Use conservative placeholders for blank capacity/booked/queued hours</label>'+
-    '<p class="small">Optional fictional one-shift assumption: at most 8 nominal hours, 25% interruption allowance, then hypothetical booked 25% and queued 12.5% of effective hours. Enter hours manually to override. PM downtime and setup/run time still require explicit input. NOT actual scheduled hours.</p>'+
+    '<p class="small">Optional fictional one-shift assumption: at most 8 nominal hours, editable interruption allowance (25% default), then hypothetical booked 25% and queued 12.5% of effective hours. Allowance applies only to a blank calendar-hour field; manual calendar hours are already effective hours. PM downtime and setup/run time still require explicit input. NOT actual scheduled hours.</p>'+
     '<div class="controls">'+
     pick("capability","Operation capability",["","supported","unsupported"],
       scenario?.capability?.supported===true?"supported":scenario?.capability?.supported===false?"unsupported":"")+
     ref("capability-ref","Capability source",scenario?.capability?.sourceRef)+
-    num("calendarHours","Calendar hours")+num("bookedHours","Booked hours (blank = UNKNOWN)")+
+    '<label>Interruption allowance % (blank calendar only)<input type="number" min="0" max="90" step="any" name="scenario-bufferPercent" value="'+h(scenario?.placeholderBufferPercent??25)+'"></label>'+
+    num("calendarHours","Effective planning hours")+num("bookedHours","Booked hours (blank = UNKNOWN)")+
     num("queuedHours","Queued hours (blank = UNKNOWN)")+num("maintenanceHours","PM downtime hours")+
     num("setupHours","Setup hours")+num("runHours","Run hours")+
     ref("capacity-ref","Capacity source",scenario?.capacitySourceRef)+
