@@ -459,3 +459,38 @@ test("positive total operation time remains eligible with a zero setup or run co
     assert.equal(r.suggestions[0].canAutoApply,false);
   }
 });
+
+test("direct capacity advisor rejects false idle claims against the selected job's existing operations",()=>{
+  const j=job();
+  j.routing.operations.push({step:"30",name:"Fictional finishing",center:"LASER-01",
+    instructions:["Illustrative only"],check:"Sample check"});
+  const before=structuredClone(j),c=center(),centerBefore=structuredClone(c);
+  const review=assessAlternateCenters(j,"10",scenario(c));
+  assert.equal(review.assessments[0].status,"NEEDS_REVIEW");
+  assert.equal(review.assessments[0].idleCandidate,false);
+  assert.match(review.assessments[0].unknown.join(" "),/contradicts this job's existing routing/);
+  assert.equal(review.suggestions.length,0);
+  const truthful=center();truthful.routedOperationCount=1;
+  const allowed=assessAlternateCenters(j,"10",scenario(truthful));
+  assert.equal(allowed.suggestions.length,1);
+  assert.equal(allowed.suggestions[0].idleCandidate,false);
+  assert.equal(allowed.suggestions[0].canAutoApply,false);
+  assert.deepEqual(j,before);assert.deepEqual(c,centerBefore);
+});
+
+test("malformed routed-operation counts fail review while omitted counts remain nonblocking",()=>{
+  for(const count of [-1,0.5,"0",null]){
+    const c=center();c.routedOperationCount=count;
+    const result=assess(c);
+    assert.equal(result.assessments[0].status,"NEEDS_REVIEW");
+    assert.equal(result.assessments[0].idleCandidate,false);
+    assert.match(result.assessments[0].unknown.join(" "),/invalid or contradicts/);
+    assert.equal(result.suggestions.length,0);
+  }
+  const omitted=center();delete omitted.routedOperationCount;
+  const result=assess(omitted);
+  assert.equal(result.assessments[0].status,"SCENARIO_ELIGIBLE");
+  assert.equal(result.assessments[0].idleCandidate,false);
+  assert.equal(result.suggestions.length,1);
+  assert.equal(result.suggestions[0].canAutoApply,false);
+});

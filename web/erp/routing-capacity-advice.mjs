@@ -195,7 +195,15 @@ export function assessAlternateCenters(job, step, scenario) {
         unknown.push("Both setup and run hours are zero; required operation time is UNKNOWN pending review.");
       }
     }
-    const idleCandidate = center.routedOperationCount === 0;
+    // A caller's claimed idle count must not contradict operations already
+    // present on this canonical job, even when no all-jobs snapshot is supplied.
+    // This is a lower bound, NOT a dated work-center schedule.
+    const sameJobRoutedCount = job.routing.operations.filter(op => op.center === center.id).length;
+    const reportedCount = center.routedOperationCount;
+    if (reportedCount !== undefined &&
+        (!Number.isSafeInteger(reportedCount) || reportedCount < sameJobRoutedCount))
+      unknown.push("Reported routed-operation count is invalid or contradicts this job's existing routing; idle status is UNKNOWN.");
+    const idleCandidate = reportedCount === 0 && sameJobRoutedCount === 0;
     if (idleCandidate)
       notes.push("No routed operations reported; independently supplied capacity still required.");
     if (center.programLink)
