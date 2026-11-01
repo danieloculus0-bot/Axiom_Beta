@@ -230,7 +230,7 @@ test("incomplete reservation suppresses an otherwise eligible fictional alternat
     at:"2026-11-01T10:00:00Z"
   }).pm;
   e.scope.centerId="DEMO-CUT";
-  const baseline=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e);
+  const baseline=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e,[]);
   assert.equal(baseline.assessment.pmEvidence.status,"NO_RECORDED_ALERTS");
   assert.equal(baseline.result.suggestions.length,1);
   state.jobs[0].reserved=job.quantity-1;
@@ -258,7 +258,7 @@ function packetReadyAlternate(){
 }
 test("canonical drawing revision mismatch suppresses otherwise eligible alternate",()=>{
   const {state,job,e}=packetReadyAlternate();
-  assert.equal(inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e).result.suggestions.length,1);
+  assert.equal(inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e,[]).result.suggestions.length,1);
   job.drawing.revision="A";
   const before=structuredClone(state);
   const review=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e);
@@ -276,7 +276,7 @@ test("canonical open quality hold blocks alternate; closed hold does not",()=>{
   assert.equal(blocked.result.suggestions.length,0);
   assert.match(blocked.assessment.unknown.join(" "),/Open quality hold/);
   state.quality[0].status="CLOSED";
-  const reviewed=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e);
+  const reviewed=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e,[]);
   assert.equal(reviewed.result.suggestions.length,1);
   assert.equal(reviewed.result.canAutoApply,false);
 });
@@ -330,11 +330,26 @@ test("malformed EWI session collection is rejected rather than assumed empty",()
     /EWI sessions must be an array/);
 });
 
+test("missing EWI session snapshot stays UNKNOWN instead of silently implying no clock history",()=>{
+  const {state,job,e}=packetReadyAlternate(),before=structuredClone(state);
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e);
+  assert.equal(review.clockHistoryCount,null);
+  assert.equal(review.assessment.status,"NEEDS_REVIEW");
+  assert.equal(review.result.suggestions.length,0);
+  assert.match(review.assessment.unknown.join(" "),/clock history was not supplied/);
+  assert.match(routingCapacityEvidenceHtml(job,review),/NOT CHECKED/);
+  const checked=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e,[]);
+  assert.equal(checked.clockHistoryCount,0);
+  assert.equal(checked.result.suggestions.length,1);
+  assert.equal(checked.result.canAutoApply,false);
+  assert.deepEqual(state,before);
+});
+
 test("aggregate fictional reservations exceeding on-hand stock suppress otherwise eligible alternate",()=>{
   const {state,job,e}=packetReadyAlternate();
   const item=state.items.find(item=>item.id===job.materialId);
   assert.equal(item.onHand,70);
-  assert.equal(inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e).result.suggestions.length,1);
+  assert.equal(inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e,[]).result.suggestions.length,1);
   item.onHand=47; // Two fictional jobs reserve 36 + 12 = 48 units.
   const before=structuredClone(state),eBefore=structuredClone(e);
   const review=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e);
@@ -345,7 +360,7 @@ test("aggregate fictional reservations exceeding on-hand stock suppress otherwis
   assert.deepEqual(state,before);
   assert.deepEqual(e,eBefore);
   item.onHand=48;
-  assert.equal(inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e).result.suggestions.length,1);
+  assert.equal(inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e,[]).result.suggestions.length,1);
 });
 test("missing or invalid fictional stock quantities stay UNKNOWN rather than implying readiness",()=>{
   const {state,job,e}=packetReadyAlternate();
@@ -361,7 +376,7 @@ test("missing or invalid fictional stock quantities stay UNKNOWN rather than imp
 test("shortage of unrelated fictional material does not block selected job",()=>{
   const {state,job,e}=packetReadyAlternate();
   state.items.find(item=>item.id==="MAT-BAR").onHand=0;
-  const review=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e);
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e,[]);
   assert.equal(review.result.suggestions.length,1);
   assert.equal(review.result.canAutoApply,false);
 });
