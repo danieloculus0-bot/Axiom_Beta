@@ -1,5 +1,5 @@
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction} from "./quality-case.mjs";
-import {renderQualityCase,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEffectivenessInspectionTarget,qualityCorrectiveInspectionTarget} from "./quality-case-view.mjs";
+import {renderQualityCase,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEffectivenessInspectionTarget,qualityCorrectiveInspectionTarget,qualityInspectionCorrectiveTargets} from "./quality-case-view.mjs";
 import {contextActions,contextRelated} from "./context-actions.mjs";
 import {readFileSync} from "node:fs";
 import test from "node:test";
@@ -409,4 +409,44 @@ test("corrective receipt and chronology link only an unambiguous source inspecti
     "closed-case chronology remains navigable without reopening the case");
   assert.equal(renderQualityCase(state,caseId).split(receiptLink).length-1,1,
     "closed-case corrective receipt remains navigable");
+});
+
+test("inspection receipt and chronology navigate to the same exact linked corrective actions",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
+  const caseId=state.quality[0].id,step=state.jobs[0].routing.operations[0].step;
+  state=recordQualityInspection(state,caseId,"FIRST_PIECE",step,"FAIL","Synthetic source inspection one",t);
+  state=recordQualityInspection(state,caseId,"IN_PROCESS",step,"PASS","Synthetic source inspection two",u);
+  const [first,second]=state.quality[0].inspections.map(item=>item.id);
+  state=recordQualityCorrectiveAction(state,caseId,"QUALITY","Synthetic linked action one",first,u);
+  state=recordQualityCorrectiveAction(state,caseId,"ENGINEERING","Synthetic linked action two",first,u);
+  state=recordQualityCorrectiveAction(state,caseId,"QUALITY","Synthetic second-inspection action",second,u);
+  state=recordQualityCorrectiveAction(state,caseId,"ENGINEERING","Synthetic case-level action","",u);
+  const record=state.quality[0];
+  const [a,b,c,d]=record.correctiveActions.map(item=>item.id);
+  assert.deepEqual(qualityInspectionCorrectiveTargets(record,first),
+    [{kind:"corrective",id:a},{kind:"corrective",id:b}]);
+  assert.deepEqual(qualityInspectionCorrectiveTargets(record,second),[{kind:"corrective",id:c}]);
+  assert.deepEqual(qualityInspectionCorrectiveTargets(record,"missing-inspection"),[]);
+  assert.deepEqual(qualityInspectionCorrectiveTargets(record,undefined),[]);
+  const link=id=>'data-action="quality-evidence-focus" data-case="'+caseId+
+    '" data-kind="corrective" data-id="'+id+'">View corrective action';
+  let html=renderQualityCase(state,caseId);
+  assert.equal(html.split(link(a)).length-1,2,"receipt and chronology reach action one");
+  assert.equal(html.split(link(b)).length-1,2,"receipt and chronology reach action two");
+  assert.equal(html.split(link(c)).length-1,2,"second inspection reaches only its action");
+  assert.equal(html.split(link(d)).length-1,0,"case-level action has no invented inspection link");
+  const duplicateInspection=structuredClone(record);
+  duplicateInspection.inspections.push({...duplicateInspection.inspections[0]});
+  assert.deepEqual(qualityInspectionCorrectiveTargets(duplicateInspection,first),[]);
+  assert.equal(renderQualityCase({...state,quality:[duplicateInspection]},caseId).split(link(a)).length-1,0);
+  const duplicateAction=structuredClone(record);
+  duplicateAction.correctiveActions.push({...duplicateAction.correctiveActions[0]});
+  assert.deepEqual(qualityInspectionCorrectiveTargets(duplicateAction,first),[{kind:"corrective",id:b}]);
+  assert.equal(renderQualityCase({...state,quality:[duplicateAction]},caseId).split(link(a)).length-1,0);
+  state=recordQualityDisposition(state,caseId,"SCRAP","Synthetic reviewed disposition",u);
+  state=closeReviewedQuality(state,caseId,u);
+  html=renderQualityCase(state,caseId);
+  assert.equal(state.quality[0].status,"CLOSED");
+  assert.equal(html.split(link(a)).length-1,2,"closed-case historical evidence remains navigable");
+  assert.equal(state.quality[0].correctiveActions.length,4,"links do not create actions");
 });
