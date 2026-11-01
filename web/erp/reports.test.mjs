@@ -635,8 +635,8 @@ test("fictional NCR disposition is exact-case evidence with guarded work-order r
 });
 
 test("effectiveness evidence links back to its exact parent corrective action from receipt and chronology",()=>{
-  let state=raiseQuality(seedState(),"sample-1001","Synthetic inspection discrepancy",at);
-  state=raiseQuality(state,"sample-1002","Unrelated synthetic case",later);
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
+  state=raiseQuality(state,"sample-1002","Generic drawing revision conflict",later);
   const caseId=state.quality[0].id,otherCaseId=state.quality[1].id;
   const step=state.jobs[0].routing.operations[0].step;
   state=recordQualityInspection(state,caseId,"FIRST_PIECE",step,"FAIL","Fictional observation",later);
