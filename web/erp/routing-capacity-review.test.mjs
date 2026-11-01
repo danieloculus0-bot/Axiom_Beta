@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {seedState} from "./engine.mjs";
 import {reviewPmWorkCenterAssociation} from "./pm-work-center-link.mjs";
 import {seedPm,completePmTask} from "./pm.mjs";
-import {inspectRoutingCapacityEvidence,routingCapacityEvidenceHtml,readRoutingCapacityScenario} from "./routing-capacity-review.mjs";
+import {inspectRoutingCapacityEvidence,routingCapacityEvidenceHtml,readRoutingCapacityScenario,conservativeCapacityPlaceholders} from "./routing-capacity-review.mjs";
 
 const START="2026-11-02T08:00", END="2026-11-02T16:00";
 test("canonical routing and PM snapshot produce review-only UNKNOWN evidence without mutations",()=>{
@@ -406,4 +406,38 @@ test("shortage of unrelated fictional material does not block selected job",()=>
   const review=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e,[]);
   assert.equal(review.result.suggestions.length,1);
   assert.equal(review.result.canAutoApply,false);
+});
+
+test("conservative placeholders are opt-in, conservative, overrideable and never a release",()=>{
+  const state=seedState(),job=state.jobs[0],before=structuredClone(state);
+  const f=browserScenarioFields();f.set("scenario-enabled","yes");
+  for(const k of ["calendarHours","bookedHours","queuedHours","capacity-ref"])f.delete("scenario-"+k);
+  f.set("scenario-placeholder","yes");
+  const e=readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END);
+  assert.deepEqual([e.center.calendarHours,e.center.bookedHours,e.center.queuedHours],[6,1.5,0.75]);
+  assert.equal(e.center.capacitySourceRef,"SYN-PLACEHOLDER-ONE-SHIFT");
+  assert.equal(e.center.capacityEstimateType,"PLACEHOLDER_ASSISTED");
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]);
+  assert.equal(review.assessment.availableHours,3.75);
+  assert.equal(review.assessment.capacityEstimateType,"PLACEHOLDER_ASSISTED");
+  assert.equal(review.result.canAutoApply,false);
+  assert.match(routingCapacityEvidenceHtml(job,review),/conservative placeholders/);
+  assert.match(routingCapacityEvidenceHtml(job,review),/PLACEHOLDER_ASSISTED/);
+  assert.deepEqual(state,before);
+  f.set("scenario-calendarHours","7");f.set("scenario-bookedHours","2");
+  const mixed=readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END);
+  assert.deepEqual([mixed.center.calendarHours,mixed.center.bookedHours,mixed.center.queuedHours],[7,2,0.88]);
+  f.delete("scenario-placeholder");f.set("scenario-capacity-ref","SYN-UI-MANUAL");
+  const manual=readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END);
+  assert.equal(manual.center.capacityEstimateType,"MANUAL");
+  assert.equal(Object.hasOwn(manual.center,"queuedHours"),false);
+});
+test("placeholder arithmetic caps one fictional shift and rejects impossible windows",()=>{
+  const a=conservativeCapacityPlaceholders(START,END);
+  assert.deepEqual([a.nominalHours,a.calendarHours,a.bookedHours,a.queuedHours],[8,6,1.5,0.75]);
+  const b=conservativeCapacityPlaceholders("2026-11-02T08:00","2026-11-02T10:00");
+  assert.deepEqual([b.nominalHours,b.calendarHours,b.bookedHours,b.queuedHours],[2,1.5,0.38,0.19]);
+  const c=conservativeCapacityPlaceholders("2026-11-02T08:00","2026-11-06T16:00");
+  assert.equal(c.calendarHours,6);
+  assert.throws(()=>conservativeCapacityPlaceholders(END,START),/positive duration/);
 });
