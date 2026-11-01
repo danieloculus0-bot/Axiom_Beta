@@ -278,6 +278,18 @@ def browser_test() -> None:
                     return localStorage.getItem(ERP_KEY);
                 }""")
                 assert scenario_before == scenario_after, "Scenario review must not write ERP state"
+                # Missing booked/queued evidence is UNKNOWN, not automatically zero.
+                capacity_form.locator('input[name="scenario-bookedHours"]').fill("")
+                capacity_form.locator('input[name="scenario-queuedHours"]').fill("")
+                capacity_form.locator('button[type="submit"]').click()
+                unknown_text = page.locator("#routing-capacity-result").inner_text()
+                assert "Planning-window hours are UNKNOWN" in unknown_text, unknown_text
+                assert "available UNKNOWN hours" in unknown_text, unknown_text
+                assert "utilization UNKNOWN%" in unknown_text, unknown_text
+                capacity_form.locator('input[name="scenario-bookedHours"]').fill("1")
+                capacity_form.locator('input[name="scenario-queuedHours"]').fill("1")
+                capacity_form.locator('button[type="submit"]').click()
+                assert "available 6 hours" in page.locator("#routing-capacity-result").inner_text()
                 # A changed scenario input must clear its old assessment without losing
                 # unsaved values or modifying canonical fictional ERP records.
                 capacity_form.locator('input[name="scenario-bookedHours"]').fill("2")
@@ -305,7 +317,7 @@ def browser_test() -> None:
                 capacity_form.locator('input[name="scenario-calendarHours"]').fill("")
                 capacity_form.locator('button[type="submit"]').click()
                 rejected_message = page.locator("#flash").inner_text()
-                assert "All six scenario hour estimates must be explicitly supplied" in rejected_message, rejected_message
+                assert "Calendar, maintenance, setup and run hours must be explicitly supplied" in rejected_message, rejected_message
                 assert page.locator("#flash").get_attribute("role") == "alert"
                 # Failed validation must not erase the user's unsaved scenario.
                 assert capacity_form.locator('input[name="scenario-enabled"]').is_checked()
