@@ -768,3 +768,44 @@ test("Report Center opens exact canonical NCR rows even when displayed numbers c
   assert.ok(app.includes('qualityReportCaseTarget(state,reportWithContext("quality").rows[rowIndex],rowIndex)'));
   assert.match(app,/target.caseId!==id/);
 });
+
+test("Quality Forge inspection evidence refuses ambiguous current routing steps",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
+  const caseId=state.quality[0].id;
+  const [first,second]=state.jobs[0].routing.operations;
+  const ambiguous=structuredClone(state);
+  ambiguous.jobs[0].routing.operations.push({
+    ...structuredClone(first),name:"Alternative fictional operation"
+  });
+  const before=JSON.stringify(ambiguous);
+  assert.throws(()=>recordQualityInspection(ambiguous,caseId,"FIRST_PIECE",first.step,
+    "FAIL","Synthetic first-piece observation",u),/unambiguous routed operation/);
+  assert.equal(JSON.stringify(ambiguous),before,
+    "Ambiguous route must not create evidence or append an event");
+  const html=renderQualityCase(ambiguous,caseId);
+  assert.match(html,/data-form="quality-inspection"/,
+    "A separate uniquely routed step remains usable");
+  assert.ok(!html.includes('<option value="'+first.step+'">'),
+    "Ambiguous step must not appear in the inspection form");
+  assert.ok(html.includes('<option value="'+second.step+'">'),
+    "Unambiguous step must remain available");
+  const recorded=recordQualityInspection(ambiguous,caseId,"IN_PROCESS",second.step,
+    "PASS","Synthetic unique-step observation",u);
+  assert.equal(recorded.quality[0].inspections.length,1);
+  assert.equal(recorded.quality[0].inspections[0].step,String(second.step));
+  assert.equal(recorded.quality[0].inspections[0].operation,second.name);
+  assert.equal(recorded.events.at(-1).type,"quality.inspection.recorded");
+
+  const blocked=structuredClone(ambiguous);
+  blocked.jobs[0].routing.operations=[
+    structuredClone(first),{...structuredClone(first),name:"Another fictional operation"}
+  ];
+  assert.doesNotMatch(renderQualityCase(blocked,caseId),
+    /data-form="quality-inspection"/,
+    "All-ambiguous routing must not advertise a nonfunctional inspection form");
+  assert.match(renderQualityCase(blocked,caseId),
+    /No uniquely identifiable routed operations/);
+  assert.throws(()=>recordQualityInspection(blocked,caseId,"FINAL_REVIEW",first.step,
+    "PASS","Synthetic blocked observation",u),/unambiguous routed operation/);
+  assert.equal(blocked.quality[0].inspections?.length??0,0);
+});
