@@ -30,6 +30,21 @@ export function qualityEffectivenessParentTarget(record,reviewId){
   if(matches.length!==1||!qualityEvidenceTarget(record,"corrective",matches[0].id))return null;
   return {kind:"corrective",id:matches[0].id};
 }
+/* An effectiveness review may point back to the inspection that actually
+ * triggered its parent corrective action. Case-level actions, missing or
+ * ambiguous legacy observations never get an invented inspection link.
+ */
+export function qualityEffectivenessInspectionTarget(record,reviewId){
+  const parent=qualityEffectivenessParentTarget(record,reviewId);
+  if(!parent)return null;
+  const action=(Array.isArray(record.correctiveActions)?record.correctiveActions:[])
+    .find(item=>item?.id===parent.id);
+  const inspectionId=action?.sourceInspectionId;
+  if(typeof inspectionId!=="string"||!inspectionId)return null;
+  const matches=(Array.isArray(record.inspections)?record.inspections:[])
+    .filter(item=>item?.id===inspectionId);
+  return matches.length===1?qualityEvidenceTarget(record,"inspection",inspectionId):null;
+}
 /* A work-order jump must originate from evidence on this exact canonical NCR.
  * Never offer a generic or unrelated job when the evidence/job is missing.
  */
@@ -246,6 +261,8 @@ export function renderQualityCase(state,id){
           '<div>'+h(review.note)+'</div>'+
           (qualityEffectivenessParentTarget(q,review.id)?
             evidenceButton(q,"corrective",action.id,"View parent corrective action"):"")+
+          (qualityEffectivenessInspectionTarget(q,review.id)?
+            evidenceButton(q,"inspection",qualityEffectivenessInspectionTarget(q,review.id).id,"View source inspection"):"")+
           evidenceWorkOrderButton(state,q,"effectiveness",review.id)+'</div>').join(""):
           '<p class="small">Effectiveness not yet reviewed.</p>')+
         '<form class="controls" data-form="quality-effectiveness">'+
@@ -280,6 +297,8 @@ export function renderQualityCase(state,id){
       evidenceButton(q,entry.kind,entry.sourceId,"View evidence")+
       (entry.kind==="effectiveness"?(qualityEffectivenessParentTarget(q,entry.sourceId)?
         evidenceButton(q,"corrective",qualityEffectivenessParentTarget(q,entry.sourceId).id,"View parent corrective action"):""):"")+
+      (entry.kind==="effectiveness"&&qualityEffectivenessInspectionTarget(q,entry.sourceId)?
+        evidenceButton(q,"inspection",qualityEffectivenessInspectionTarget(q,entry.sourceId).id,"View source inspection"):"")+
       (entry.kind==="inspection"?routingStepButton(state,q,inspections.find(item=>item.id===entry.sourceId))+inspectionCorrectiveButton(state,q,entry.sourceId):"")+
       (entry.kind==="corrective"?correctiveReviewButton(state,q,entry.sourceId):"")+
       '<div>'+h(entry.detail)+'</div></div>').join(""):
