@@ -50,6 +50,18 @@ export function qualityInspectionCorrectiveTarget(state,caseId,inspectionId){
   const job=state.jobs.find(item=>item?.id===record.jobId);
   return job?{caseId:record.id,inspectionId,jobId:job.id}:null;
 }
+/* Review the exact corrective action from its receipt or case chronology.
+ * This only locates the existing fictional effectiveness form, including after
+ * closure; no new action, approval or duplicate evidence store is created.
+ */
+export function qualityCorrectiveReviewTarget(state,caseId,actionId){
+  if(!Array.isArray(state?.quality)||!Array.isArray(state?.jobs))return null;
+  const record=state.quality.find(item=>item?.id===caseId);
+  if(!["OPEN","CLOSED"].includes(record?.status)||
+     !qualityEvidenceTarget(record,"corrective",actionId))return null;
+  const job=state.jobs.find(item=>item?.id===record.jobId);
+  return job?{caseId:record.id,actionId,jobId:job.id}:null;
+}
 /* Return navigation is valid only for the original evidence and its canonical job.
  * This is an in-memory UI route, not a second NCR or work-order record.
  */
@@ -114,6 +126,11 @@ const inspectionCorrectiveButton=(state,record,inspectionId)=>{
   const target=qualityInspectionCorrectiveTarget(state,record?.id,inspectionId);
   return target?'<button type="button" class="action secondary" data-action="quality-inspection-corrective" data-case="'+
     h(target.caseId)+'" data-id="'+h(target.inspectionId)+'">Start corrective action</button>':"";
+};
+const correctiveReviewButton=(state,record,actionId)=>{
+  const target=qualityCorrectiveReviewTarget(state,record?.id,actionId);
+  return target?'<button type="button" class="action secondary" data-action="quality-corrective-review" data-case="'+
+    h(target.caseId)+'" data-id="'+h(target.actionId)+'">Review effectiveness</button>':"";
 };
 const routingStepButton=(state,record,inspection)=>{
   const status=qualityInspectionRoutingStatus(state,record?.id,inspection?.id);
@@ -223,7 +240,7 @@ export function renderQualityCase(state,id){
         '<div>'+h(action.description)+'</div>'+
         '<div class="small">Linked observation: '+h(action.sourceInspectionId?(linked?
           linked.stage+' / step '+linked.step+' / '+linked.result:'Missing fictional observation'):'None (case-level)')+'</div>'+(linked?evidenceButton(q,"inspection",linked.id,"View observation"):"")+
-        (linked?routingStepButton(state,q,linked):"")+evidenceWorkOrderButton(state,q,"corrective",action.id)+
+        (linked?routingStepButton(state,q,linked):"")+evidenceWorkOrderButton(state,q,"corrective",action.id)+correctiveReviewButton(state,q,action.id)+
         (reviews.length?reviews.map(review=>
           '<div class="receipt"'+evidenceAttrs("effectiveness",review.id)+'><b>Effectiveness review:</b> '+h(review.result)+' · '+h(review.at)+
           '<div>'+h(review.note)+'</div>'+
@@ -264,6 +281,7 @@ export function renderQualityCase(state,id){
       (entry.kind==="effectiveness"?(qualityEffectivenessParentTarget(q,entry.sourceId)?
         evidenceButton(q,"corrective",qualityEffectivenessParentTarget(q,entry.sourceId).id,"View parent corrective action"):""):"")+
       (entry.kind==="inspection"?routingStepButton(state,q,inspections.find(item=>item.id===entry.sourceId))+inspectionCorrectiveButton(state,q,entry.sourceId):"")+
+      (entry.kind==="corrective"?correctiveReviewButton(state,q,entry.sourceId):"")+
       '<div>'+h(entry.detail)+'</div></div>').join(""):
       '<p class="small">No dated case evidence recorded for this fictional case.</p>')+
     '</section>';
