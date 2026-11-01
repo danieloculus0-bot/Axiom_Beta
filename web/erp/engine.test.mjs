@@ -491,7 +491,7 @@ test("job routing evidence opens only uniquely linked fictional inspections, inc
   assert.equal(html.split(button(first)).length-1,1);
   assert.equal(state.quality[0].inspections.length,2,"read-only job links cannot write evidence");
   assert.match(readFileSync(new URL("./app.mjs",import.meta.url),"utf8"),
-    /if\(\["job-quality-inspection","job-quality-corrective","job-quality-followup","job-quality-disposition"\]\.includes\(action\)\)/);
+    /if\(\["job-quality-inspection","job-quality-corrective","job-quality-followup","job-quality-disposition","job-quality-effectiveness"\]\.includes\(action\)\)/);
 });
 
 test("work-order register reveals only uniquely linked inspections and reuses canonical case links",()=>{
@@ -562,7 +562,7 @@ test("canonical work-order corrective evidence is reachable without guessing or 
   assert.equal(renderJobQualityEvidence(state,"sample-1001").split(button(second)).length-1,1);
   assert.equal(state.quality[0].correctiveActions.length,2,"navigation is read-only");
   const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
-  assert.match(app,/if\(\["job-quality-inspection","job-quality-corrective","job-quality-followup","job-quality-disposition"\]\.includes\(action\)\)/);
+  assert.match(app,/if\(\["job-quality-inspection","job-quality-corrective","job-quality-followup","job-quality-disposition","job-quality-effectiveness"\]\.includes\(action\)\)/);
   assert.match(app,/qualityJobCorrectiveTarget\(state,button.dataset.job,button.dataset.case,id\)/);
 });
 
