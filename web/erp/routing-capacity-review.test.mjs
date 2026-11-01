@@ -441,3 +441,52 @@ test("placeholder arithmetic caps one fictional shift and rejects impossible win
   assert.equal(c.calendarHours,6);
   assert.throws(()=>conservativeCapacityPlaceholders(END,START),/positive duration/);
 });
+
+test("placeholder provenance remains field-specific and recalculates in a new window",()=>{
+  const state=seedState(),job=state.jobs[0],before=structuredClone(state);
+  const f=browserScenarioFields();f.set("scenario-enabled","yes");f.set("scenario-placeholder","yes");
+  f.set("scenario-calendarHours","7");f.set("scenario-bookedHours","2");
+  f.delete("scenario-queuedHours");
+  const mixed=readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END);
+  assert.deepEqual(mixed.center.capacityHourSources,{
+    calendarHours:"MANUAL",bookedHours:"MANUAL",queuedHours:"PLACEHOLDER"
+  });
+  assert.equal(mixed.center.capacityEstimateType,"PLACEHOLDER_ASSISTED");
+  assert.equal(mixed.center.queuedHours,0.88);
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,mixed,[]);
+  const html=routingCapacityEvidenceHtml(job,review);
+  assert.match(html,/name="scenario-calendarHours" value="7"/);
+  assert.match(html,/name="scenario-bookedHours" value="2"/);
+  assert.match(html,/name="scenario-queuedHours" value=""/);
+  assert.match(html,/queuedHours: PLACEHOLDER/);
+  f.delete("scenario-calendarHours");f.delete("scenario-bookedHours");
+  const shorter=readRoutingCapacityScenario(f,job,"10","PRESS-02",START,"2026-11-02T10:00");
+  assert.deepEqual([shorter.center.calendarHours,shorter.center.bookedHours,shorter.center.queuedHours],
+    [1.5,0.38,0.19]);
+  assert.deepEqual(state,before);
+});
+test("fully manual capacity values are labeled MANUAL even when placeholder checkbox is on",()=>{
+  const state=seedState(),job=state.jobs[0],f=browserScenarioFields();
+  f.set("scenario-enabled","yes");f.set("scenario-placeholder","yes");
+  const e=readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END);
+  assert.equal(e.center.capacityEstimateType,"MANUAL");
+  assert.deepEqual(e.center.capacityHourSources,{
+    calendarHours:"MANUAL",bookedHours:"MANUAL",queuedHours:"MANUAL"
+  });
+  const html=routingCapacityEvidenceHtml(job,
+    inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]));
+  assert.doesNotMatch(html,/name="scenario-placeholder" value="yes" checked/);
+});
+test("contradictory hour origins are rejected while older scenarios remain supported",()=>{
+  const state=seedState(),job=state.jobs[0],e=scopedEvidence(job);
+  assert.doesNotThrow(()=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]));
+  e.center.capacityEstimateType="MANUAL";
+  e.center.capacityHourSources={calendarHours:"MANUAL",bookedHours:"MANUAL",queuedHours:"PLACEHOLDER"};
+  assert.throws(()=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]),
+    /hour provenance must match/);
+  e.center.capacityEstimateType="PLACEHOLDER_ASSISTED";
+  assert.doesNotThrow(()=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]));
+  e.center.capacityHourSources.queuedHours="UNKNOWN";
+  assert.throws(()=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]),
+    /hour provenance must match/);
+});

@@ -44,12 +44,25 @@ function scopedScenarioCenter(e,job,op,id,startLocal,endLocal){
   const allowed=["capability","calendarHours","bookedHours","queuedHours",
     "maintenanceHours","setupHours","runHours","capacitySourceRef",
     "readinessSourceRef","maintenanceState","tooling","fixture","material",
-    "deliveryState","routedOperationCount","capacityEstimateType"];
+    "deliveryState","routedOperationCount","capacityEstimateType","capacityHourSources"];
   if(!c || typeof c!=="object" || Array.isArray(c) ||
       Object.keys(c).some(k=>!allowed.includes(k)))
     fail("Scenario center contains unsupported or missing evidence fields.");
   if(c.capacityEstimateType!==undefined && !["MANUAL","PLACEHOLDER_ASSISTED"].includes(c.capacityEstimateType))
     fail("Capacity estimate type must identify manual or placeholder-assisted scenario values.");
+  // Per-field origins describe estimates, not independently verified scheduling.
+  // The metadata is optional to preserve existing scenario callers.
+  if(c.capacityHourSources!==undefined){
+    const sources=c.capacityHourSources,keys=["calendarHours","bookedHours","queuedHours"];
+    if(!sources || typeof sources!=="object" || Array.isArray(sources) ||
+       Object.keys(sources).length!==3 ||
+       keys.some(k=>!["MANUAL","PLACEHOLDER","UNKNOWN"].includes(sources[k])) ||
+       keys.some(k=>sources[k]==="UNKNOWN" ? c[k]!==undefined : c[k]===undefined) ||
+       keys.some(k=>sources[k]!=="UNKNOWN" && c[k]===undefined) ||
+       (keys.some(k=>sources[k]==="PLACEHOLDER") !==
+        (c.capacityEstimateType==="PLACEHOLDER_ASSISTED")))
+      fail("Capacity hour provenance must match supplied values and estimate type.");
+  }
   const cap=c.capability;
   if(!cap || typeof cap!=="object" || Array.isArray(cap) ||
       Object.keys(cap).some(k=>!["operation","supported","sourceRef"].includes(k)) ||
@@ -102,7 +115,12 @@ export function readRoutingCapacityScenario(fields,job,step,centerId,startLocal,
   const bookedInput=hour("bookedHours",true),queuedInput=hour("queuedHours",true);
   const bookedHours=bookedInput??(placeholderMode?roundHours(calendarHours*0.25):null);
   const queuedHours=queuedInput??(placeholderMode?roundHours(calendarHours*0.125):null);
-  const usedPlaceholder=placeholderMode && (calendarInput===null||bookedInput===null||queuedInput===null);
+  const capacityHourSources={
+    calendarHours:calendarInput===null?"PLACEHOLDER":"MANUAL",
+    bookedHours:bookedInput===null?(placeholderMode?"PLACEHOLDER":"UNKNOWN"):"MANUAL",
+    queuedHours:queuedInput===null?(placeholderMode?"PLACEHOLDER":"UNKNOWN"):"MANUAL"
+  };
+  const usedPlaceholder=Object.values(capacityHourSources).includes("PLACEHOLDER");
   const capability=get("capability");
   if(!["supported","unsupported"].includes(capability))
     fail("Select supported or unsupported fictional capability.");
@@ -126,7 +144,8 @@ export function readRoutingCapacityScenario(fields,job,step,centerId,startLocal,
     setupHours:hour("setupHours"),runHours:hour("runHours"),
     capacitySourceRef:usedPlaceholder && !get("capacity-ref")?
       "SYN-PLACEHOLDER-ONE-SHIFT":source("capacity-ref"),
-    capacityEstimateType:placeholderMode?"PLACEHOLDER_ASSISTED":"MANUAL",
+    capacityEstimateType:usedPlaceholder?"PLACEHOLDER_ASSISTED":"MANUAL",
+    capacityHourSources,
     readinessSourceRef:source("readiness-ref"),...readiness
   };
   if(count!=="")center.routedOperationCount=Number(count);
@@ -260,7 +279,8 @@ export function routingCapacityEvidenceHtml(job, review = null) {
     '<option value="'+h(id)+'"'+(selected?' selected':'')+'>'+h(label)+'</option>';
 
   const scenario=review?.jobId===job.id?review.scenarioEvidence?.center:null;
-  const num=(k,label)=>'<label>'+h(label)+'<input type="number" min="0" max="100000" step="any" name="scenario-'+k+'" value="'+h(scenario?.[k]??"")+'"></label>';
+  const hourSources=scenario?.capacityHourSources;
+  const num=(k,label)=>'<label>'+h(label)+'<input type="number" min="0" max="100000" step="any" name="scenario-'+k+'" value="'+h(scenario?.capacityHourSources?.[k]==="PLACEHOLDER"?"":scenario?.[k]??"")+'"></label>';
   const ref=(k,label,value)=>'<label>'+h(label)+'<input name="scenario-'+k+'" maxlength="64" pattern="SYN-[A-Z0-9-]{1,60}" placeholder="SYN-EXAMPLE-001" value="'+h(value??"")+'"></label>';
   const pick=(k,label,choices,value)=>'<label>'+h(label)+'<select name="scenario-'+k+'">'+choices.map(x=>option(x,x,x===value)).join('')+'</select></label>';
   const scenarioFields='<details'+(scenario?' open':'')+'><summary>Optional fictional capacity scenario</summary>'+
@@ -311,6 +331,9 @@ export function routingCapacityEvidenceHtml(job, review = null) {
     html += '<div id="routing-capacity-result" class="receipt" role="status">'+
       '<h3>Read-only assessment: '+h(review.step)+' / '+h(review.centerId)+'</h3>'+
       '<p><b>Capacity basis:</b> '+h(a?.capacityEstimateType || 'UNKNOWN')+'</p>'+
+      (hourSources?'<p class="small"><b>Hour inputs:</b> '+
+        ["calendarHours","bookedHours","queuedHours"].map(k=>
+          h(k)+': '+h(hourSources[k]??"UNKNOWN")).join('; ')+'</p>':'')+
       '<p><b>Result:</b> '+h(a?.status || review.result.status)+
       ' · <b>PM association:</b> '+h(a?.pmEvidence?.status || 'UNKNOWN')+'</p>'+
       '<p class="small">Existing fictional job routing references to this center: '+
