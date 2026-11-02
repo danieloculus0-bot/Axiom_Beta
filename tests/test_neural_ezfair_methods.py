@@ -229,9 +229,30 @@ def test_new_controlled_fai_revision_flags_existing_methods_without_release(tmp_
         assert evidence["review_state"]=="REVIEW_REQUIRED"
         assert evidence["affected_methods"]==[{
             "plan_id":plan,"method_source_id":linked["source_id"],
+            "previous_fai_run_id":old_fai,
             "part_number":"SYN-PART-01","previous_revision":"B",
             "previous_file_version_id":"SYN-VERSION-01","previous_sha256":source["sha256"],
         }]
+        quality_actions=con.execute(
+            "SELECT * FROM workflow_actions WHERE workflow_key='controlled-drawing-quality-review'"
+        ).fetchall()
+        assert len(quality_actions)==1
+        quality_action=dict(quality_actions[0])
+        assert quality_action["target_module"]=="quality"
+        assert quality_action["step_key"]=="review-fai-characteristic-impact"
+        assert quality_action["status"]=="open"
+        assert quality_action["entity_type"]=="fai"
+        assert quality_action["entity_id"]==str(imported["id"])
+        quality_evidence=json.loads(quality_action["input_json"])
+        assert quality_evidence["contract_version"]==1
+        assert quality_evidence["fai_run_id"]==imported["id"]
+        assert quality_evidence["new_sha256"]==digest
+        assert quality_evidence["new_revision"]=="C"
+        assert quality_evidence["affected_methods"]==evidence["affected_methods"]
+        assert quality_evidence["review_state"]=="REVIEW_REQUIRED"
+        assert "no inspection acceptance" in quality_evidence["limitation"]
+        assert con.execute("SELECT COUNT(*) FROM quality_records").fetchone()[0]==0
+        assert con.execute("SELECT COUNT(*) FROM inspections").fetchone()[0]==0
         event=con.execute(
             "SELECT event_id,status FROM event_ledger WHERE event_type='fai.imported' AND entity_id=?",
             (str(imported["id"]),),
@@ -255,6 +276,9 @@ def test_new_controlled_fai_revision_flags_existing_methods_without_release(tmp_
         assert con.execute(
             "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-revision-review'"
         ).fetchone()[0]==1
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-quality-review'"
+        ).fetchone()[0]==1
 
 
 def test_revision_consumer_rejects_unlinked_and_forged_evidence(tmp_path,monkeypatch):
@@ -263,6 +287,9 @@ def test_revision_consumer_rejects_unlinked_and_forged_evidence(tmp_path,monkeyp
     with db() as con:
         assert con.execute(
             "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-revision-review'"
+        ).fetchone()[0]==0
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-quality-review'"
         ).fetchone()[0]==0
     link_controlled_drawing_to_method(plan,source,actor="synthetic-tester")
     publish(
@@ -274,6 +301,9 @@ def test_revision_consumer_rejects_unlinked_and_forged_evidence(tmp_path,monkeyp
     with db() as con:
         assert con.execute(
             "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-revision-review'"
+        ).fetchone()[0]==0
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-quality-review'"
         ).fetchone()[0]==0
         assert con.execute("SELECT status FROM ezm_method_plans WHERE id=?",(plan,)).fetchone()[0]=="DRAFT"
     with db() as con:
@@ -288,3 +318,38 @@ def test_revision_consumer_rejects_unlinked_and_forged_evidence(tmp_path,monkeyp
         assert con.execute(
             "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-revision-review'"
         ).fetchone()[0]==0
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-quality-review'"
+        ).fetchone()[0]==0
+
+
+def test_quality_review_replays_independently_without_mutating_methods(tmp_path,monkeypatch):
+    """A delivered Planning review must not suppress a missing Quality consumer."""
+    source,plan,old_fai=_seed(tmp_path,monkeypatch)
+    link_controlled_drawing_to_method(plan,source,actor="synthetic-tester")
+    imported,digest=_import_next_synthetic_fai_version()
+    with db() as con:
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-quality-review'"
+        ).fetchone()[0]==1
+        con.execute(
+            "DELETE FROM workflow_actions WHERE workflow_key='controlled-drawing-quality-review'"
+        )
+    publish(
+        "fai.imported",source_module="ezfair",entity_type="fai",
+        entity_id=str(imported["id"]),actor="synthetic-tester",
+        payload={"vault_version":"SYN-VERSION-02","drawing_sha256":digest,
+                 "inspection_status":"review_required"},
+    )
+    with db() as con:
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-revision-review'"
+        ).fetchone()[0]==1
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-quality-review'"
+        ).fetchone()[0]==1
+        assert con.execute("SELECT status FROM ezm_method_plans WHERE id=?",(plan,)).fetchone()[0]=="DRAFT"
+        assert con.execute("SELECT status FROM fai_runs WHERE id=?",(old_fai,)).fetchone()[0]=="review_required"
+        assert con.execute("SELECT status FROM fai_runs WHERE id=?",(imported["id"],)).fetchone()[0]=="review_required"
+        assert con.execute("SELECT COUNT(*) FROM quality_records").fetchone()[0]==0
+        assert con.execute("SELECT COUNT(*) FROM inspections").fetchone()[0]==0
