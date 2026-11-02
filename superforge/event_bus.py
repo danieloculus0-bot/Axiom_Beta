@@ -195,9 +195,13 @@ def _methods_source_linked(event:DomainEvent)->None:
                     AND s.location=('forgevault://' || l.vault_record_id || '/' || l.vault_version_id)
                JOIN fai_runs f ON f.id=l.fai_run_id
                JOIN documents d ON d.id=f.drawing_document_id
+               JOIN document_versions v ON v.document_id=d.id
+                    AND v.storage_reference=s.location
+                    AND v.revision=m.revision AND v.sha256=l.pdf_sha256
                WHERE s.id=? AND s.source_type='CONTROLLED_DRAWING'
                  AND s.revision=m.revision AND f.drawing_revision=m.revision
                  AND d.revision=m.revision AND d.storage_reference=s.location
+                 AND d.sha256=l.pdf_sha256
                  AND l.vault_version_id=? AND l.pdf_sha256=?
                  AND (f.job_id IS NULL OR f.job_id=m.job_id)
                  AND (f.part_id IS NULL OR f.part_id=m.part_id)""",
