@@ -155,27 +155,38 @@ def deliver_staged(event_id:str)->dict[str,int]:
     return result
 
 
-def recover_undelivered(limit:int=100)->dict[str,int]:
-    """Resume committed but not fully delivered events for registered subscribers."""
+def recover_undelivered(limit:int=100, *, after_id:int=0)->dict[str,int]:
+    """Replay one ordered page of committed events, skipping earlier ledger IDs.
+
+    The cursor lets startup reach later events even when an earlier subscriber
+    repeatedly fails and its event remains eligible for a future retry.
+    """
     if not isinstance(limit,int) or not 1<=limit<=10000:
         raise ValueError("Recovery limit must be 1 through 10000")
+    if not isinstance(after_id,int) or after_id<0:
+        raise ValueError("Recovery cursor must be a nonnegative ledger ID")
     types=[key for key in _HANDLERS if key!="*" and _HANDLERS[key]]
     wildcard=bool(_HANDLERS.get("*"))
     if not types and not wildcard:
-        return {"events":0,"delivered":0,"failed":0,"skipped":0}
+        return {"events":0,"delivered":0,"failed":0,"skipped":0,"last_id":after_id}
     with db() as con:
         if wildcard:
             rows=con.execute(
-                "SELECT event_id FROM event_ledger WHERE status IN ('pending_delivery','partial_failure') ORDER BY id LIMIT ?",
-                (limit,),
+                """SELECT id,event_id FROM event_ledger
+                   WHERE id>? AND status IN ('pending_delivery','partial_failure')
+                   ORDER BY id LIMIT ?""",
+                (after_id,limit),
             ).fetchall()
         else:
             marks=",".join("?" for _ in types)
             rows=con.execute(
-                f"SELECT event_id FROM event_ledger WHERE status IN ('pending_delivery','partial_failure') AND event_type IN ({marks}) ORDER BY id LIMIT ?",
-                (*types,limit),
+                f"""SELECT id,event_id FROM event_ledger
+                    WHERE id>? AND status IN ('pending_delivery','partial_failure')
+                      AND event_type IN ({marks}) ORDER BY id LIMIT ?""",
+                (after_id,*types,limit),
             ).fetchall()
-    result={"events":len(rows),"delivered":0,"failed":0,"skipped":0}
+    result={"events":len(rows),"delivered":0,"failed":0,"skipped":0,
+            "last_id":int(rows[-1]["id"]) if rows else after_id}
     for row in rows:
         receipt=deliver_staged(row["event_id"])
         for field in ("delivered","failed","skipped"):
