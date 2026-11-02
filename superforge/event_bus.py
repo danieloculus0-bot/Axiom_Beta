@@ -213,6 +213,91 @@ def recover_undelivered(limit:int=100, *, after_id:int=0)->dict[str,int]:
     return result
 
 
+
+def delivery_diagnostics() -> dict[str, Any]:
+    """Read-only SQL delivery evidence compared with this process's subscribers.
+
+    A wildcard observer is not proof that a domain module consumed an event.
+    A delivered ledger status without a receipt for a current handler is flagged,
+    not silently replayed or mistaken for verified downstream state.
+    """
+    with db() as con:
+        checked_at = con.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]
+        rows = con.execute(
+            """SELECT event_type,status,COUNT(*) AS n FROM event_ledger
+               WHERE status IN ('recorded','pending_delivery','partial_failure','delivered')
+               GROUP BY event_type,status ORDER BY event_type,status"""
+        ).fetchall()
+        by_type: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            item = by_type.setdefault(row["event_type"], {
+                "event_type": row["event_type"], "total": 0,
+                "recorded": 0, "pending_delivery": 0,
+                "partial_failure": 0, "delivered": 0,
+            })
+            count = int(row["n"])
+            item[row["status"]] += count
+            item["total"] += count
+
+        totals = {
+            "events": 0, "recorded": 0, "pending_delivery": 0,
+            "partial_failure": 0, "delivered": 0,
+            "without_typed_subscriber_events": 0,
+            "delivered_missing_current_receipts": 0,
+            "failed_receipts": 0,
+        }
+        for event_type, item in by_type.items():
+            typed = _HANDLERS.get(event_type, [])
+            handlers = _handlers_for(event_type)
+            item["typed_subscribers"] = len(typed)
+            item["current_subscribers"] = len(handlers)
+            item["without_typed_subscriber_events"] = item["total"] if not typed else 0
+            missing = 0
+            for handler in handlers:
+                missing += int(con.execute(
+                    """SELECT COUNT(*) FROM event_ledger AS e
+                       WHERE e.event_type=? AND e.status='delivered'
+                         AND NOT EXISTS (
+                           SELECT 1 FROM event_delivery_receipts AS r
+                           WHERE r.event_id=e.event_id AND r.handler_key=?
+                             AND r.status='delivered'
+                         )""",
+                    (event_type, _handler_key(handler)),
+                ).fetchone()[0])
+            item["delivered_missing_current_receipts"] = missing
+            item["failed_receipts"] = int(con.execute(
+                """SELECT COUNT(*) FROM event_delivery_receipts AS r
+                   JOIN event_ledger AS e ON e.event_id=r.event_id
+                   WHERE e.event_type=? AND r.status='failed'""",
+                (event_type,),
+            ).fetchone()[0])
+            for key in totals:
+                if key in item:
+                    totals[key] += item[key]
+            totals["events"] += item["total"]
+
+    attention = any(totals[key] for key in (
+        "recorded", "pending_delivery", "partial_failure",
+        "without_typed_subscriber_events", "delivered_missing_current_receipts",
+        "failed_receipts",
+    ))
+    return {
+        "schema": "axiom.sql-delivery-diagnostics.v1",
+        "source": "local_axiom_sql",
+        "checked_at_utc": checked_at,
+        "status": "attention_required" if attention else (
+            "no_ledger_events" if not totals["events"] else "no_detected_delivery_gaps"
+        ),
+        "totals": totals,
+        "event_types": [by_type[key] for key in sorted(by_type)],
+        "limitations": (
+            "Only the current process subscriber registry and local SQL receipts are checked. "
+            "Wildcard observers do not establish a domain consumer. Missing receipts can "
+            "also mean a handler was registered after earlier delivery. This is not proof "
+            "of live ERP, BEAN, Jetson, or remote module connectivity."
+        ),
+    }
+
 def publish(event_type:str,*,source_module:str,entity_type:str,entity_id:str,actor:str="",
             reason:str="",payload:dict[str,Any]|None=None,parent_event_id:str="",
             correlation_id:str="")->DomainEvent:
