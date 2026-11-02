@@ -49,6 +49,14 @@ def test_recovery_cursor_survives_ten_thousand_event_ceiling(tmp_path, monkeypat
             raise RuntimeError("synthetic first delivery interruption")
 
     event_bus.subscribe(event_type, planning)
+    # Keep this 10,005-event regression focused on the typed SQL consumer.
+    # Four unrelated wildcard policy observers are covered by the existing
+    # smaller integration tests and would add ~40,000 unrelated SQL receipts.
+    original_handlers_for = event_bus._handlers_for
+    monkeypatch.setattr(
+        event_bus, "_handlers_for",
+        lambda kind: [planning] if kind == event_type else original_handlers_for(kind),
+    )
     with db() as con:
         assert con.execute(
             "SELECT COUNT(*) FROM jobs WHERE job_number LIKE 'SYN-CURSOR-%'"
