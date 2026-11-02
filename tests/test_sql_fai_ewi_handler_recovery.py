@@ -272,3 +272,63 @@ def test_partial_fai_handler_failure_replays_ewi_review_after_restart(tmp_path, 
         assert con.execute(
             "SELECT COUNT(*) FROM ewi_outbox",
         ).fetchone()[0] == 2
+
+    # A delivered event is not proof that its EWI review action survived.
+    # Simulate an action lost after successful subscriber acknowledgement.
+    # The ledger and delivered receipt must not silently authorize clocking.
+    with db() as con:
+        assert pending_ewi_revision_event(con, job_id) is None
+        con.execute("DELETE FROM workflow_actions WHERE id=?", (ewi["id"],))
+        assert con.execute(
+            "SELECT status FROM event_ledger WHERE event_id=?", (event_id,)
+        ).fetchone()[0] == "delivered"
+        assert con.execute(
+            """SELECT status FROM event_delivery_receipts
+               WHERE event_id=? AND handler_key LIKE '%review_controlled_fai_revision'""",
+            (event_id,),
+        ).fetchone()[0] == "delivered"
+        missing = pending_ewi_revision_event(con, job_id)
+        assert missing is not None
+        assert (missing["event_id"], missing["delivery_status"]) == (event_id, "delivered")
+        assert pending_ewi_revision_event(con, unrelated_job) is None
+
+        # A mismatched released job PDF cannot be used to invent EWI scope.
+        con.execute(
+            "UPDATE documents SET sha256='SYN-TAMPERED' WHERE job_id=?",
+            (job_id,),
+        )
+        assert pending_ewi_revision_event(con, job_id) is None
+        con.execute(
+            "UPDATE documents SET sha256=? WHERE job_id=?",
+            (old_source["sha256"], job_id),
+        )
+        assert pending_ewi_revision_event(con, job_id) is not None
+
+    blocked_missing = packet(job_id)
+    assert blocked_missing["ready"] is False
+    assert any("delivered without its required EWI review action" in issue
+               for issue in blocked_missing["issues"])
+    with pytest.raises(ValueError, match="delivered without its required EWI review action"):
+        clock_start(job_id, "10", "SYN-OPERATOR-NEW", "synthetic-test")
+    with monkeypatch.context() as patch:
+        patch.setattr(ewi_module, "packet", lambda _job_id: ready_packet)
+        with pytest.raises(ValueError, match="delivered without its required EWI review action"):
+            clock_start(job_id, "10", "SYN-OPERATOR-NEW", "synthetic-test")
+
+    # Delivered receipts are skipped on replay, so startup alone cannot
+    # reconstruct a missing action. The SQL guard remains in force.
+    skipped = deliver_staged(event_id)
+    assert skipped["failed"] == 0 and skipped["delivered"] == 0
+    assert skipped["skipped"] == receipt_count
+    create_app({"TESTING": True})
+    assert packet(job_id)["ready"] is False
+    with db() as con:
+        assert pending_ewi_revision_event(con, job_id)["delivery_status"] == "delivered"
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE event_id=? AND target_module='ewi'",
+            (event_id,),
+        ).fetchone()[0] == 0
+        assert con.execute(
+            "SELECT COUNT(*) FROM ewi_clock_sessions WHERE job_id=?", (job_id,),
+        ).fetchone()[0] == 1
+        assert con.execute("SELECT COUNT(*) FROM ewi_outbox").fetchone()[0] == 2
