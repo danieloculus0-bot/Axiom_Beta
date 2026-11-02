@@ -47,7 +47,8 @@ def _payload(source: dict) -> dict:
     }
 
 
-def test_partial_fai_handler_failure_replays_ewi_review_after_restart(tmp_path, monkeypatch):
+@pytest.mark.parametrize("new_revision", ["B", "A"])
+def test_partial_fai_handler_failure_replays_ewi_review_after_restart(tmp_path, monkeypatch, new_revision):
     """A failure after Planning/Quality commits must not strand EWI or duplicate actions."""
     monkeypatch.setenv("AXIOM_DATA_DIR", str(tmp_path / "fictional-db"))
     monkeypatch.setenv("AXIOM_ACCESS_MODE", "local")
@@ -115,8 +116,8 @@ def test_partial_fai_handler_failure_replays_ewi_review_after_restart(tmp_path, 
             raise RuntimeError("fictional EWI handler interruption")
         return original_create(event, **kwargs)
 
-    new_pdf = b"%PDF-1.4\n% fictional revision B\n%%EOF\n"
-    new_source = _source(new_pdf, "B", 2)
+    new_pdf = b"%PDF-1.4\n% fictional changed controlled version V2\n%%EOF\n"
+    new_source = _source(new_pdf, new_revision, 2)
     with monkeypatch.context() as patch:
         patch.setattr(controlled_revision_review, "create_action", interrupted_ewi_action)
         new_fai = import_controlled_fai(
@@ -228,7 +229,7 @@ def test_partial_fai_handler_failure_replays_ewi_review_after_restart(tmp_path, 
         assert evidence["source_event_id"] == event_id
         assert evidence["previous_fai_run_id"] == old_fai["id"]
         assert evidence["fai_run_id"] == new_fai["id"]
-        assert (evidence["previous_revision"], evidence["new_revision"]) == ("A", "B")
+        assert (evidence["previous_revision"], evidence["new_revision"]) == ("A", new_revision)
         assert evidence["job_id"] == job_id and evidence["part_id"] == part_id
         assert evidence["previous_sha256"] == old_source["sha256"]
         assert evidence["new_sha256"] == new_source["sha256"]
