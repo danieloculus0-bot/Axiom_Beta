@@ -105,6 +105,16 @@ def job_manufacturing_context(job_id: int) -> dict | None:
     }
 
 
+@manufacturing_context_blueprint.get("/api/v1/jobs/<int:job_id>/operation-evidence/<event_id>")
+def api_job_operation_evidence(job_id: int, event_id: str):
+    """Read-only consumer contract; a current candidate still needs human review."""
+    from ..integrations.operation_freshness import inspect_operation_event
+
+    evidence = inspect_operation_event(job_id, event_id)
+    missing = evidence["status"] in {"event_not_found", "job_not_found"}
+    return jsonify({"ok": not missing, **evidence}), 404 if missing else 200
+
+
 @manufacturing_context_blueprint.get("/api/v1/jobs/<int:job_id>/manufacturing-context")
 def api_job_manufacturing_context(job_id: int):
     payload = job_manufacturing_context(job_id)
