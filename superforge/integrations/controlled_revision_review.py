@@ -71,6 +71,8 @@ def review_controlled_fai_revision(event: DomainEvent) -> None:
                 note = json.loads(source["note"] or "{}")
             except (TypeError, ValueError):
                 continue
+            if not isinstance(note, dict):
+                continue
             old_version = note.get("file_version_id")
             old_hash = note.get("sha256")
             if (not isinstance(old_version, str) or not old_version
