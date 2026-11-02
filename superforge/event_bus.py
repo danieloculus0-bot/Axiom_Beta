@@ -46,7 +46,8 @@ def _handler_key(handler:Handler)->str:
     return f"{getattr(handler,'__module__','unknown')}.{getattr(handler,'__qualname__',getattr(handler,'__name__','handler'))}"
 
 
-def _record_delivery(event:DomainEvent,handler:Handler,status:str,error_text:str="")->None:
+def _record_delivery(event:DomainEvent,handler:Handler,status:str,error_text:str="")->bool:
+    """Only acknowledge a handler when its receipt is durably stored in SQL."""
     try:
         with db() as con:
             con.execute(
@@ -57,7 +58,8 @@ def _record_delivery(event:DomainEvent,handler:Handler,status:str,error_text:str
                 (event.event_id,event.event_type,_handler_key(handler),status,error_text[:4000]),
             )
     except Exception:
-        pass
+        return False
+    return True
 
 
 def _handlers_for(event_type:str)->list[Handler]:
@@ -100,8 +102,25 @@ def _deliver(event:DomainEvent,*,skip_delivered:bool=False)->dict[str,int]:
                 parent_event_id=event.event_id,correlation_id=event.correlation_id,
             )
         else:
-            delivered+=1
-            _record_delivery(event,handler,"delivered")
+            if _record_delivery(event,handler,"delivered"):
+                delivered+=1
+            else:
+                # The handler may have committed side effects. Without a durable
+                # receipt it MUST remain retryable; consumers must be idempotent.
+                failed+=1
+                try:
+                    record_event(
+                        event_type="EVENT_RECEIPT_FAILURE",action="RECEIPT_WRITE_FAILED",
+                        module="event_bus",source_module=event.source_module,
+                        target_module=_handler_key(handler),entity_type=event.entity_type,
+                        entity_id=event.entity_id,actor=event.actor,
+                        reason="Handler completed but its SQL delivery receipt was not saved",
+                        data={"source_event_type":event.event_type,"handler":_handler_key(handler)},
+                        parent_event_id=event.event_id,correlation_id=event.correlation_id,
+                    )
+                except Exception:
+                    # If audit storage also fails, the ledger remains retryable.
+                    pass
 
     # An event with no registered consumers stays pending for later recovery.
     if handlers:
