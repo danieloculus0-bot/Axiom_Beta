@@ -157,10 +157,13 @@ def packet(job_id: int) -> dict | None:
             "reconciliation; new clocking blocked"
         )
     elif pending_revision is not None:
+        missing = pending_revision["delivery_status"] == "delivered"
         errors.append(
             f"EZ FAIR revision event {pending_revision['event_id']} "
-            f"({pending_revision['delivery_status']}) awaits EWI review delivery; "
-            "new clocking blocked"
+            + ("was delivered without its required EWI review action; "
+               if missing else
+               f"({pending_revision['delivery_status']}) awaits EWI review delivery; ")
+            + "new clocking blocked pending human reconciliation"
         )
     if not routes:
         errors.append("No JobBOSS² routed operations have been synchronized")
@@ -346,9 +349,12 @@ def clock_start(job_id: int, step: str, employee_ref: str, actor: str) -> str:
             )
         pending = pending_ewi_revision_event(con, job_id)
         if pending is not None:
+            missing = pending["delivery_status"] == "delivered"
             raise ValueError(
                 f"EWI is blocked: EZ FAIR revision event {pending['event_id']} "
-                f"has {pending['delivery_status']} delivery; human review not yet reconciled"
+                + ("was delivered without its required EWI review action"
+                   if missing else f"has {pending['delivery_status']} delivery")
+                + "; human review not yet reconciled"
             )
         # Recheck inside the same SQL transaction that creates the clocking
         # session. The part or route may have changed after packet() returned.
