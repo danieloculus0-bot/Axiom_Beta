@@ -39,6 +39,7 @@ def init_ewi() -> None:
             external_id TEXT NOT NULL DEFAULT '',
             part_number TEXT NOT NULL DEFAULT '',
             pulled_at TEXT NOT NULL,
+            local_part_revision_at_pull TEXT NOT NULL DEFAULT '',
             PRIMARY KEY(job_id,step)
         );
         CREATE TABLE IF NOT EXISTS ewi_clock_sessions (
@@ -64,6 +65,14 @@ def init_ewi() -> None:
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         """)
+        # Existing EWI databases predate revision-scoped local snapshots.
+        # Legacy rows remain unverified until a fresh route read replaces them.
+        columns = {row["name"] for row in con.execute("PRAGMA table_info(ewi_routes)")}
+        if "local_part_revision_at_pull" not in columns:
+            con.execute(
+                "ALTER TABLE ewi_routes ADD COLUMN "
+                "local_part_revision_at_pull TEXT NOT NULL DEFAULT ''"
+            )
 
 
 def _now() -> str:
@@ -249,11 +258,12 @@ def save_remote_routes(job_id: int, routes: list[dict]) -> int:
     seen = set()
     with db() as con:
         job = con.execute("""
-            SELECT p.part_number FROM jobs j LEFT JOIN parts p ON p.id=j.part_id WHERE j.id=?
+            SELECT p.part_number,p.revision AS local_part_revision FROM jobs j LEFT JOIN parts p ON p.id=j.part_id WHERE j.id=?
         """, (job_id,)).fetchone()
         if job is None:
             raise ValueError("Job not found")
         expected = job["part_number"] or ""
+        local_revision = str(job["local_part_revision"] or "").strip()
         for route in routes:
             step = str(route.get("step") or "").strip()
             if not step or len(step) > 20 or step in seen:
@@ -265,11 +275,14 @@ def save_remote_routes(job_id: int, routes: list[dict]) -> int:
         stamp = _now()
         for r in routes:
             con.execute("""
-                INSERT INTO ewi_routes(job_id,step,operation,work_center,instruction,external_id,part_number,pulled_at)
-                VALUES(?,?,?,?,?,?,?,?)
+                INSERT INTO ewi_routes(
+                    job_id,step,operation,work_center,instruction,external_id,
+                    part_number,pulled_at,local_part_revision_at_pull)
+                VALUES(?,?,?,?,?,?,?,?,?)
             """, (job_id, str(r["step"]).strip(), str(r.get("operation") or "")[:120],
                   str(r.get("work_center") or "")[:120], str(r.get("instruction") or "")[:3000],
-                  str(r.get("external_id") or "")[:100], str(r.get("part_number") or "")[:120], stamp))
+                  str(r.get("external_id") or "")[:100], str(r.get("part_number") or "")[:120],
+                  stamp, local_revision))
     record_event(event_type="EWI_ROUTING", action="SYNC", module="ewi",
                  entity_type="job", entity_id=job_id, actor="jobboss2_reader",
                  data={"operation_count": len(routes)})
