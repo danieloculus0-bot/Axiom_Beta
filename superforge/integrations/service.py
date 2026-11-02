@@ -9,6 +9,7 @@ from .flatfile import FlatFileAdapter
 from .mapping import map_record
 from .rest import RESTAdapter
 from .sql import SQLReportAdapter
+from .method_operation_identity import resolve_method_operation
 
 ADAPTERS={"flatfile":FlatFileAdapter,"rest":RESTAdapter,"sql":SQLReportAdapter}
 ENTITY_TABLES={
@@ -41,7 +42,7 @@ def _job_event_identity(con, job_id:int)->dict[str,Any]:
     if row is None:
         raise ValueError("Imported job missing before event staging")
     part_id=row["part_id"]
-    return {
+    identity={
         "schema":"axiom.job-identity.v1",
         "source":"local_axiom_sql",
         "job_id":int(row["job_id"]),
@@ -60,6 +61,8 @@ def _job_event_identity(con, job_id:int)->dict[str,Any]:
         "operation_status":"unverified_label" if row["current_operation"] else "not_recorded",
         "human_review_required":True,
     }
+    identity.update(resolve_method_operation(con,identity))
+    return identity
 
 class IntegrationService:
     def __init__(self,credential_loader=None):
