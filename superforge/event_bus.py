@@ -170,6 +170,78 @@ def _clocking_error(event:DomainEvent)->None:
 def _job_changed(event:DomainEvent)->None:
     create_action(event,workflow_key="job-change",step_key="check-po-material-quality",target_module="planning")
 
+def _methods_source_linked(event:DomainEvent)->None:
+    """Bridge an exact EZ FAIR controlled import to a Methods planning review.
+
+    A link is evidence for human inspection, never a routing approval.
+    Reject missing, stale, cross-revision or ambiguous source matches.
+    """
+    if event.source_module!="methods" or event.entity_type!="method_source":
+        return
+    try:
+        source_id=int(event.entity_id)
+    except (TypeError,ValueError):
+        return
+    payload=event.payload
+    if source_id<=0 or not isinstance(payload,dict) or not isinstance(payload.get("file_version_id"),str) or not isinstance(payload.get("drawing_sha256"),str):
+        return
+    with db() as con:
+        matches=con.execute(
+            """SELECT s.id source_id,s.note,m.id plan_id,m.revision,
+                      f.id fai_id,f.status,f.characteristic_count
+               FROM ezm_sources s
+               JOIN ezm_method_plans m ON m.id=s.plan_id
+               JOIN fai_source_links l ON s.document_number=l.vault_record_id
+                    AND s.location=('forgevault://' || l.vault_record_id || '/' || l.vault_version_id)
+               JOIN fai_runs f ON f.id=l.fai_run_id
+               JOIN documents d ON d.id=f.drawing_document_id
+               JOIN document_versions v ON v.document_id=d.id
+                    AND v.storage_reference=s.location
+                    AND v.revision=m.revision AND v.sha256=l.pdf_sha256
+               WHERE s.id=? AND s.source_type='CONTROLLED_DRAWING'
+                 AND s.revision=m.revision AND f.drawing_revision=m.revision
+                 AND d.revision=m.revision AND d.storage_reference=s.location
+                 AND d.sha256=l.pdf_sha256
+                 AND l.vault_version_id=? AND l.pdf_sha256=?
+                 AND (f.job_id IS NULL OR f.job_id=m.job_id)
+                 AND (f.part_id IS NULL OR f.part_id=m.part_id)""",
+            (source_id,payload["file_version_id"],payload["drawing_sha256"]),
+        ).fetchall()
+        if len(matches)!=1:
+            return
+        match=dict(matches[0])
+        try:
+            note=json.loads(match["note"] or "{}")
+        except (TypeError,ValueError):
+            return
+        if (note.get("file_version_id")!=payload["file_version_id"]
+                or note.get("sha256")!=payload["drawing_sha256"]
+                or match["status"]!="review_required"):
+            return
+        already=con.execute(
+            """SELECT 1 FROM workflow_actions
+               WHERE workflow_key='controlled-fai-evidence'
+                 AND entity_type='method_source' AND entity_id=? LIMIT 1""",
+            (str(source_id),),
+        ).fetchone()
+        if already:
+            return
+    create_action(
+        event,workflow_key="controlled-fai-evidence",
+        step_key="review-drawing-characteristics",target_module="planning",
+        input_data={
+            "contract_version":1,"plan_id":match["plan_id"],
+            "fai_run_id":match["fai_id"],"drawing_revision":match["revision"],
+            "characteristic_count":match["characteristic_count"],
+            "file_version_id":payload["file_version_id"],
+            "drawing_sha256":payload["drawing_sha256"],
+            "provenance":"EZ_FAIR_IMPORTED_CONTROLLED_DRAWING",
+            "review_state":"REVIEW_REQUIRED",
+            "limitation":"Source-linked characteristics require engineering review; no routing release.",
+        },
+    )
+
+
 def _methods_plan_created(event:DomainEvent)->None:
     create_action(event,workflow_key="methods-release",step_key="review-routing-readiness",target_module="planning")
     create_action(event,workflow_key="methods-supply-readiness",step_key="verify-material-tool-dependencies",target_module="purchase_orders")
@@ -194,7 +266,9 @@ def _erp_sync(event:DomainEvent)->None:
     create_action(event,workflow_key="erp-sync",step_key="refresh-intelligence",target_module="bean")
 
 def register_default_logic()->None:
+    from .integrations.controlled_revision_review import review_controlled_fai_revision
     pairs={
+        "fai.imported":review_controlled_fai_revision,
         "quality.created":_quality_created,
         "quality.closed":_quality_closed,
         "fai.failed":_fai_failed,
@@ -204,6 +278,7 @@ def register_default_logic()->None:
         "clocking.error":_clocking_error,
         "job.changed":_job_changed,
         "methods.plan.created":_methods_plan_created,
+        "methods.source.linked":_methods_source_linked,
         "methods.dependency.blocked":_methods_dependency_blocked,
         "erp.sync.completed":_erp_sync,
         "morale.pulse.recorded":_morale_pulse_recorded,
