@@ -231,3 +231,95 @@ def test_partial_delivery_missing_receipt_restart_and_scope_guards(tmp_path, mon
     assert status == 404 and missing_event["status"] == "event_not_found"
     status, invalid = _get(client, job_id, "x" * 161)
     assert status == 200 and invalid["status"] == "invalid_event_id"
+
+
+def test_ewi_operator_page_shows_current_stale_and_missing_sql_evidence(tmp_path, monkeypatch):
+    """The EWI page reads the existing SQL producer and freshness consumer."""
+    client, path, cid, job_id, part_id, plan_id, op_id = _setup(tmp_path, monkeypatch)
+    url = f"/ewi/jobs/{job_id}"
+    missing = client.get(url)
+    assert missing.status_code == 200
+    assert "no_sql_job_change_event" in missing.get_data(as_text=True)
+    assert "No canonical SQL job-change event" in missing.get_data(as_text=True)
+
+    first = IntegrationService().pull(cid, "job", actor="synthetic-ewi-review")
+    assert (first["applied"], first["errors"]) == (1, 0), first
+    with db() as con:
+        event_id = _event_id(con, job_id)
+        counts_before = tuple(con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                              for table in ("event_ledger", "workflow_actions",
+                                            "module_suggestions", "event_delivery_receipts"))
+    current = client.get(url).get_data(as_text=True)
+    assert "current_review_candidate" in current
+    assert f"Operation candidate #{op_id}" in current
+    assert f"Source event: <code>{event_id}</code>" in current
+    assert "not a released instruction or an EWI step match" in current
+    with db() as con:
+        counts_after = tuple(con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                             for table in ("event_ledger", "workflow_actions",
+                                           "module_suggestions", "event_delivery_receipts"))
+        assert counts_after == counts_before  # page view is read-only
+        con.execute("UPDATE parts SET revision='B' WHERE id=?", (part_id,))
+    stale = client.get(url).get_data(as_text=True)
+    assert "stale_identity" in stale
+    assert "part_revision" in stale
+    assert "Operation candidate #" not in stale
+    with db() as con:
+        con.execute("UPDATE parts SET revision='A' WHERE id=?", (part_id,))
+    repeat = IntegrationService().pull(cid, "job", actor="synthetic-ewi-review")
+    assert (repeat["applied"], repeat["skipped"], repeat["errors"]) == (0, 1, 0)
+    assert "current_review_candidate" in client.get(url).get_data(as_text=True)
+
+
+def test_ewi_review_rejects_partial_delivery_and_missing_receipt_then_recovers(tmp_path, monkeypatch):
+    client, path, cid, job_id, part_id, plan_id, op_id = _setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(event_bus, "_HANDLERS",
+                        {kind: list(handlers) for kind, handlers in event_bus._HANDLERS.items()})
+    attempts = {"count": 0}
+
+    def interrupted(event):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise RuntimeError("fictional delivery interruption")
+
+    event_bus.subscribe("job.changed", interrupted)
+    first = IntegrationService().pull(cid, "job", actor="synthetic-ewi-replay")
+    assert (first["applied"], first["errors"]) == (1, 0), first
+    with db() as con:
+        event_id = _event_id(con, job_id)
+        action_id = con.execute(
+            "SELECT id FROM workflow_actions WHERE event_id=? AND workflow_key='job-change'",
+            (event_id,),
+        ).fetchone()[0]
+        assert con.execute("SELECT status FROM event_ledger WHERE event_id=?",
+                           (event_id,)).fetchone()[0] == "partial_failure"
+    pending = client.get(f"/ewi/jobs/{job_id}").get_data(as_text=True)
+    assert "event_not_delivered" in pending
+    assert "Operation candidate #" not in pending
+
+    from superforge.app import create_app
+    client = create_app({"TESTING": True}).test_client()
+    assert attempts["count"] == 2
+    recovered = client.get(f"/ewi/jobs/{job_id}").get_data(as_text=True)
+    assert "current_review_candidate" in recovered
+    with db() as con:
+        assert con.execute("SELECT COUNT(*) FROM workflow_actions WHERE event_id=? AND workflow_key='job-change'",
+                           (event_id,)).fetchone()[0] == 1
+        con.execute("DELETE FROM event_delivery_receipts WHERE event_id=? AND handler_key=?",
+                    (event_id, event_bus._handler_key(event_bus._job_changed)))
+    incomplete = client.get(f"/ewi/jobs/{job_id}").get_data(as_text=True)
+    assert "consumer_evidence_incomplete" in incomplete
+    assert "Operation candidate #" not in incomplete
+    event_bus.deliver_staged(event_id)
+    restored = client.get(f"/ewi/jobs/{job_id}").get_data(as_text=True)
+    assert "current_review_candidate" in restored
+    with db() as con:
+        assert con.execute("SELECT COUNT(*) FROM workflow_actions WHERE event_id=? AND workflow_key='job-change'",
+                           (event_id,)).fetchone()[0] == 1
+        assert con.execute("SELECT status FROM event_ledger WHERE event_id=?",
+                           (event_id,)).fetchone()[0] == "delivered"
+        assert con.execute("SELECT COUNT(*) FROM event_delivery_receipts WHERE event_id=? AND status='failed'",
+                           (event_id,)).fetchone()[0] == 0
+        assert con.execute("SELECT COUNT(*) FROM event_delivery_receipts WHERE event_id=? AND status='delivered'",
+                           (event_id,)).fetchone()[0] >= 2
+    assert action_id
