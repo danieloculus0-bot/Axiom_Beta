@@ -132,6 +132,19 @@ def inspect_ewi_operation_alignment(job_id: int, event_id: str) -> dict:
             result["status"] = "ewi_route_part_unverified"
             return result
 
+        # A route pull records the *local* part revision seen at capture time.
+        # The JobBOSS route API does not provide verified drawing/revision
+        # provenance. Missing legacy snapshots or mismatches fail closed; even
+        # a match is not evidence of remote ERP revision approval.
+        captured_revision = str(route.get("local_part_revision_at_pull") or "").strip()
+        current_revision = str(evidence.get("part_revision") or "").strip()
+        if not captured_revision or not current_revision:
+            result["status"] = "ewi_route_revision_unverified"
+            return result
+        if captured_revision.casefold() != current_revision.casefold():
+            result["status"] = "ewi_route_revision_stale"
+            return result
+
         # A PDF hash check performs file I/O outside the SQL read snapshot.
         # Recheck both sources to avoid returning an already-stale candidate.
         again = inspect_operation_event(job_id, event_id)
@@ -160,6 +173,8 @@ def inspect_ewi_operation_alignment(job_id: int, event_id: str) -> dict:
             "ewi_step": route["step"],
             "ewi_route_external_id": route["external_id"] or None,
             "ewi_route_pulled_at": route["pulled_at"],
+            "route_local_part_revision_at_pull": captured_revision,
+            "remote_erp_revision_verified": False,
             "drawing_document_id": drawing["id"],
             "drawing_revision": drawing["revision"],
             "drawing_sha256": drawing["sha256"],
@@ -167,8 +182,8 @@ def inspect_ewi_operation_alignment(job_id: int, event_id: str) -> dict:
             "planning_action_id": evidence["planning_action_id"],
             "methods_suggestion_id": evidence["methods_suggestion_id"],
             "limitation": (
-                "Exact operation-label agreement between independent local records; "
-                "no shared external operation ID or live ERP synchronization is proven. "
+                "Exact operation-label and local revision-snapshot agreement; "
+                "the remote ERP drawing revision and external operation ID remain unverified. "
                 "Human verification of the routed step and drawing is required."
             ),
         })

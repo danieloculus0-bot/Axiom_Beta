@@ -6,6 +6,8 @@ import hashlib
 import json
 from dataclasses import replace
 
+import pytest
+
 from superforge.db import db
 from superforge.event_bus import create_action, publish
 from superforge.integrations.service import IntegrationService
@@ -281,3 +283,112 @@ def test_unverified_completion_claim_and_cancelled_review_cannot_restore_alignme
             "AND entity_type='job' AND entity_id=?", (str(job_id),)
         ).fetchone()[0] == 2
     assert _counts() == after_second_review
+
+
+def test_route_revision_capture_blocks_stale_and_legacy_snapshots(tmp_path, monkeypatch):
+    """SQL/Methods and EWI must agree on the local revision captured at route pull."""
+    from superforge.app import create_app
+    from superforge.modules.ewi import save_remote_routes
+
+    client, job_id, part_id, operation_id, event_id = _fictional_aligned_job(
+        tmp_path, monkeypatch
+    )
+    url = f"/api/v1/jobs/{job_id}/ewi-operation-alignment/{event_id}"
+    first = client.get(url).get_json()
+    assert first["status"] == "cross_source_candidate_review_required", first
+    assert first["route_local_part_revision_at_pull"] == "A"
+    assert first["remote_erp_revision_verified"] is False
+
+    with db() as con:
+        row = con.execute(
+            "SELECT local_part_revision_at_pull,pulled_at FROM ewi_routes WHERE job_id=?",
+            (job_id,),
+        ).fetchone()
+        assert row["local_part_revision_at_pull"] == "A" and row["pulled_at"]
+        con.execute(
+            "UPDATE ewi_routes SET local_part_revision_at_pull='B' WHERE job_id=?",
+            (job_id,),
+        )
+    counts = _counts()
+    stale = client.get(url).get_json()
+    assert stale["status"] == "ewi_route_revision_stale", stale
+    assert stale["ewi_step"] is None and stale["method_operation_id"] is None
+    assert "ewi_route_revision_stale" in client.get(
+        f"/ewi/jobs/{job_id}"
+    ).get_data(as_text=True)
+    assert _counts() == counts
+
+    with db() as con:
+        con.execute(
+            "UPDATE ewi_routes SET local_part_revision_at_pull='' WHERE job_id=?",
+            (job_id,),
+        )
+    unverified = client.get(url).get_json()
+    assert unverified["status"] == "ewi_route_revision_unverified", unverified
+    assert unverified["ewi_step"] is None
+    assert _counts() == counts
+
+    routes = [{
+        "step": "10", "operation": "SYN-OP-10",
+        "part_number": "SYN-REV-PART-001", "external_id": "SYN-ROUTE-10",
+    }]
+    assert save_remote_routes(job_id, routes) == 1
+    client = create_app({"TESTING": True}).test_client()
+    restored = client.get(url).get_json()
+    assert restored["status"] == "cross_source_candidate_review_required", restored
+    assert restored["route_local_part_revision_at_pull"] == "A"
+    assert restored["method_operation_id"] == operation_id
+    assert _counts() == counts
+    with db() as con:
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE event_id=? AND workflow_key='job-change'",
+            (event_id,),
+        ).fetchone()[0] == 1
+        assert con.execute(
+            "SELECT COUNT(*) FROM event_delivery_receipts WHERE event_id=? AND status='delivered'",
+            (event_id,),
+        ).fetchone()[0] >= 2
+
+    # Invalid route refresh must not destroy the prior atomic snapshot.
+    with pytest.raises(ValueError, match="duplicated"):
+        save_remote_routes(job_id, routes + [dict(routes[0])])
+    assert client.get(url).get_json()["status"] == "cross_source_candidate_review_required"
+
+
+def test_legacy_ewi_route_schema_migrates_without_claiming_revision(tmp_path, monkeypatch):
+    """An old route row must survive migration but remain unverified."""
+    monkeypatch.setenv("AXIOM_DATA_DIR", str(tmp_path / "legacy"))
+    monkeypatch.setenv("AXIOM_ACCESS_MODE", "local")
+    from superforge.db import init_db
+    from superforge.app import create_app
+
+    init_db()
+    with db() as con:
+        con.execute("""CREATE TABLE ewi_routes (
+            job_id INTEGER NOT NULL REFERENCES jobs(id),
+            step TEXT NOT NULL, operation TEXT NOT NULL DEFAULT '',
+            work_center TEXT NOT NULL DEFAULT '', instruction TEXT NOT NULL DEFAULT '',
+            external_id TEXT NOT NULL DEFAULT '', part_number TEXT NOT NULL DEFAULT '',
+            pulled_at TEXT NOT NULL, PRIMARY KEY(job_id,step))""")
+        part_id = int(con.execute(
+            "INSERT INTO parts(part_number,revision) VALUES('SYN-LEGACY-PART','A')"
+        ).lastrowid)
+        job_id = int(con.execute(
+            "INSERT INTO jobs(job_number,part_id) VALUES('SYN-LEGACY-JOB',?)",
+            (part_id,),
+        ).lastrowid)
+        con.execute(
+            """INSERT INTO ewi_routes(job_id,step,operation,part_number,pulled_at)
+               VALUES(?,'10','SYN-LEGACY-OP','SYN-LEGACY-PART','2099-01-01T00:00:00Z')""",
+            (job_id,),
+        )
+    create_app({"TESTING": True})
+    with db() as con:
+        row = con.execute(
+            "SELECT local_part_revision_at_pull FROM ewi_routes WHERE job_id=?",
+            (job_id,),
+        ).fetchone()
+        assert row is not None and row["local_part_revision_at_pull"] == ""
+        assert con.execute(
+            "SELECT COUNT(*) FROM ewi_routes WHERE job_id=?", (job_id,)
+        ).fetchone()[0] == 1
