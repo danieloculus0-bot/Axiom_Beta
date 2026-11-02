@@ -12,6 +12,44 @@ from ..modules.ewi import packet
 from .operation_freshness import inspect_operation_event
 
 
+
+def _pending_controlled_revision_review(job_id: int) -> dict | None:
+    """Consume PR #106's existing job-scoped EZ FAIR review action, if present.
+
+    An open review is evidence that the previously linked controlled drawing
+    may be superseded. Fail closed even if its source event is missing, rather
+    than treating an orphaned review action as permission to use the old route.
+    No new table, subscription or workflow action is created here.
+    """
+    with db() as con:
+        con.execute("PRAGMA query_only=ON")
+        action = con.execute(
+            """SELECT a.id,a.event_id,e.event_type,e.source_module
+               FROM workflow_actions a
+               LEFT JOIN event_ledger e ON e.event_id=a.event_id
+               WHERE a.workflow_key='controlled-drawing-ewi-review'
+                 AND a.target_module='ewi'
+                 AND a.entity_type='job' AND a.entity_id=?
+                 AND a.status='open'
+               ORDER BY a.id LIMIT 1""",
+            (str(job_id),),
+        ).fetchone()
+    if action is None:
+        return None
+    verified = (action["event_type"] == "fai.imported"
+                and action["source_module"] == "ezfair")
+    return {
+        "status": "controlled_revision_review_pending",
+        "revision_review_action_id": int(action["id"]),
+        "revision_review_source_event_id": action["event_id"] if verified else None,
+        "limitation": (
+            "An open EZ FAIR controlled drawing revision review requires human "
+            "reconciliation before EWI operation alignment can be offered. "
+            "No released drawing, route or clocking state was changed."
+        ),
+    }
+
+
 def inspect_ewi_operation_alignment(job_id: int, event_id: str) -> dict:
     """Fail closed unless current SQL evidence, one route and a real PDF agree."""
     result = {
@@ -31,6 +69,13 @@ def inspect_ewi_operation_alignment(job_id: int, event_id: str) -> dict:
         evidence = inspect_operation_event(job_id, event_id)
         if evidence["status"] != "current_review_candidate":
             result["status"] = evidence["status"]
+            return result
+
+        # PR #106's verified FAI revision review is a separate producer. A
+        # still-open review invalidates an otherwise current SQL/route match.
+        pending = _pending_controlled_revision_review(job_id)
+        if pending:
+            result.update(pending)
             return result
 
         ewi = packet(job_id)
@@ -90,6 +135,13 @@ def inspect_ewi_operation_alignment(job_id: int, event_id: str) -> dict:
                 or second["routes"] != ewi["routes"]
                 or second["drawing"] != drawing):
             result["status"] = "ewi_evidence_changed_during_read"
+            return result
+
+        # Recheck after PDF I/O, so a revision review created during the
+        # alignment read cannot be overlooked by the final response.
+        pending = _pending_controlled_revision_review(job_id)
+        if pending:
+            result.update(pending)
             return result
 
         result.update({
