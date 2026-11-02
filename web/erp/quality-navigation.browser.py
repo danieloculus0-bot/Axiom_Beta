@@ -915,7 +915,14 @@ def main():
                     }""", {"caseId": case_id, "kind": kind, "id": evidence_id})
                     print("Duplicate evidence browser check:", kind,
                           "stored", stored_count,
-                          "rendered", duplicate_receipts.count(), flush=True)
+                          "rendered", duplicate_receipts.count(),
+                          "global", page.locator(
+                              f'[data-evidence-kind="{kind}"][data-evidence-id="{evidence_id}"]'
+                          ).count(),
+                          "all corrective IDs", page.locator(
+                              '[data-evidence-kind="corrective"]'
+                          ).evaluate_all("els => els.map(el => el.dataset.evidenceId)"),
+                          flush=True)
                     assert stored_count == 2, "Injected fictional evidence must survive reload"
                     expect(duplicate_receipts).to_have_count(2)
                     expect(panel.locator(
