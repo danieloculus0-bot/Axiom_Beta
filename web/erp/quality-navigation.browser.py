@@ -1192,7 +1192,15 @@ def main():
                     "snapshot => localStorage.setItem('axiom_public_erp_suite_v1', snapshot)",
                     same_job_snapshot,
                 )
-                page.goto(f"http://127.0.0.1:{server.server_port}/erp/#jobs")
+                # A same-URL goto may retain the current page; force the
+                # application to reload the restored browser-local fixture.
+                page.reload()
+                assert page.evaluate("""() => {
+                    const data = JSON.parse(localStorage.getItem(
+                        "axiom_public_erp_suite_v1"));
+                    return data.quality.length === 2 &&
+                        !data.quality.some(q => q.id === "q-same-job-open");
+                }"""), "The temporary same-job NCR must not leak into later tests"
                 # Duplicate canonical IDs are ambiguous even if the visible
                 # numbers differ. Neither register nor right-click may guess.
                 page.evaluate("""({originalId, otherId}) => {
