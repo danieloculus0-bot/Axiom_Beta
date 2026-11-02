@@ -130,7 +130,7 @@ def stage_event(con, event_type:str,*,source_module:str,entity_type:str,entity_i
     con.execute(
         """INSERT INTO event_ledger(event_id,parent_event_id,correlation_id,event_type,
            source_module,target_module,entity_type,entity_id,actor,reason,payload_json,status)
-           VALUES(?,?,?,?,?,'',?,?,?,?,?,'recorded')""",
+           VALUES(?,?,?,?,?,'',?,?,?,?,?,'pending_delivery')""",
         (event.event_id,event.parent_event_id,event.correlation_id,event.event_type,
          event.source_module,event.entity_type,event.entity_id,event.actor,event.reason,
          json.dumps(event.payload,sort_keys=True,default=str)),
@@ -166,13 +166,13 @@ def recover_undelivered(limit:int=100)->dict[str,int]:
     with db() as con:
         if wildcard:
             rows=con.execute(
-                "SELECT event_id FROM event_ledger WHERE status IN ('recorded','partial_failure') ORDER BY id LIMIT ?",
+                "SELECT event_id FROM event_ledger WHERE status IN ('pending_delivery','partial_failure') ORDER BY id LIMIT ?",
                 (limit,),
             ).fetchall()
         else:
             marks=",".join("?" for _ in types)
             rows=con.execute(
-                f"SELECT event_id FROM event_ledger WHERE status IN ('recorded','partial_failure') AND event_type IN ({marks}) ORDER BY id LIMIT ?",
+                f"SELECT event_id FROM event_ledger WHERE status IN ('pending_delivery','partial_failure') AND event_type IN ({marks}) ORDER BY id LIMIT ?",
                 (*types,limit),
             ).fetchall()
     result={"events":len(rows),"delivered":0,"failed":0,"skipped":0}
