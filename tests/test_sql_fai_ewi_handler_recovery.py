@@ -221,5 +221,5 @@ def test_partial_fai_handler_failure_replays_ewi_review_after_restart(tmp_path, 
             "SELECT COUNT(*) FROM ewi_clock_sessions WHERE job_id=?", (job_id,),
         ).fetchone()[0] == 0
         assert con.execute(
-            "SELECT COUNT(*) FROM ewi_outbox WHERE job_id=?", (job_id,),
+            "SELECT COUNT(*) FROM ewi_outbox",
         ).fetchone()[0] == 0
