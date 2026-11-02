@@ -169,3 +169,88 @@ def test_failed_handler_retries_without_replaying_successful_sibling(tmp_path, m
         assert con.execute(
             "SELECT status FROM event_ledger WHERE event_id=?", (event.event_id,)
         ).fetchone()[0] == "delivered"
+
+def test_startup_recovery_pages_past_failed_first_event(tmp_path, monkeypatch):
+    """A failed early subscriber cannot strand the next 1,000 committed events."""
+    monkeypatch.setenv("AXIOM_DATA_DIR", str(tmp_path / "axiom"))
+    from superforge.app import create_app
+
+    create_app({"TESTING": True})
+    calls = {"first_failure": 0}
+    first_job_id = None
+    first_event_id = None
+
+    def planning(event):
+        create_action(event, workflow_key="synthetic-page-recovery",
+                      step_key="planning-review", target_module="planning")
+
+    def methods(event):
+        create_action(event, workflow_key="synthetic-page-recovery",
+                      step_key="methods-review", target_module="ez_methods")
+        if event.entity_id == str(first_job_id) and calls["first_failure"] == 0:
+            calls["first_failure"] += 1
+            raise RuntimeError("synthetic first-page subscriber interruption")
+
+    subscribe("test.sync.startup.pages", planning)
+    subscribe("test.sync.startup.pages", methods)
+    with db() as con:
+        for i in range(1005):
+            job_id = int(con.execute(
+                "INSERT INTO jobs(job_number,status) VALUES(?, 'open')",
+                (f"SYN-PAGE-{i:04d}",),
+            ).lastrowid)
+            event = stage_event(
+                con, "test.sync.startup.pages", source_module="integrations",
+                entity_type="job", entity_id=str(job_id),
+                payload={"job_id": job_id, "revision": "SYN-A"},
+            )
+            if i == 0:
+                first_job_id, first_event_id = job_id, event.event_id
+
+    # All 1,005 source records and events committed together before dispatch.
+    with db() as con:
+        assert con.execute(
+            "SELECT COUNT(*) FROM jobs WHERE job_number LIKE 'SYN-PAGE-%'"
+        ).fetchone()[0] == 1005
+        assert con.execute(
+            "SELECT COUNT(*) FROM event_ledger WHERE event_type='test.sync.startup.pages' AND status='pending_delivery'"
+        ).fetchone()[0] == 1005
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='synthetic-page-recovery'"
+        ).fetchone()[0] == 0
+
+    # Simulate app restart; startup recovery must scan past the first failed event.
+    create_app({"TESTING": True})
+    with db() as con:
+        assert con.execute(
+            "SELECT COUNT(*) FROM event_ledger WHERE event_type='test.sync.startup.pages' AND status='delivered'"
+        ).fetchone()[0] == 1004
+        assert con.execute(
+            "SELECT status FROM event_ledger WHERE event_id=?", (first_event_id,)
+        ).fetchone()[0] == "partial_failure"
+        for target in ("planning", "ez_methods"):
+            assert con.execute(
+                "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='synthetic-page-recovery' AND target_module=?",
+                (target,),
+            ).fetchone()[0] == 1005
+        assert con.execute(
+            "SELECT COUNT(*) FROM event_delivery_receipts WHERE event_id=? AND status='failed'",
+            (first_event_id,),
+        ).fetchone()[0] == 1
+
+    # Retry only the failed receipt; both workflow actions remain idempotent.
+    retry = recover_undelivered(limit=100)
+    assert retry["events"] == 1 and retry["failed"] == 0
+    assert retry["delivered"] == 1 and retry["skipped"] >= 1
+    with db() as con:
+        assert con.execute(
+            "SELECT status FROM event_ledger WHERE event_id=?", (first_event_id,)
+        ).fetchone()[0] == "delivered"
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='synthetic-page-recovery'"
+        ).fetchone()[0] == 2010
+        assert con.execute(
+            "SELECT COUNT(*) FROM event_delivery_receipts WHERE event_id=? AND status='delivered'",
+            (first_event_id,),
+        ).fetchone()[0] >= 2
+    assert recover_undelivered(limit=100)["events"] == 0
