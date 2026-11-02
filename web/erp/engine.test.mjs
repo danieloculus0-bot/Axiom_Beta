@@ -842,3 +842,105 @@ test("Quality Forge new inspection evidence IDs cannot collide with sparse brows
       caseId+"-inspection-"+(historicalSuffix+2));
   }
 });
+
+test("Quality Forge follow-up IDs preserve sparse historical evidence after case closure",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
+  const caseId=state.quality[0].id;
+  state=recordQualityFollowup(state,caseId,"Synthetic initial follow-up",t);
+  state.quality[0].followUps.push({
+    ...structuredClone(state.quality[0].followUps[0]),
+    id:caseId+"-followup-7",note:"Synthetic restored follow-up"
+  });
+  const before=JSON.stringify(state),eventCount=state.events.length;
+  const updated=recordQualityFollowup(state,caseId,"Synthetic new follow-up",u);
+  const newId=caseId+"-followup-8";
+  assert.equal(JSON.stringify(state),before,"Evidence creation cannot mutate the input");
+  assert.deepEqual(updated.quality[0].followUps.map(item=>item.id),
+    [caseId+"-followup-1",caseId+"-followup-7",newId]);
+  assert.equal(updated.events.length,eventCount+1);
+  assert.deepEqual(qualityJobFollowupTarget(updated,"sample-1001",caseId,newId),
+    {caseId,jobId:"sample-1001",kind:"followup",id:newId});
+  const button='data-action="job-quality-followup" data-case="'+caseId+
+    '" data-job="sample-1001" data-id="'+newId+'"';
+  assert.ok(renderJobQualityEvidence(updated,"sample-1001").includes(button));
+  assert.ok(renderJobRegisterInspectionEvidence(updated,"sample-1001").includes(button));
+  state=recordQualityDisposition(updated,caseId,"SCRAP","Synthetic reviewed disposition",u);
+  state=closeReviewedQuality(state,caseId,u);
+  state=recordQualityFollowup(state,caseId,"Synthetic closed-case follow-up","2026-10-31T12:00:00Z");
+  assert.equal(state.quality[0].followUps.at(-1).id,caseId+"-followup-9");
+  assert.equal(state.quality[0].status,"CLOSED");
+  assert.deepEqual(qualityJobFollowupTarget(state,"sample-1001",caseId,newId),
+    {caseId,jobId:"sample-1001",kind:"followup",id:newId});
+});
+
+test("Quality Forge corrective action IDs preserve sparse historical links",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
+  const caseId=state.quality[0].id;
+  state=recordQualityCorrectiveAction(state,caseId,"QUALITY","Synthetic initial action","",t);
+  state.quality[0].correctiveActions.push({
+    ...structuredClone(state.quality[0].correctiveActions[0]),
+    id:caseId+"-action-6",description:"Synthetic restored action",reviews:[]
+  });
+  const before=JSON.stringify(state),eventCount=state.events.length;
+  const updated=recordQualityCorrectiveAction(state,caseId,"ENGINEERING",
+    "Synthetic additional corrective action","",u);
+  const newId=caseId+"-action-7";
+  assert.equal(JSON.stringify(state),before);
+  assert.deepEqual(updated.quality[0].correctiveActions.map(item=>item.id),
+    [caseId+"-action-1",caseId+"-action-6",newId]);
+  assert.equal(updated.events.length,eventCount+1);
+  assert.deepEqual(qualityJobCorrectiveTarget(updated,"sample-1001",caseId,newId),
+    {caseId,jobId:"sample-1001",kind:"corrective",id:newId});
+  assert.deepEqual(qualityCorrectiveReviewTarget(updated,caseId,newId),
+    {caseId,actionId:newId,jobId:"sample-1001"});
+  const button='data-action="job-quality-corrective" data-case="'+caseId+
+    '" data-job="sample-1001" data-id="'+newId+'"';
+  assert.ok(renderJobQualityEvidence(updated,"sample-1001").includes(button));
+  assert.ok(renderJobRegisterInspectionEvidence(updated,"sample-1001").includes(button));
+  const following=recordQualityCorrectiveAction(updated,caseId,"QUALITY",
+    "Synthetic subsequent corrective action","",u);
+  assert.equal(following.quality[0].correctiveActions.at(-1).id,caseId+"-action-8");
+  const exhausted=structuredClone(updated);
+  exhausted.quality[0].correctiveActions.push({
+    ...structuredClone(updated.quality[0].correctiveActions[0]),
+    id:caseId+"-action-9007199254740991"
+  });
+  const exhaustedBefore=JSON.stringify(exhausted);
+  assert.throws(()=>recordQualityCorrectiveAction(exhausted,caseId,"QUALITY",
+    "Synthetic range-exhaustion check","",u),/range exhausted/);
+  assert.equal(JSON.stringify(exhausted),exhaustedBefore,
+    "Unsafe ID ranges must reject without appending an event");
+});
+
+test("Quality Forge effectiveness review IDs preserve sparse evidence after closure",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
+  const caseId=state.quality[0].id;
+  state=recordQualityCorrectiveAction(state,caseId,"QUALITY","Synthetic reviewable action","",t);
+  const actionId=state.quality[0].correctiveActions[0].id;
+  state=reviewQualityCorrectiveAction(state,caseId,actionId,"MORE_EVIDENCE",
+    "Synthetic initial effectiveness review",u);
+  const reviews=state.quality[0].correctiveActions[0].reviews;
+  reviews.push({...structuredClone(reviews[0]),id:actionId+"-review-5",
+    note:"Synthetic restored effectiveness review"});
+  state=recordQualityDisposition(state,caseId,"SCRAP","Synthetic reviewed disposition",u);
+  state=closeReviewedQuality(state,caseId,u);
+  const before=JSON.stringify(state),eventCount=state.events.length;
+  const updated=reviewQualityCorrectiveAction(state,caseId,actionId,"NOT_EFFECTIVE",
+    "Synthetic post-closure effectiveness check","2026-10-31T12:00:00Z");
+  const newId=actionId+"-review-6";
+  assert.equal(JSON.stringify(state),before);
+  assert.deepEqual(updated.quality[0].correctiveActions[0].reviews.map(item=>item.id),
+    [actionId+"-review-1",actionId+"-review-5",newId]);
+  assert.equal(updated.events.length,eventCount+1);
+  assert.equal(updated.quality[0].status,"CLOSED");
+  assert.deepEqual(qualityJobEffectivenessTarget(updated,"sample-1001",caseId,newId),
+    {caseId,jobId:"sample-1001",kind:"effectiveness",id:newId});
+  const button='data-action="job-quality-effectiveness" data-case="'+caseId+
+    '" data-job="sample-1001" data-id="'+newId+'"';
+  assert.ok(renderJobQualityEvidence(updated,"sample-1001").includes(button));
+  assert.ok(renderJobRegisterInspectionEvidence(updated,"sample-1001").includes(button));
+  const following=reviewQualityCorrectiveAction(updated,caseId,actionId,"EFFECTIVE",
+    "Synthetic next effectiveness review","2026-10-31T12:01:00Z");
+  assert.equal(following.quality[0].correctiveActions[0].reviews.at(-1).id,
+    actionId+"-review-7");
+});

@@ -34,15 +34,14 @@ export const QUALITY_INSPECTION_STAGES=[
   {id:"FINAL_REVIEW",label:"Final review"}
 ];
 export const QUALITY_INSPECTION_RESULTS=["PASS","FAIL","REVIEW_REQUIRED"];
-/* Existing browser-local inspections may have sparse or manually restored IDs.
- * Allocate beyond the highest valid suffix rather than using array length,
- * so a new observation cannot silently reuse historical evidence identity.
+/* Browser-local evidence can contain sparse IDs restored from earlier saves.
+ * Share the existing inspection allocator across all canonical NCR evidence.
+ * A fresh receipt must never reuse an older identity or overwrite its links.
  */
-const nextInspectionEvidenceId=record=>{
-  const prefix=record.id+"-inspection-";
-  const inspections=Array.isArray(record.inspections)?record.inspections:[];
-  let sequence=inspections.length+1;
-  for(const item of inspections){
+const nextQualityEvidenceId=(items,prefix,kind)=>{
+  const records=Array.isArray(items)?items:[];
+  let sequence=records.length+1;
+  for(const item of records){
     const existing=item?.id;
     if(typeof existing!=="string"||!existing.startsWith(prefix))continue;
     const suffix=existing.slice(prefix.length);
@@ -51,9 +50,11 @@ const nextInspectionEvidenceId=record=>{
     if(Number.isSafeInteger(number))sequence=Math.max(sequence,number+1);
   }
   if(!Number.isSafeInteger(sequence))
-    throw Error("Fictional inspection evidence ID range exhausted");
+    throw Error("Fictional "+kind+" evidence ID range exhausted");
   return prefix+sequence;
 };
+const nextInspectionEvidenceId=record=>
+  nextQualityEvidenceId(record.inspections,record.id+"-inspection-","inspection");
 /* Records a fictional observation against the existing NCR, job and routed step.
  * It is evidence only, never a production inspection approval or automatic release.
  */
@@ -97,10 +98,11 @@ export function recordQualityFollowup(state,id,note,at=new Date().toISOString())
   const record=recordFor(state,id);
   if(!record)throw Error("Fictional quality case not found");
   const detail=noteText(note),time=timestamp(at);
+  const followupId=nextQualityEvidenceId(record.followUps,id+"-followup-","follow-up");
   return change(state,"quality.followup.recorded",record.number+" / case follow-up",n=>{
     const q=n.quality.find(item=>item.id===id);
     if(!Array.isArray(q.followUps))q.followUps=[];
-    q.followUps.push({id:id+"-followup-"+(q.followUps.length+1),note:detail,at:time});
+    q.followUps.push({id:followupId,note:detail,at:time});
   },time);
 }
 
@@ -130,11 +132,12 @@ export function recordQualityCorrectiveAction(state,id,ownerRole,description,ins
   if(sourceId&&sourceMatches.length!==1)
     throw Error("Choose one unambiguous inspection observation on this fictional case");
   const detail=noteText(description),time=timestamp(at);
+  const correctiveId=nextQualityEvidenceId(record.correctiveActions,id+"-action-","corrective-action");
   return change(state,"quality.corrective_action.recorded",record.number+" / "+ownerRole,n=>{
     const q=n.quality.find(item=>item.id===id);
     if(!Array.isArray(q.correctiveActions))q.correctiveActions=[];
     q.correctiveActions.push({
-      id:id+"-action-"+(q.correctiveActions.length+1),ownerRole,description:detail,
+      id:correctiveId,ownerRole,description:detail,
       sourceInspectionId:sourceId||null,createdAt:time,reviews:[]
     });
   },time);
@@ -158,11 +161,12 @@ export function reviewQualityCorrectiveAction(state,id,actionId,result,note,at=n
   const detail=noteText(note),time=timestamp(at);
   if(Date.parse(time)<Date.parse(action.createdAt))
     throw Error("Effectiveness review cannot precede the fictional action");
+  const reviewId=nextQualityEvidenceId(action.reviews,actionId+"-review-","effectiveness-review");
   return change(state,"quality.corrective_action.effectiveness_reviewed",record.number+" / "+actionId+" / "+result,n=>{
     const target=n.quality.find(item=>item.id===id).correctiveActions.find(item=>item.id===actionId);
     if(!Array.isArray(target.reviews))target.reviews=[];
     target.reviews.push({
-      id:actionId+"-review-"+(target.reviews.length+1),result,note:detail,at:time
+      id:reviewId,result,note:detail,at:time
     });
   },time);
 }
