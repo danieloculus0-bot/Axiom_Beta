@@ -276,3 +276,15 @@ def test_revision_consumer_rejects_unlinked_and_forged_evidence(tmp_path,monkeyp
             "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-revision-review'"
         ).fetchone()[0]==0
         assert con.execute("SELECT status FROM ezm_method_plans WHERE id=?",(plan,)).fetchone()[0]=="DRAFT"
+    with db() as con:
+        con.execute("UPDATE ezm_sources SET note='[]' WHERE plan_id=?",(plan,))
+    publish(
+        "fai.imported",source_module="ezfair",entity_type="fai",
+        entity_id=str(imported["id"]),actor="synthetic-tester",
+        payload={"vault_version":"SYN-VERSION-02","drawing_sha256":digest,
+                 "inspection_status":"review_required"},
+    )
+    with db() as con:
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-revision-review'"
+        ).fetchone()[0]==0
