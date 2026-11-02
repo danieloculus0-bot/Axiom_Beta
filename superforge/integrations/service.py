@@ -25,6 +25,42 @@ ENTITY_TABLES={
 def _hash(payload:dict)->str:
     return hashlib.sha256(json.dumps(payload,sort_keys=True,default=str).encode("utf-8")).hexdigest()
 
+def _job_event_identity(con, job_id:int)->dict[str,Any]:
+    """Snapshot canonical SQL job/part scope in the same transaction as job.changed.
+
+    current_operation is a free-text label, NOT a verified EZ Methods/EWI
+    operation ID. A recorded part revision is NOT proof of drawing release.
+    Consumers must recheck current SQL and obtain human review before action.
+    """
+    row=con.execute(
+        """SELECT j.id AS job_id,j.job_number,j.part_id,j.current_operation,
+                  p.part_number,p.revision AS part_revision
+           FROM jobs j LEFT JOIN parts p ON p.id=j.part_id WHERE j.id=?""",
+        (job_id,),
+    ).fetchone()
+    if row is None:
+        raise ValueError("Imported job missing before event staging")
+    part_id=row["part_id"]
+    return {
+        "schema":"axiom.job-identity.v1",
+        "source":"local_axiom_sql",
+        "job_id":int(row["job_id"]),
+        "job_number":row["job_number"],
+        "part_id":int(part_id) if part_id is not None else None,
+        "part_number":row["part_number"],
+        "part_revision":row["part_revision"],
+        "part_link_status":(
+            "not_linked" if part_id is None else
+            "linked_record_revision_unverified"
+            if row["part_number"] and row["part_revision"] else
+            "linked_revision_incomplete"
+        ),
+        "operation_label":row["current_operation"] or None,
+        "operation_id":None,
+        "operation_status":"unverified_label" if row["current_operation"] else "not_recorded",
+        "human_review_required":True,
+    }
+
 class IntegrationService:
     def __init__(self,credential_loader=None):
         self.credential_loader=credential_loader or (lambda ref:{})
@@ -92,17 +128,22 @@ class IntegrationService:
                     )
                     staged=None
                     if changed_fields:
-                        # Source record and event commit together. No orphaned change notification.
+                        # Capture linked part/revision/operation evidence while this same
+                        # SQL transaction is open; do not infer missing identities.
+                        event_payload={
+                            "connection_id":connection_id,"run_id":run_id,
+                            "external_id":external.external_id,"changed_fields":changed_fields,
+                            "created":before is None,
+                            "job_id":int(internal_id) if entity_type=="job" else None,
+                        }
+                        if entity_type=="job":
+                            event_payload["identity"]=_job_event_identity(con,int(internal_id))
+                        # Source record, identity snapshot and event commit together.
                         staged=stage_event(
                             con,"job.changed" if entity_type=="job" else "erp.record.changed",
                             source_module="integrations",entity_type=entity_type,
                             entity_id=internal_id,actor=actor,reason="Imported ERP record changed",
-                            payload={
-                                "connection_id":connection_id,"run_id":run_id,
-                                "external_id":external.external_id,"changed_fields":changed_fields,
-                                "created":before is None,
-                                "job_id":int(internal_id) if entity_type=="job" else None,
-                            },
+                            payload=event_payload,
                         )
                 if staged:
                     applied+=1
