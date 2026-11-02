@@ -47,14 +47,6 @@ def review_controlled_fai_revision(event: DomainEvent) -> None:
         if (event.payload.get("vault_version") != new["vault_version_id"]
                 or event.payload.get("drawing_sha256") != new["pdf_sha256"]):
             return
-        if con.execute(
-            """SELECT 1 FROM workflow_actions
-               WHERE workflow_key='controlled-drawing-revision-review'
-                 AND entity_type='fai' AND entity_id=? LIMIT 1""",
-            (str(fai_id),),
-        ).fetchone():
-            return
-
         sources = con.execute(
             """SELECT s.id AS source_id, s.plan_id, s.location, s.revision,
                       s.note, m.revision AS plan_revision, m.part_number
@@ -80,20 +72,22 @@ def review_controlled_fai_revision(event: DomainEvent) -> None:
                     or source["revision"] != source["plan_revision"]
                     or source["location"] != "forgevault://" + new["vault_record_id"] + "/" + old_version):
                 continue
-            old_import = con.execute(
-                """SELECT 1 FROM fai_source_links l
+            old_imports = con.execute(
+                """SELECT f.id FROM fai_source_links l
                    JOIN fai_runs f ON f.id=l.fai_run_id
                    WHERE l.vault_record_id=? AND l.vault_version_id=?
                      AND l.pdf_sha256=? AND l.release_package_number=?
-                     AND f.drawing_revision=? LIMIT 1""",
+                     AND f.drawing_revision=?""",
                 (new["vault_record_id"], old_version, old_hash,
                  note.get("release_package"), source["revision"]),
-            ).fetchone()
-            if old_import is None:
+            ).fetchall()
+            # Ambiguous prior FAI identities must not be treated as verified.
+            if len(old_imports) != 1:
                 continue
             affected.append({
                 "plan_id": source["plan_id"],
                 "method_source_id": source["source_id"],
+                "previous_fai_run_id": int(old_imports[0]["id"]),
                 "part_number": source["part_number"],
                 "previous_revision": source["revision"],
                 "previous_file_version_id": old_version,
@@ -101,19 +95,34 @@ def review_controlled_fai_revision(event: DomainEvent) -> None:
             })
     if not affected:
         return
-    create_action(
-        event, workflow_key="controlled-drawing-revision-review",
-        step_key="reassess-linked-methods", target_module="planning",
-        input_data={
-            "contract_version": 1,
-            "fai_run_id": fai_id,
-            "vault_record_id": new["vault_record_id"],
-            "new_revision": new["drawing_revision"],
-            "new_file_version_id": new["vault_version_id"],
-            "new_sha256": new["pdf_sha256"],
-            "affected_methods": affected,
-            "provenance": "EZ_FAIR_IMPORTED_CONTROLLED_DRAWING",
-            "review_state": "REVIEW_REQUIRED",
-            "limitation": "New controlled evidence may affect linked methods; human review required. No routing or EWI change was applied.",
-        },
-    )
+    evidence = {
+        "contract_version": 1,
+        "fai_run_id": fai_id,
+        "vault_record_id": new["vault_record_id"],
+        "new_revision": new["drawing_revision"],
+        "new_file_version_id": new["vault_version_id"],
+        "new_sha256": new["pdf_sha256"],
+        "affected_methods": affected,
+        "provenance": "EZ_FAIR_IMPORTED_CONTROLLED_DRAWING",
+        "review_state": "REVIEW_REQUIRED",
+    }
+    # Both consumers use the same verified event and exact source identities.
+    # A previous Planning delivery must not suppress a missing Quality review.
+    for workflow_key, step_key, target_module, limitation in (
+        ("controlled-drawing-revision-review", "reassess-linked-methods", "planning",
+         "New controlled evidence may affect linked methods; human review required. No routing or EWI change was applied."),
+        ("controlled-drawing-quality-review", "review-fai-characteristic-impact", "quality",
+         "Compare old and new FAI characteristics manually; no inspection acceptance, plan edit, or release was applied."),
+    ):
+        with db() as con:
+            already = con.execute(
+                """SELECT 1 FROM workflow_actions
+                   WHERE workflow_key=? AND entity_type='fai' AND entity_id=? LIMIT 1""",
+                (workflow_key, str(fai_id)),
+            ).fetchone()
+        if not already:
+            create_action(
+                event, workflow_key=workflow_key, step_key=step_key,
+                target_module=target_module,
+                input_data={**evidence, "limitation": limitation},
+            )
