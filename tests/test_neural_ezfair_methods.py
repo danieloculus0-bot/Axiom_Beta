@@ -180,3 +180,99 @@ def test_drifted_document_or_exact_version_hash_blocks_planning_review(tmp_path,
             assert con.execute(
                 "SELECT pdf_sha256 FROM fai_source_links WHERE fai_run_id=?",(fai,)
             ).fetchone()[0]==source["sha256"]
+
+
+def _import_next_synthetic_fai_version():
+    """Use the existing EZ FAIR import producer, not a fabricated bus-only event."""
+    import hashlib
+    from superforge.integrations.controlled_fai import import_controlled_fai
+
+    pdf=b"%PDF-1.4\nfictional revision C\n%%EOF\n"
+    digest=hashlib.sha256(pdf).hexdigest()
+    source={
+        "record_id":"SYN-VAULT-01", "file_version_id":"SYN-VERSION-02",
+        "release_package_number":"SYN-RELEASE-02",
+        "customer_part_number":"SYN-PART-01", "customer_revision":"C",
+        "internal_revision":"C", "filename":"synthetic-drawing.pdf",
+        "sha256":digest, "byte_size":len(pdf), "version_number":2,
+    }
+    payload={
+        "schema":"ezfair.inspection_handoff.v1", "status":"review_required",
+        "source_drawing":source, "characteristic_count":1,
+        "characteristics":[{
+            "char_number":1, "reference_location":"P1-R1C1",
+            "raw_text":"WIDTH 21.00", "nominal":21.0,
+            "lsl":20.98, "usl":21.02, "characteristic_type":"LINEAR",
+        }],
+    }
+    imported=import_controlled_fai(payload,pdf,fai_number="SYN-FAI-REV-C",actor="synthetic-tester")
+    return imported,digest
+
+
+def test_new_controlled_fai_revision_flags_existing_methods_without_release(tmp_path,monkeypatch):
+    source,plan,old_fai=_seed(tmp_path,monkeypatch)
+    linked=link_controlled_drawing_to_method(plan,source,actor="synthetic-tester")
+    imported,digest=_import_next_synthetic_fai_version()
+    with db() as con:
+        actions=con.execute(
+            "SELECT * FROM workflow_actions WHERE workflow_key='controlled-drawing-revision-review'"
+        ).fetchall()
+        assert len(actions)==1
+        action=dict(actions[0])
+        assert action["target_module"]=="planning" and action["status"]=="open"
+        assert action["entity_type"]=="fai" and action["entity_id"]==str(imported["id"])
+        evidence=json.loads(action["input_json"])
+        assert evidence["contract_version"]==1
+        assert evidence["new_revision"]=="C"
+        assert evidence["new_file_version_id"]=="SYN-VERSION-02"
+        assert evidence["new_sha256"]==digest
+        assert evidence["review_state"]=="REVIEW_REQUIRED"
+        assert evidence["affected_methods"]==[{
+            "plan_id":plan,"method_source_id":linked["source_id"],
+            "part_number":"SYN-PART-01","previous_revision":"B",
+            "previous_file_version_id":"SYN-VERSION-01","previous_sha256":source["sha256"],
+        }]
+        event=con.execute(
+            "SELECT event_id,status FROM event_ledger WHERE event_type='fai.imported' AND entity_id=?",
+            (str(imported["id"]),),
+        ).fetchone()
+        assert event and event["status"]=="delivered"
+        receipt=con.execute(
+            "SELECT status FROM event_delivery_receipts WHERE event_id=? AND handler_key LIKE '%review_controlled_fai_revision'",
+            (event["event_id"],),
+        ).fetchone()
+        assert receipt and receipt["status"]=="delivered"
+        assert con.execute("SELECT status FROM ezm_method_plans WHERE id=?",(plan,)).fetchone()[0]=="DRAFT"
+        assert con.execute("SELECT status FROM fai_runs WHERE id=?",(old_fai,)).fetchone()[0]=="review_required"
+        assert con.execute("SELECT status FROM fai_runs WHERE id=?",(imported["id"],)).fetchone()[0]=="review_required"
+    publish(
+        "fai.imported",source_module="ezfair",entity_type="fai",
+        entity_id=str(imported["id"]),actor="synthetic-tester",
+        payload={"vault_version":"SYN-VERSION-02","drawing_sha256":digest,
+                 "inspection_status":"review_required"},
+    )
+    with db() as con:
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-revision-review'"
+        ).fetchone()[0]==1
+
+
+def test_revision_consumer_rejects_unlinked_and_forged_evidence(tmp_path,monkeypatch):
+    source,plan,_=_seed(tmp_path,monkeypatch)
+    imported,digest=_import_next_synthetic_fai_version()
+    with db() as con:
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-revision-review'"
+        ).fetchone()[0]==0
+    link_controlled_drawing_to_method(plan,source,actor="synthetic-tester")
+    publish(
+        "fai.imported",source_module="ezfair",entity_type="fai",
+        entity_id=str(imported["id"]),actor="synthetic-tester",
+        payload={"vault_version":"SYN-VERSION-02","drawing_sha256":"f"*64,
+                 "inspection_status":"review_required"},
+    )
+    with db() as con:
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-revision-review'"
+        ).fetchone()[0]==0
+        assert con.execute("SELECT status FROM ezm_method_plans WHERE id=?",(plan,)).fetchone()[0]=="DRAFT"
