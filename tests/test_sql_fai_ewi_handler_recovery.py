@@ -57,6 +57,7 @@ def test_partial_fai_handler_failure_replays_ewi_review_after_restart(tmp_path, 
 
     from superforge.app import create_app
     from superforge.modules.ewi import clock_start, clock_stop, packet, save_remote_routes
+    from superforge.modules import ewi as ewi_module
     from superforge.integrations.ewi_revision_evidence import pending_ewi_revision_event
 
     create_app({"TESTING": True})
@@ -99,7 +100,8 @@ def test_partial_fai_handler_failure_replays_ewi_review_after_restart(tmp_path, 
         "work_center": "SYN-CELL", "part_number": "SYN-RECOVERY-PART-001",
         "external_id": "SYN-ROUTE-10",
     }]) == 1
-    assert packet(job_id)["ready"] is True
+    ready_packet = packet(job_id)
+    assert ready_packet["ready"] is True
     active_session = clock_start(job_id, "10", "SYN-OPERATOR-OLD", "synthetic-test")
 
     # The real review subscriber creates Planning and Quality actions first.
@@ -173,6 +175,12 @@ def test_partial_fai_handler_failure_replays_ewi_review_after_restart(tmp_path, 
     assert any(f"EZ FAIR revision event {event_id}" in issue for issue in blocked["issues"])
     with pytest.raises(ValueError, match="EZ FAIR revision event"):
         clock_start(job_id, "10", "SYN-OPERATOR-NEW", "synthetic-test")
+    # Simulate a stale operator packet from before the committed event. The
+    # BEGIN IMMEDIATE clock-in transaction must independently catch it.
+    with monkeypatch.context() as patch:
+        patch.setattr(ewi_module, "packet", lambda _job_id: ready_packet)
+        with pytest.raises(ValueError, match="EZ FAIR revision event"):
+            clock_start(job_id, "10", "SYN-OPERATOR-NEW", "synthetic-test")
     with db() as con:
         assert con.execute("SELECT COUNT(*) FROM ewi_clock_sessions WHERE job_id=?", (job_id,)).fetchone()[0] == 1
         assert con.execute("SELECT COUNT(*) FROM ewi_outbox").fetchone()[0] == 1
