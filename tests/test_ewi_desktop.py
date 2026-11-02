@@ -217,3 +217,31 @@ def test_stale_or_unverified_route_revision_blocks_clock_in_not_clock_out(tmp_pa
     assert any("revision snapshot unverified" in issue for issue in legacy["issues"])
     with pytest.raises(ValueError, match="EWI is blocked"):
         clock_start(job, "10", "TECH-NEW", "synthetic_test")
+
+
+def test_clock_in_rechecks_route_revision_in_its_sql_write_transaction(tmp_path, monkeypatch):
+    """A route revision changed after packet validation cannot start clocking."""
+    _, job, _ = build_job(tmp_path, monkeypatch)
+    from superforge.db import db
+    from superforge.modules import ewi as ewi_module
+
+    assert ewi_module.save_remote_routes(job, routes()) == 1
+    original_packet = ewi_module.packet
+
+    def packet_then_route_changes(job_id):
+        snapshot = original_packet(job_id)
+        assert snapshot["ready"] is True
+        # Simulate another writer changing the route after the packet read.
+        with db() as con:
+            con.execute(
+                "UPDATE ewi_routes SET local_part_revision_at_pull='B' WHERE job_id=?",
+                (job_id,),
+            )
+        return snapshot
+
+    monkeypatch.setattr(ewi_module, "packet", packet_then_route_changes)
+    with pytest.raises(ValueError, match="routing revision changed before clocking"):
+        ewi_module.clock_start(job, "10", "TECH-RACE", "synthetic_test")
+    with db() as con:
+        assert con.execute("SELECT COUNT(*) FROM ewi_clock_sessions").fetchone()[0] == 0
+        assert con.execute("SELECT COUNT(*) FROM ewi_outbox").fetchone()[0] == 0
