@@ -22,7 +22,9 @@ from ..audit import record_event
 from ..db import db
 from ..ui import page
 from ..integrations.jobboss2_reader import JobBoss2Reader, JobBossError, configured
-from ..integrations.ewi_revision_evidence import blocking_ewi_revision_review
+from ..integrations.ewi_revision_evidence import (
+    blocking_ewi_revision_review, pending_ewi_revision_event,
+)
 
 ewi_blueprint = Blueprint("ewi", __name__)
 _EMPLOYEE = re.compile(r"^[A-Za-z0-9_.-]{1,32}$")
@@ -145,6 +147,7 @@ def packet(job_id: int) -> dict | None:
             ORDER BY started_utc DESC LIMIT 30
         """, (job_id,))]
         revision_review = blocking_ewi_revision_review(con, job_id)
+        pending_revision = pending_ewi_revision_event(con, job_id)
     path, drawing, issue = _released_pdf(job)
     errors = [issue] if issue else []
     if revision_review is not None:
@@ -152,6 +155,12 @@ def packet(job_id: int) -> dict | None:
             f"controlled drawing revision review action #{revision_review['id']} "
             f"({revision_review['status']}) requires independently verified "
             "reconciliation; new clocking blocked"
+        )
+    elif pending_revision is not None:
+        errors.append(
+            f"EZ FAIR revision event {pending_revision['event_id']} "
+            f"({pending_revision['delivery_status']}) awaits EWI review delivery; "
+            "new clocking blocked"
         )
     if not routes:
         errors.append("No JobBOSS² routed operations have been synchronized")
@@ -334,6 +343,12 @@ def clock_start(job_id: int, step: str, employee_ref: str, actor: str) -> str:
             raise ValueError(
                 f"EWI is blocked: controlled drawing revision review action #{review['id']} "
                 "requires independently verified reconciliation"
+            )
+        pending = pending_ewi_revision_event(con, job_id)
+        if pending is not None:
+            raise ValueError(
+                f"EWI is blocked: EZ FAIR revision event {pending['event_id']} "
+                f"has {pending['delivery_status']} delivery; human review not yet reconciled"
             )
         # Recheck inside the same SQL transaction that creates the clocking
         # session. The part or route may have changed after packet() returned.

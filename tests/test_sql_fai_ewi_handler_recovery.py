@@ -56,7 +56,8 @@ def test_partial_fai_handler_failure_replays_ewi_review_after_restart(tmp_path, 
     monkeypatch.setenv("AXIOM_EWI_DOCUMENT_ROOT", str(root))
 
     from superforge.app import create_app
-    from superforge.modules.ewi import clock_start, packet, save_remote_routes
+    from superforge.modules.ewi import clock_start, clock_stop, packet, save_remote_routes
+    from superforge.integrations.ewi_revision_evidence import pending_ewi_revision_event
 
     create_app({"TESTING": True})
     old_pdf = b"%PDF-1.4\n% fictional revision A\n%%EOF\n"
@@ -99,6 +100,7 @@ def test_partial_fai_handler_failure_replays_ewi_review_after_restart(tmp_path, 
         "external_id": "SYN-ROUTE-10",
     }]) == 1
     assert packet(job_id)["ready"] is True
+    active_session = clock_start(job_id, "10", "SYN-OPERATOR-OLD", "synthetic-test")
 
     # The real review subscriber creates Planning and Quality actions first.
     # Inject an interruption only when it reaches its EWI action.
@@ -152,6 +154,45 @@ def test_partial_fai_handler_failure_replays_ewi_review_after_restart(tmp_path, 
                WHERE event_id=? AND target_module='ewi'""",
             (event_id,),
         ).fetchone()[0] == 0
+        pending = pending_ewi_revision_event(con, job_id)
+        assert pending is not None
+        assert (pending["event_id"], pending["delivery_status"]) == (event_id, "partial_failure")
+        unrelated_part = con.execute(
+            "INSERT INTO parts(part_number,revision) VALUES('SYN-UNRELATED-PART','A')"
+        ).lastrowid
+        unrelated_job = con.execute(
+            "INSERT INTO jobs(job_number,part_id,status) VALUES('SYN-UNRELATED-JOB',?,'open')",
+            (unrelated_part,),
+        ).lastrowid
+        assert pending_ewi_revision_event(con, unrelated_job) is None
+
+    # The real producer committed the revision but EWI's review action is absent.
+    # The operator must not be able to start work during this recovery interval.
+    blocked = packet(job_id)
+    assert blocked["ready"] is False
+    assert any(f"EZ FAIR revision event {event_id}" in issue for issue in blocked["issues"])
+    with pytest.raises(ValueError, match="EZ FAIR revision event"):
+        clock_start(job_id, "10", "SYN-OPERATOR-NEW", "synthetic-test")
+    with db() as con:
+        assert con.execute("SELECT COUNT(*) FROM ewi_clock_sessions WHERE job_id=?", (job_id,)).fetchone()[0] == 1
+        assert con.execute("SELECT COUNT(*) FROM ewi_outbox").fetchone()[0] == 1
+        # Exercise the same committed event in the pre-dispatch status. The
+        # atomic-import crash test separately proves actual pending durability.
+        con.execute("UPDATE event_ledger SET status='pending_delivery' WHERE event_id=?", (event_id,))
+        assert pending_ewi_revision_event(con, job_id)["delivery_status"] == "pending_delivery"
+    assert packet(job_id)["ready"] is False
+    with pytest.raises(ValueError, match="EZ FAIR revision event"):
+        clock_start(job_id, "10", "SYN-OPERATOR-NEW", "synthetic-test")
+    with db() as con:
+        con.execute("UPDATE event_ledger SET status='partial_failure' WHERE event_id=?", (event_id,))
+        assert con.execute("SELECT COUNT(*) FROM ewi_clock_sessions WHERE job_id=?", (job_id,)).fetchone()[0] == 1
+        assert con.execute("SELECT COUNT(*) FROM ewi_outbox").fetchone()[0] == 1
+
+    # Existing clock-outs stay usable even while new clock-ins are blocked.
+    clock_stop(active_session, "SYN-OPERATOR-OLD", "synthetic-test")
+    with db() as con:
+        assert con.execute("SELECT ended_utc FROM ewi_clock_sessions WHERE id=?", (active_session,)).fetchone()[0]
+        assert con.execute("SELECT COUNT(*) FROM ewi_outbox").fetchone()[0] == 2
 
     # Reinitialize the actual app. Its existing SQL recovery cursor retries
     # the partial event and the real subscriber creates only the missing action.
@@ -219,7 +260,7 @@ def test_partial_fai_handler_failure_replays_ewi_review_after_restart(tmp_path, 
         ).fetchone()[0] == receipt_count
         assert con.execute(
             "SELECT COUNT(*) FROM ewi_clock_sessions WHERE job_id=?", (job_id,),
-        ).fetchone()[0] == 0
+        ).fetchone()[0] == 1
         assert con.execute(
             "SELECT COUNT(*) FROM ewi_outbox",
-        ).fetchone()[0] == 0
+        ).fetchone()[0] == 2
