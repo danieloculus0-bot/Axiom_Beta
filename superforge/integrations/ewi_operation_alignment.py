@@ -92,7 +92,16 @@ def inspect_ewi_operation_alignment(job_id: int, event_id: str) -> dict:
             result["status"] = "job_not_found"
             return result
         if not ewi["ready"]:
-            result["status"] = "ewi_packet_not_ready"
+            # Packet readiness now blocks stale routes for clock-in. Preserve
+            # the established, specific read-only alignment status instead of
+            # collapsing that evidence into a generic packet-not-ready result.
+            issues = ewi.get("issues") or []
+            if any("routing revision stale" in issue for issue in issues):
+                result["status"] = "ewi_route_revision_stale"
+            elif any("routing revision snapshot unverified" in issue for issue in issues):
+                result["status"] = "ewi_route_revision_unverified"
+            else:
+                result["status"] = "ewi_packet_not_ready"
             return result
 
         drawing = ewi["drawing"]
