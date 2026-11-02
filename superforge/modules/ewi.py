@@ -318,6 +318,23 @@ def clock_start(job_id: int, step: str, employee_ref: str, actor: str) -> str:
     stamp = _now()
     import json
     with db() as con:
+        # Recheck inside the same SQL transaction that creates the clocking
+        # session. The part or route may have changed after packet() returned.
+        scope = con.execute(
+            """SELECT p.revision AS current_revision,
+                      r.local_part_revision_at_pull AS captured_revision
+               FROM jobs j
+               LEFT JOIN parts p ON p.id=j.part_id
+               LEFT JOIN ewi_routes r ON r.job_id=j.id AND r.step=?
+               WHERE j.id=?""",
+            (step, job_id),
+        ).fetchone()
+        if (scope is None
+                or not str(scope["current_revision"] or "").strip()
+                or not str(scope["captured_revision"] or "").strip()
+                or str(scope["current_revision"]).strip().casefold()
+                   != str(scope["captured_revision"]).strip().casefold()):
+            raise ValueError("EWI is blocked: routing revision changed before clocking")
         try:
             con.execute("""INSERT INTO ewi_clock_sessions
                 (id,employee_ref,job_id,step,started_utc,actor) VALUES (?,?,?,?,?,?)""",
