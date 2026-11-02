@@ -903,6 +903,20 @@ def main():
                     duplicate_receipts = panel.locator(
                         f'[data-evidence-kind="{kind}"][data-evidence-id="{evidence_id}"]'
                     )
+                    stored_count = page.evaluate("""({caseId, kind, id}) => {
+                        const data = JSON.parse(localStorage.getItem(
+                            "axiom_public_erp_suite_v1"));
+                        const record = data.quality.find(q => q.id === caseId);
+                        const rows = kind === "inspection" ? record.inspections :
+                            kind === "corrective" ? record.correctiveActions :
+                            kind === "followup" ? record.followUps :
+                            record.correctiveActions.flatMap(a => a.reviews || []);
+                        return rows.filter(row => row.id === id).length;
+                    }""", {"caseId": case_id, "kind": kind, "id": evidence_id})
+                    print("Duplicate evidence browser check:", kind,
+                          "stored", stored_count,
+                          "rendered", duplicate_receipts.count(), flush=True)
+                    assert stored_count == 2, "Injected fictional evidence must survive reload"
                     expect(duplicate_receipts).to_have_count(2)
                     expect(panel.locator(
                         f'button[data-action="quality-evidence-focus"]'
