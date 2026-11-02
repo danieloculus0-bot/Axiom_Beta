@@ -29,6 +29,13 @@ test("CAM facing exercise validates bounds and does not invent production author
  const out=renderCam(seedState().jobs[0],r);
  assert.ok(out.includes("NOT a dimension")&&out.includes('href="#routing"')&&out.includes("No CNC code"));
 });
+test("CAM page embeds the full EZ CAM browser app with a direct launch fallback and preserves job context",()=>{
+ const html=renderCam(seedState().jobs[0]);
+ assert.match(html,/<iframe[^>]+class="cam-embed"[^>]+src="https:\/\/danieloculus0-bot\.github\.io\/EZ-CAM\/"/);
+ assert.ok(html.includes("Open full-size CAM demo"));
+ assert.ok(html.includes('href="#routing"'));
+ assert.ok(html.includes("independent browser state"));
+});
 test("module directory includes audited local-only and independent modules without fake routes",()=>{
  const html=renderModuleDirectory();
  for(const name of ["EZ CAM","Payroll","PTO requests","EZ-FAIR","Supplier intelligence","Accounting & journal","BEAN reasoning"])
