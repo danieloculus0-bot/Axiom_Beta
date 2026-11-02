@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 from ..audit import record_event
 from ..db import db
-from ..event_bus import publish
+from ..event_bus import publish, stage_event, deliver_staged
 from .flatfile import FlatFileAdapter
 from .mapping import map_record
 from .rest import RESTAdapter
@@ -58,38 +58,85 @@ class IntegrationService:
                 mapped=map_record(external.payload,mappings,"in") if mappings else dict(external.payload)
                 if key_field not in mapped or mapped.get(key_field) in (None,""):
                     raise ValueError(f"mapped record lacks key field {key_field}")
-                columns=[k for k in mapped.keys() if k.replace("_","").isalnum()]
+                # Keep import mappings constrained to known table fields, never SQL identifiers from input.
                 with db() as con:
+                    allowed={r["name"] for r in con.execute(f"PRAGMA table_info({table})")}
+                    columns=[name for name in mapped if name in allowed and name not in {"id","created_at","updated_at"}]
+                    if len(columns)!=len(mapped):
+                        raise ValueError("Mapped record has unsupported or read-only columns")
                     existing=con.execute(f"SELECT * FROM {table} WHERE {key_field}=?",(mapped[key_field],)).fetchone()
                     before=dict(existing) if existing else None
-                    if existing:
-                        updates=[c for c in columns if c not in {"id","created_at"}]
-                        if updates:
-                            con.execute(f"UPDATE {table} SET "+",".join(f"{c}=?" for c in updates)+",updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                                        tuple(mapped[c] for c in updates)+(existing["id"],))
-                            internal_id=str(existing["id"])
+                    changed_fields=[name for name in columns if not existing or existing[name]!=mapped[name]]
+                    if existing and changed_fields:
+                        con.execute(
+                            f"UPDATE {table} SET "+",".join(f"{name}=?" for name in changed_fields)+
+                            ",updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                            tuple(mapped[name] for name in changed_fields)+(existing["id"],),
+                        )
+                        internal_id=str(existing["id"])
+                    elif existing:
+                        internal_id=str(existing["id"])
                     else:
-                        inserts=[c for c in columns if c!="id"]
-                        cur=con.execute(f"INSERT INTO {table}("+",".join(inserts)+") VALUES("+",".join("?" for _ in inserts)+")",
-                                        tuple(mapped[c] for c in inserts))
+                        cur=con.execute(
+                            f"INSERT INTO {table}("+",".join(columns)+") VALUES("+
+                            ",".join("?" for _ in columns)+")",
+                            tuple(mapped[name] for name in columns),
+                        )
                         internal_id=str(cur.lastrowid)
-                    con.execute("""INSERT INTO external_refs(connection_id,entity_type,internal_id,external_id,last_seen_at,last_payload_hash)
-                                   VALUES(?,?,?,?,CURRENT_TIMESTAMP,?)
-                                   ON CONFLICT(connection_id,entity_type,external_id) DO UPDATE SET internal_id=excluded.internal_id,last_seen_at=CURRENT_TIMESTAMP,last_payload_hash=excluded.last_payload_hash""",
-                                (connection_id,entity_type,internal_id,external.external_id,_hash(external.payload)))
-                applied+=1
-                record_event(event_type="ERP_IMPORT_ROW",action="APPLIED",module="integrations",source_module=connection["name"],target_module=entity_type,
-                             entity_type=entity_type,entity_id=internal_id,actor=actor,before=before,after=mapped,data={"external_id":external.external_id,"run_id":run_id})
+                    con.execute(
+                        """INSERT INTO external_refs(connection_id,entity_type,internal_id,external_id,last_seen_at,last_payload_hash)
+                           VALUES(?,?,?,?,CURRENT_TIMESTAMP,?)
+                           ON CONFLICT(connection_id,entity_type,external_id)
+                           DO UPDATE SET internal_id=excluded.internal_id,last_seen_at=CURRENT_TIMESTAMP,last_payload_hash=excluded.last_payload_hash""",
+                        (connection_id,entity_type,internal_id,external.external_id,_hash(external.payload)),
+                    )
+                    staged=None
+                    if changed_fields:
+                        # Source record and event commit together. No orphaned change notification.
+                        staged=stage_event(
+                            con,"job.changed" if entity_type=="job" else "erp.record.changed",
+                            source_module="integrations",entity_type=entity_type,
+                            entity_id=internal_id,actor=actor,reason="Imported ERP record changed",
+                            payload={
+                                "connection_id":connection_id,"run_id":run_id,
+                                "external_id":external.external_id,"changed_fields":changed_fields,
+                                "created":before is None,
+                                "job_id":int(internal_id) if entity_type=="job" else None,
+                            },
+                        )
+                if staged:
+                    applied+=1
+                    record_event(
+                        event_type="ERP_IMPORT_ROW",action="APPLIED",module="integrations",
+                        source_module=connection["name"],target_module=entity_type,
+                        entity_type=entity_type,entity_id=internal_id,actor=actor,
+                        before=before,after=mapped,
+                        data={"external_id":external.external_id,"run_id":run_id},
+                    )
+                    deliver_staged(staged.event_id)
+                else:
+                    skipped+=1
             except Exception as exc:
                 errors+=1
-                record_event(event_type="ERP_IMPORT_ROW",action="ERROR",module="integrations",source_module=connection["name"],target_module=entity_type,
-                             entity_type=entity_type,entity_id=external.external_id,actor=actor,reason=str(exc),data={"run_id":run_id})
+                record_event(
+                    event_type="ERP_IMPORT_ROW",action="ERROR",module="integrations",
+                    source_module=connection["name"],target_module=entity_type,
+                    entity_type=entity_type,entity_id=external.external_id,
+                    actor=actor,reason=str(exc),data={"run_id":run_id},
+                )
         status="completed" if errors==0 else "completed_with_errors"
         with db() as con:
-            con.execute("""UPDATE integration_runs SET status=?,read_count=?,applied_count=?,skipped_count=?,error_count=?,completed_at=CURRENT_TIMESTAMP,
-                           summary_json=? WHERE run_id=?""",(status,read,applied,skipped,errors,json.dumps({"connection":connection["name"]}),run_id))
-        publish("erp.sync.completed",source_module="integrations",entity_type="integration_run",entity_id=run_id,actor=actor,
-                payload={"connection_id":connection_id,"entity_type":entity_type,"read":read,"applied":applied,"skipped":skipped,"errors":errors})
+            con.execute(
+                """UPDATE integration_runs SET status=?,read_count=?,applied_count=?,skipped_count=?,error_count=?,completed_at=CURRENT_TIMESTAMP,
+                   summary_json=? WHERE run_id=?""",
+                (status,read,applied,skipped,errors,json.dumps({"connection":connection["name"]}),run_id),
+            )
+        publish(
+            "erp.sync.completed",source_module="integrations",
+            entity_type="integration_run",entity_id=run_id,actor=actor,
+            payload={"connection_id":connection_id,"entity_type":entity_type,
+                     "read":read,"applied":applied,"skipped":skipped,"errors":errors},
+        )
         return {"run_id":run_id,"status":status,"read":read,"applied":applied,"skipped":skipped,"errors":errors}
     def queue_push(self,connection_id:int,entity_type:str,entity_id:str,operation:str,payload:dict,*,event_id:str="",actor:str="integration")->int:
         with db() as con:
