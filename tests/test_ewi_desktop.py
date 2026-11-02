@@ -143,3 +143,77 @@ def test_api_reader_filters_job_and_never_sends_erp_write(monkeypatch):
     assert len(result) == 1
     assert result[0]["instruction"] == "Cut"
     assert [x[0] for x in calls] == ["POST", "GET"]
+
+
+def test_stale_or_unverified_route_revision_blocks_clock_in_not_clock_out(tmp_path, monkeypatch):
+    """A new released fictional revision cannot silently reuse old local routing."""
+    app, job, _ = build_job(tmp_path, monkeypatch)
+    from superforge.app import create_app
+    from superforge.db import db
+    from superforge.modules.ewi import packet, save_remote_routes, clock_start, clock_stop
+
+    assert save_remote_routes(job, routes()) == 1
+    assert packet(job)["ready"] is True
+    original_session = clock_start(job, "10", "TECH-OLD", "synthetic_test")
+
+    revised_pdf = tmp_path / "released" / "fictional-revision-d.pdf"
+    revised_pdf.write_bytes(b"%PDF-1.4\\n% entirely fictional revision D\\n%%EOF\\n")
+    revised_hash = hashlib.sha256(revised_pdf.read_bytes()).hexdigest()
+    with db() as con:
+        con.execute(
+            "UPDATE parts SET revision='D' WHERE id=(SELECT part_id FROM jobs WHERE id=?)",
+            (job,),
+        )
+        con.execute(
+            """UPDATE documents SET revision='D',storage_reference=?,sha256=?
+               WHERE job_id=?""",
+            ("fictional-revision-d.pdf", revised_hash, job),
+        )
+        before = (
+            con.execute("SELECT COUNT(*) FROM ewi_clock_sessions").fetchone()[0],
+            con.execute("SELECT COUNT(*) FROM ewi_outbox").fetchone()[0],
+        )
+        assert con.execute(
+            "SELECT local_part_revision_at_pull FROM ewi_routes WHERE job_id=?",
+            (job,),
+        ).fetchone()[0] == "C"
+
+    # The replacement drawing is locally valid; the ROUTE is stale.
+    stale = packet(job)
+    assert stale["ready"] is False
+    assert any("routing revision stale" in issue for issue in stale["issues"])
+    assert app.test_client().get(f"/ewi/jobs/{job}").status_code == 200
+    with pytest.raises(ValueError, match="EWI is blocked"):
+        clock_start(job, "10", "TECH-NEW", "synthetic_test")
+    with db() as con:
+        assert before == (
+            con.execute("SELECT COUNT(*) FROM ewi_clock_sessions").fetchone()[0],
+            con.execute("SELECT COUNT(*) FROM ewi_outbox").fetchone()[0],
+        )
+
+    # Existing sessions must remain stoppable after a revision change.
+    clock_stop(original_session, "TECH-OLD", "synthetic_test")
+    with db() as con:
+        assert con.execute(
+            "SELECT ended_utc FROM ewi_clock_sessions WHERE id=?",
+            (original_session,),
+        ).fetchone()[0] is not None
+
+    # A fresh local routing pull captures D; no remote revision approval is implied.
+    assert save_remote_routes(job, routes()) == 1
+    create_app({"TESTING": True})  # application restart preserves snapshot
+    assert packet(job)["ready"] is True
+    with db() as con:
+        assert con.execute(
+            "SELECT local_part_revision_at_pull FROM ewi_routes WHERE job_id=?",
+            (job,),
+        ).fetchone()[0] == "D"
+        con.execute(
+            "UPDATE ewi_routes SET local_part_revision_at_pull='' WHERE job_id=?",
+            (job,),
+        )
+    legacy = packet(job)
+    assert legacy["ready"] is False
+    assert any("revision snapshot unverified" in issue for issue in legacy["issues"])
+    with pytest.raises(ValueError, match="EWI is blocked"):
+        clock_start(job, "10", "TECH-NEW", "synthetic_test")
