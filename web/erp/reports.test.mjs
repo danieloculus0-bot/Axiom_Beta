@@ -852,7 +852,7 @@ test("Quality Forge corrective and effectiveness actions require unique source e
 });
 
 test("Quality Forge evidence focus refuses duplicate historical IDs without hiding receipts",()=>{
-  let state=raiseQuality(seedState(),"sample-1001","Synthetic nonconformance",at);
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
   const caseId=state.quality[0].id;
   state=recordQualityInspection(state,caseId,"FIRST_PIECE",
     state.jobs[0].routing.operations[0].step,"FAIL","Synthetic inspection observation",later);
