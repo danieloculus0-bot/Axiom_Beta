@@ -176,3 +176,42 @@ def test_crash_mid_page_does_not_checkpoint_unprocessed_events(tmp_path, monkeyp
         assert con.execute(
             "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='synthetic-crash-recovery'"
         ).fetchone()[0] == 2
+
+def test_persistent_front_page_failures_cannot_starve_later_events(tmp_path, monkeypatch):
+    """Old zero-based startup scans would never reach the last five events."""
+    monkeypatch.setenv("AXIOM_DATA_DIR", str(tmp_path / "axiom"))
+    from superforge.app import create_app
+    from superforge import sql_recovery
+
+    create_app({"TESTING": True})
+    with db() as con:
+        con.execute(
+            "INSERT INTO system_meta(key,value) VALUES(?,?)",
+            (CURSOR_KEY, "10000"),
+        )
+
+    calls = []
+
+    def synthetic_page(limit, *, after_id=0):
+        calls.append(after_id)
+        if after_id == 10000:
+            # Five new events are ready after ten thousand older failures.
+            return {"events": 5, "delivered": 5, "failed": 0,
+                    "skipped": 0, "last_id": 10005}
+        if after_id < 10000:
+            # Persistent failures in the old pages remain eligible.
+            count = min(limit, 10000 - after_id)
+            return {"events": count, "delivered": 0, "failed": count,
+                    "skipped": 0, "last_id": after_id + count}
+        return {"events": 0, "delivered": 0, "failed": 0,
+                "skipped": 0, "last_id": after_id}
+
+    monkeypatch.setattr(sql_recovery, "recover_undelivered", synthetic_page)
+    result = sql_recovery.recover_startup_backlog()
+    assert calls[0] == 10000  # must resume, not restart at zero
+    assert result == {"events": 10000, "delivered": 5, "failed": 9995,
+                      "skipped": 0, "last_id": 9995, "wrapped": True}
+    with db() as con:
+        assert con.execute(
+            "SELECT value FROM system_meta WHERE key=?", (CURSOR_KEY,),
+        ).fetchone()[0] == "9995"
