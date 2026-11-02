@@ -266,7 +266,9 @@ def _erp_sync(event:DomainEvent)->None:
     create_action(event,workflow_key="erp-sync",step_key="refresh-intelligence",target_module="bean")
 
 def register_default_logic()->None:
+    from .integrations.controlled_revision_review import review_controlled_fai_revision
     pairs={
+        "fai.imported":review_controlled_fai_revision,
         "quality.created":_quality_created,
         "quality.closed":_quality_closed,
         "fai.failed":_fai_failed,
