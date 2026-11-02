@@ -9,15 +9,18 @@ export function qualityEvidenceTarget(record,kind,id){
   if(!record||typeof record!=="object"||typeof id!=="string"||!id)return null;
   const inspections=Array.isArray(record.inspections)?record.inspections:[];
   const actions=Array.isArray(record.correctiveActions)?record.correctiveActions:[];
-  if(kind==="disposition"&&id===record.id&&typeof record.disposition?.decision==="string"&&
-     record.disposition.decision)return {kind,id};
-  if(kind==="inspection"&&inspections.some(item=>item?.id===id))return {kind,id};
-  if(kind==="followup"&&Array.isArray(record.followUps)&&
-     record.followUps.some(item=>item?.id===id))return {kind,id};
-  if(kind==="corrective"&&actions.some(item=>item?.id===id))return {kind,id};
-  if(kind==="effectiveness"&&actions.some(action=>
-    Array.isArray(action?.reviews)&&action.reviews.some(review=>review?.id===id)))return {kind,id};
-  return null;
+  if(kind==="disposition")
+    return id===record.id&&typeof record.disposition?.decision==="string"&&
+      record.disposition.decision?{kind,id}:null;
+  // Historical browser-local evidence can contain duplicate IDs. Every
+  // chronology/receipt focus must resolve one unique canonical receipt, not
+  // whichever matching DOM element happens to appear first.
+  const records=kind==="inspection"?inspections:
+    kind==="followup"?(Array.isArray(record.followUps)?record.followUps:[]):
+    kind==="corrective"?actions:
+    kind==="effectiveness"?actions.flatMap(action=>
+      Array.isArray(action?.reviews)?action.reviews:[]):[];
+  return records.filter(item=>item?.id===id).length===1?{kind,id}:null;
 }
 /* A review belongs to exactly one corrective action on this same fictional NCR.
  * Legacy, ambiguous and unrelated review IDs never produce a guessed link.
