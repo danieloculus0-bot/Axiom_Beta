@@ -250,10 +250,26 @@ def create_action(event:DomainEvent,*,workflow_key:str,step_key:str,target_modul
     return action_id
 
 def metric(event:DomainEvent,name:str,value:float,unit:str,target:float|None=None,scope:str="",scope_id:str="")->None:
+    """Persist one snapshot per source event, metric name and scope.
+
+    A handler may run again if its delivery receipt failed after its KPI write.
+    Keep the original snapshot rather than inflating metrics during SQL replay.
+    """
     status=""
     if target is not None:
         status="good" if value>=target else "watch"
     with db() as con:
+        # Serialize the lookup and insert across concurrent at-least-once retries.
+        con.execute("BEGIN IMMEDIATE")
+        existing=con.execute(
+            """SELECT id FROM kpi_snapshots
+               WHERE source_event_id=? AND metric_name=?
+                 AND COALESCE(metric_scope,'')=? AND COALESCE(scope_id,'')=?
+               LIMIT 1""",
+            (event.event_id,name,scope or "",scope_id or ""),
+        ).fetchone()
+        if existing:
+            return
         con.execute("""INSERT INTO kpi_snapshots(metric_date,metric_name,metric_scope,scope_id,value,unit,target,status,source_event_id)
                        VALUES(date('now'),?,?,?,?,?,?,?,?)""",(name,scope,scope_id,value,unit,target,status,event.event_id))
 
