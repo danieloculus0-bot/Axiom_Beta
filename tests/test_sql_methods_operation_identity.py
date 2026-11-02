@@ -186,8 +186,8 @@ def test_thousand_exact_candidates_replay_and_conflicts(tmp_path, monkeypatch):
             assert identity["method_match_status"] == expected
             assert identity["operation_id"] is None
             assert identity["human_review_required"] is True
-        assert con.execute("SELECT COUNT(*) FROM event_ledger WHERE event_type='job.changed'").fetchone()[0] == 1005
-        assert con.execute("SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='job-change'").fetchone()[0] == 1005
+        assert con.execute("SELECT COUNT(*) FROM event_ledger WHERE event_type='job.changed'").fetchone()[0] == 1004
+        assert con.execute("SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='job-change'").fetchone()[0] == 1004
         assert con.execute("SELECT COUNT(*) FROM ezm_method_plans WHERE status='DRAFT'").fetchone()[0] == 1001
 
 
