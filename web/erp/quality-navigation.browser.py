@@ -1009,6 +1009,50 @@ def main():
                 page.wait_for_function("location.hash === '#quality'")
                 expect(panel).to_have_attribute("data-case-id", duplicate_case_id)
                 expect(page.locator("#job-context")).to_have_value(other_job)
+
+                # Distinct NCR IDs can share a legacy display number. The
+                # dashboard and record-specific Open with must keep the exact
+                # case and job, even when the global selector is on another job.
+                page.locator('#module-nav a[data-nav="dashboard"]').click()
+                page.wait_for_function("location.hash === '#dashboard'")
+                page.locator("#job-context").select_option(job_id)
+                duplicate_dashboard_badge = page.locator(
+                    f'button[data-action="job-quality-cases"][data-id="{other_job}"]'
+                )
+                expect(duplicate_dashboard_badge).to_have_count(1)
+                duplicate_dashboard_badge.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(panel).to_have_attribute("data-case-id", duplicate_case_id)
+                expect(page.locator("#job-context")).to_have_value(other_job)
+                duplicate_heading = panel.locator(
+                    'h2.context-record[data-ctx-type="quality"]'
+                )
+                expect(duplicate_heading).to_have_attribute("data-ctx-id", duplicate_case_id)
+                duplicate_heading.focus()
+                duplicate_heading.press("Shift+F10")
+                duplicate_menu = page.locator("#axiom-record-menu")
+                expect(duplicate_menu).to_be_visible()
+                expect(duplicate_menu.locator(".record-menu-heading")).to_have_text(case_number)
+                duplicate_menu.get_by_role("menuitem", name="Job Tracker").click()
+                page.wait_for_function("location.hash === '#jobs'")
+                expect(page.locator("#job-context")).to_have_value(other_job)
+                expect(page.locator(".context-trail")).to_contain_text(case_number)
+                page.locator('#module-nav a[data-nav="quality"]').click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(panel).to_have_attribute("data-case-id", duplicate_case_id)
+
+                page.locator('#module-nav a[data-nav="dashboard"]').click()
+                page.wait_for_function("location.hash === '#dashboard'")
+                page.locator("#job-context").select_option(other_job)
+                original_dashboard_badge = page.locator(
+                    f'button[data-action="job-quality-cases"][data-id="{job_id}"]'
+                )
+                expect(original_dashboard_badge).to_have_count(1)
+                original_dashboard_badge.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                expect(page.locator("#job-context")).to_have_value(job_id)
+
                 page.locator('#module-nav a[data-nav="reports"]').click()
                 page.wait_for_function("location.hash === '#reports'")
                 page.locator("#report-select").select_option("quality")
@@ -1083,6 +1127,10 @@ def main():
                 assert page.locator('button[data-action="job-quality-cases"]').count() == 0, (
                     "Work-order NCR links must not select an ambiguous case"
                 )
+                page.locator('#module-nav a[data-nav="dashboard"]').click()
+                page.wait_for_function("location.hash === '#dashboard'")
+                expect(page.locator('button[data-action="job-quality-cases"]')).to_have_count(0)
+                expect(page.locator("#view")).to_contain_text("NCR evidence unavailable")
                 assert not page_errors, f"Browser JavaScript errors: {page_errors}"
                 print("PASS: Quality Forge navigation, duplicate-number report identity, native context menus")
             finally:
