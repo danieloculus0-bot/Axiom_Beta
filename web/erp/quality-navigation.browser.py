@@ -897,7 +897,7 @@ def main():
                         localStorage.setItem("axiom_public_erp_suite_v1",
                             JSON.stringify(data));
                     }""", {"snapshot": original_storage, "caseId": case_id, "kind": kind})
-                    page.goto(f"http://127.0.0.1:{server.server_port}/erp/#quality")
+                    page.reload()
                     expect(panel).to_have_attribute("data-case-id", case_id)
                     expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
                     duplicate_receipts = panel.locator(
@@ -913,16 +913,6 @@ def main():
                             record.correctiveActions.flatMap(a => a.reviews || []);
                         return rows.filter(row => row.id === id).length;
                     }""", {"caseId": case_id, "kind": kind, "id": evidence_id})
-                    print("Duplicate evidence browser check:", kind,
-                          "stored", stored_count,
-                          "rendered", duplicate_receipts.count(),
-                          "global", page.locator(
-                              f'[data-evidence-kind="{kind}"][data-evidence-id="{evidence_id}"]'
-                          ).count(),
-                          "all corrective IDs", page.locator(
-                              '[data-evidence-kind="corrective"]'
-                          ).evaluate_all("els => els.map(el => el.dataset.evidenceId)"),
-                          flush=True)
                     assert stored_count == 2, "Injected fictional evidence must survive reload"
                     expect(duplicate_receipts).to_have_count(2)
                     expect(panel.locator(
@@ -979,7 +969,7 @@ def main():
                     "snapshot => localStorage.setItem('axiom_public_erp_suite_v1', snapshot)",
                     original_storage,
                 )
-                page.goto(f"http://127.0.0.1:{server.server_port}/erp/#quality")
+                page.reload()
                 expect(panel).to_have_attribute("data-case-id", case_id)
                 for kind, evidence_id in evidence_ids.items():
                     expect(panel.locator(
