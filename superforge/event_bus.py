@@ -60,29 +60,36 @@ def _record_delivery(event:DomainEvent,handler:Handler,status:str,error_text:str
         pass
 
 
-def publish(event_type:str,*,source_module:str,entity_type:str,entity_id:str,actor:str="",reason:str="",payload:dict[str,Any]|None=None,parent_event_id:str="",correlation_id:str="")->DomainEvent:
-    event=DomainEvent(
-        event_id=f"evt_{uuid.uuid4().hex}",event_type=event_type,source_module=source_module,entity_type=entity_type,
-        entity_id=str(entity_id),actor=verified_actor(actor),reason=reason,payload=payload or {},correlation_id=correlation_id or f"corr_{uuid.uuid4().hex}",
-        parent_event_id=parent_event_id,
-    )
-    _insert_event(event)
+def _handlers_for(event_type:str)->list[Handler]:
     ordered=list(_HANDLERS.get(event_type,[]))+list(_HANDLERS.get("*",[]))
-    handlers=[]
+    result=[]
     seen=set()
     for handler in ordered:
         marker=id(handler)
-        if marker in seen:
-            continue
-        seen.add(marker)
-        handlers.append(handler)
+        if marker not in seen:
+            seen.add(marker)
+            result.append(handler)
+    return result
 
-    failed=False
+
+def _deliver(event:DomainEvent,*,skip_delivered:bool=False)->dict[str,int]:
+    """Dispatch to current subscribers, retaining successful delivery receipts."""
+    delivered=failed=skipped=0
+    handlers=_handlers_for(event.event_type)
     for handler in handlers:
+        if skip_delivered:
+            with db() as con:
+                receipt=con.execute(
+                    "SELECT status FROM event_delivery_receipts WHERE event_id=? AND handler_key=?",
+                    (event.event_id,_handler_key(handler)),
+                ).fetchone()
+            if receipt and receipt["status"]=="delivered":
+                skipped+=1
+                continue
         try:
             handler(event)
         except Exception as exc:
-            failed=True
+            failed+=1
             error_text=f"{type(exc).__name__}: {exc}"
             _record_delivery(event,handler,"failed",error_text)
             record_event(
@@ -93,21 +100,114 @@ def publish(event_type:str,*,source_module:str,entity_type:str,entity_id:str,act
                 parent_event_id=event.event_id,correlation_id=event.correlation_id,
             )
         else:
+            delivered+=1
             _record_delivery(event,handler,"delivered")
 
+    # An event with no registered consumers stays pending for later recovery.
     if handlers:
-        try:
-            with db() as con:
-                con.execute(
-                    "UPDATE event_ledger SET status=? WHERE event_id=?",
-                    ("partial_failure" if failed else "delivered",event.event_id),
-                )
-        except Exception:
-            pass
+        with db() as con:
+            con.execute(
+                "UPDATE event_ledger SET status=? WHERE event_id=?",
+                ("partial_failure" if failed else "delivered",event.event_id),
+            )
+    return {"delivered":delivered,"failed":failed,"skipped":skipped}
+
+
+def stage_event(con, event_type:str,*,source_module:str,entity_type:str,entity_id:str,
+                actor:str="",reason:str="",payload:dict[str,Any]|None=None,
+                parent_event_id:str="",correlation_id:str="")->DomainEvent:
+    """Insert a domain event in the caller's SQL transaction, alongside its source data.
+
+    The caller must commit first, then call deliver_staged(event_id). If execution
+    stops between commit and dispatch, recover_undelivered can resume delivery.
+    """
+    event=DomainEvent(
+        event_id=f"evt_{uuid.uuid4().hex}",event_type=event_type,source_module=source_module,
+        entity_type=entity_type,entity_id=str(entity_id),actor=verified_actor(actor),
+        reason=reason,payload=payload or {},correlation_id=correlation_id or f"corr_{uuid.uuid4().hex}",
+        parent_event_id=parent_event_id,
+    )
+    con.execute(
+        """INSERT INTO event_ledger(event_id,parent_event_id,correlation_id,event_type,
+           source_module,target_module,entity_type,entity_id,actor,reason,payload_json,status)
+           VALUES(?,?,?,?,?,'',?,?,?,?,?,'recorded')""",
+        (event.event_id,event.parent_event_id,event.correlation_id,event.event_type,
+         event.source_module,event.entity_type,event.entity_id,event.actor,event.reason,
+         json.dumps(event.payload,sort_keys=True,default=str)),
+    )
+    return event
+
+
+def deliver_staged(event_id:str)->dict[str,int]:
+    """Recover and deliver a committed event without duplicating successful handlers."""
+    with db() as con:
+        row=con.execute("SELECT * FROM event_ledger WHERE event_id=?",(event_id,)).fetchone()
+    if row is None:
+        raise ValueError("Event not found")
+    event=DomainEvent(
+        event_id=row["event_id"],event_type=row["event_type"],
+        source_module=row["source_module"],entity_type=row["entity_type"],
+        entity_id=row["entity_id"],actor=row["actor"] or "",
+        reason=row["reason"] or "",payload=json.loads(row["payload_json"]),
+        correlation_id=row["correlation_id"] or "",parent_event_id=row["parent_event_id"] or "",
+    )
+    result=_deliver(event,skip_delivered=True)
+    return result
+
+
+def recover_undelivered(limit:int=100)->dict[str,int]:
+    """Resume committed but not fully delivered events for registered subscribers."""
+    if not isinstance(limit,int) or not 1<=limit<=10000:
+        raise ValueError("Recovery limit must be 1 through 10000")
+    types=[key for key in _HANDLERS if key!="*" and _HANDLERS[key]]
+    wildcard=bool(_HANDLERS.get("*"))
+    if not types and not wildcard:
+        return {"events":0,"delivered":0,"failed":0,"skipped":0}
+    with db() as con:
+        if wildcard:
+            rows=con.execute(
+                "SELECT event_id FROM event_ledger WHERE status IN ('recorded','partial_failure') ORDER BY id LIMIT ?",
+                (limit,),
+            ).fetchall()
+        else:
+            marks=",".join("?" for _ in types)
+            rows=con.execute(
+                f"SELECT event_id FROM event_ledger WHERE status IN ('recorded','partial_failure') AND event_type IN ({marks}) ORDER BY id LIMIT ?",
+                (*types,limit),
+            ).fetchall()
+    result={"events":len(rows),"delivered":0,"failed":0,"skipped":0}
+    for row in rows:
+        receipt=deliver_staged(row["event_id"])
+        for field in ("delivered","failed","skipped"):
+            result[field]+=receipt[field]
+    return result
+
+
+def publish(event_type:str,*,source_module:str,entity_type:str,entity_id:str,actor:str="",
+            reason:str="",payload:dict[str,Any]|None=None,parent_event_id:str="",
+            correlation_id:str="")->DomainEvent:
+    event=DomainEvent(
+        event_id=f"evt_{uuid.uuid4().hex}",event_type=event_type,source_module=source_module,
+        entity_type=entity_type,entity_id=str(entity_id),actor=verified_actor(actor),
+        reason=reason,payload=payload or {},correlation_id=correlation_id or f"corr_{uuid.uuid4().hex}",
+        parent_event_id=parent_event_id,
+    )
+    _insert_event(event)
+    _deliver(event)
     return event
 
 def create_action(event:DomainEvent,*,workflow_key:str,step_key:str,target_module:str,assigned_to:str="",due_date:str="",input_data:dict|None=None)->int:
     with db() as con:
+        # Lock before the lookup so replayed events cannot enqueue the same action twice.
+        con.execute("BEGIN IMMEDIATE")
+        prior=con.execute(
+            """SELECT id FROM workflow_actions
+               WHERE event_id=? AND workflow_key=? AND step_key=? AND target_module=?
+               ORDER BY id LIMIT 1""",
+            (event.event_id,workflow_key,step_key,target_module),
+        ).fetchone()
+        if prior:
+            return int(prior["id"])
         cur=con.execute(
             """INSERT INTO workflow_actions(event_id,workflow_key,step_key,source_module,target_module,entity_type,entity_id,assigned_to,status,due_date,input_json)
                VALUES(?,?,?,?,?,?,?,?, 'open', ?, ?)""",
