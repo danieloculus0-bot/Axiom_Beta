@@ -186,11 +186,22 @@ def test_open_fai_revision_review_suppresses_ewi_alignment_until_review(tmp_path
             "UPDATE workflow_actions SET status='completed',completed_at=CURRENT_TIMESTAMP WHERE id=?",
             (action_id,),
         )
-    restored = client.get(url).get_json()
-    assert restored["status"] == "cross_source_candidate_review_required", restored
-    assert restored["method_operation_id"] == operation_id
-    assert restored["human_review_required"] is True
-    assert restored["released_route_approved"] is False
+    # Watchdog regression: a completed task is NOT verified revision/route
+    # reconciliation. The source drawing and EWI route are still revision A.
+    unresolved = client.get(url).get_json()
+    assert unresolved["status"] == "controlled_revision_reconciliation_unverified", unresolved
+    assert unresolved["revision_review_action_id"] == action_id
+    assert unresolved["revision_review_action_status"] == "completed"
+    assert unresolved["revision_review_source_event_id"] == event.event_id
+    assert unresolved["method_operation_id"] is None
+    assert unresolved["ewi_step"] is None
+    assert unresolved["drawing_document_id"] is None
+    assert unresolved["human_review_required"] is True
+    assert unresolved["released_route_approved"] is False
+    assert "controlled_revision_reconciliation_unverified" in client.get(
+        f"/ewi/jobs/{job_id}"
+    ).get_data(as_text=True)
+    assert _counts() == counts
 
 
 def test_wrong_job_and_orphaned_review_actions_fail_closed_by_scope(tmp_path, monkeypatch):
@@ -220,4 +231,53 @@ def test_wrong_job_and_orphaned_review_actions_fail_closed_by_scope(tmp_path, mo
     assert blocked["method_operation_id"] is None
     with db() as con:
         con.execute("UPDATE workflow_actions SET status='completed' WHERE id=?", (orphan_id,))
-    assert client.get(url).get_json()["status"] == "cross_source_candidate_review_required"
+    orphaned = client.get(url).get_json()
+    assert orphaned["status"] == "controlled_revision_reconciliation_unverified"
+    assert orphaned["revision_review_action_id"] == orphan_id
+    assert orphaned["revision_review_source_event_id"] is None
+    assert orphaned["method_operation_id"] is None
+
+def test_unverified_completion_claim_and_cancelled_review_cannot_restore_alignment(tmp_path, monkeypatch):
+    """Human task status and self-reported output cannot prove route provenance."""
+    from superforge.app import create_app
+
+    client, job_id, part_id, operation_id, event_id = _fictional_aligned_job(tmp_path, monkeypatch)
+    url = f"/api/v1/jobs/{job_id}/ewi-operation-alignment/{event_id}"
+    event, action_id = _revision_action(job_id, part_id, suffix="401")
+    with db() as con:
+        con.execute(
+            "UPDATE workflow_actions SET status='completed',completed_at=CURRENT_TIMESTAMP,"
+            "output_json=? WHERE id=?",
+            (json.dumps({"reconciled": True, "route_revision": "B",
+                         "approved_by": "fictional-reviewer"}), action_id),
+        )
+    counts = _counts()
+    response = client.get(url).get_json()
+    assert response["status"] == "controlled_revision_reconciliation_unverified", response
+    assert response["revision_review_action_id"] == action_id
+    assert response["revision_review_source_event_id"] == event.event_id
+    assert response["method_operation_id"] is None
+    assert response["ewi_step"] is None
+
+    # An additional open review takes precedence over the completed one.
+    _, newer_action_id = _revision_action(job_id, part_id, suffix="402")
+    pending = client.get(url).get_json()
+    assert pending["status"] == "controlled_revision_review_pending", pending
+    assert pending["revision_review_action_id"] == newer_action_id
+
+    # Cancelling the newer task does not prove reconciliation either.
+    after_second_review = _counts()
+    with db() as con:
+        con.execute("UPDATE workflow_actions SET status='cancelled' WHERE id=?",
+                    (newer_action_id,))
+    client = create_app({"TESTING": True}).test_client()  # process restart
+    unresolved = client.get(url).get_json()
+    assert unresolved["status"] == "controlled_revision_reconciliation_unverified", unresolved
+    assert unresolved["method_operation_id"] is None
+    assert unresolved["released_route_approved"] is False
+    with db() as con:
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-ewi-review' "
+            "AND entity_type='job' AND entity_id=?", (str(job_id),)
+        ).fetchone()[0] == 2
+    assert _counts() == after_second_review
