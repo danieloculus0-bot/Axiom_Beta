@@ -149,6 +149,20 @@ def packet(job_id: int) -> dict | None:
         errors.append("No JobBOSS² routed operations have been synchronized")
     if routes and any(r["part_number"] and r["part_number"] != (job.get("part_number") or "") for r in routes):
         errors.append("ERP routing part number conflicts with job part")
+    # A previously captured route is not safe for a later part revision.
+    # The advisory SQL alignment already checks this snapshot, but local
+    # clocking must independently fail closed rather than trust a stale route.
+    # This is only local provenance, not a verified remote ERP revision.
+    if routes:
+        current_revision = str(job.get("part_revision") or "").strip().casefold()
+        snapshots = [
+            str(route.get("local_part_revision_at_pull") or "").strip().casefold()
+            for route in routes
+        ]
+        if not current_revision or any(not revision for revision in snapshots):
+            errors.append("EWI routing revision snapshot unverified; refresh routing before clocking")
+        elif any(revision != current_revision for revision in snapshots):
+            errors.append("EWI routing revision stale; refresh routing before clocking")
     if (job.get("status") or "").lower() in {"closed", "cancelled", "canceled", "hold", "on_hold"}:
         errors.append("Job status does not permit starting work")
     return {"job": job, "drawing": drawing, "pdf_path": path, "routes": routes,
