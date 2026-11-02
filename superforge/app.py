@@ -13,7 +13,7 @@ from .schema_extensions import init_extensions
 from .finance_schema import init_finance_schema
 from .org_schema import init_org_schema
 from .runtime_paths import application_secret
-from .event_bus import logic_matrix, publish, register_default_logic, recover_undelivered
+from .event_bus import logic_matrix, publish, register_default_logic, recover_undelivered, delivery_diagnostics
 from .integrations.service import IntegrationService
 from .modules.learning import patterns
 from .modules.quality import (
@@ -600,6 +600,11 @@ def create_app(test_config:dict|None=None)->Flask:
 <label>Phone<input name='phone'></label><label class='wide'>Notes<textarea name='notes'></textarea></label><div><button>Save Supplier</button></div></form></details>"""
         body="<section class='page-head'><div><p class='eyebrow'>Supply Chain</p><h1>Supplier History</h1></div></section>"+context_banner()+form+"<div class='panel'>"+table_html(rows,[("name","Supplier"),("code","Code"),("contact","Contact"),("email","Email"),("phone","Phone"),("status","Status"),("notes","Notes")],"supplier","name")+"</div>"
         return page("Supplier History",body,module_key="suppliers")
+
+    @app.get("/integrations/sync-health")
+    def integration_sync_health():
+        # Read-only evidence from the canonical local SQL ledger and in-process bus.
+        return jsonify(delivery_diagnostics())
 
     @app.route("/integrations",methods=["GET","POST"])
     def integrations():
