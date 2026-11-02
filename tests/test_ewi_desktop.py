@@ -157,7 +157,7 @@ def test_stale_or_unverified_route_revision_blocks_clock_in_not_clock_out(tmp_pa
     original_session = clock_start(job, "10", "TECH-OLD", "synthetic_test")
 
     revised_pdf = tmp_path / "released" / "fictional-revision-d.pdf"
-    revised_pdf.write_bytes(b"%PDF-1.4\\n% entirely fictional revision D\\n%%EOF\\n")
+    revised_pdf.write_bytes(b"%PDF-1.4\n% entirely fictional revision D\n%%EOF\n")
     revised_hash = hashlib.sha256(revised_pdf.read_bytes()).hexdigest()
     with db() as con:
         con.execute(
