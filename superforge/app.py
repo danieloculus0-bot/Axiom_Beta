@@ -42,6 +42,7 @@ from .modules.cost_ui import cost_blueprint
 from .modules.supplier_ui import supplier_blueprint
 from .modules.purchasing_ui import purchasing_blueprint
 from .modules.job_passport import passport_blueprint
+from .modules.manufacturing_context import manufacturing_context_blueprint
 from .modules.ewi import ewi_blueprint, init_ewi
 
 def e(value)->str:
@@ -116,6 +117,7 @@ def create_app(test_config:dict|None=None)->Flask:
     app.register_blueprint(collaboration_blueprint)
     app.register_blueprint(reporting_blueprint)
     app.register_blueprint(passport_blueprint)
+    app.register_blueprint(manufacturing_context_blueprint)
     app.register_blueprint(ewi_blueprint)
     app.register_blueprint(purchasing_blueprint)
     app.register_blueprint(supplier_blueprint)
