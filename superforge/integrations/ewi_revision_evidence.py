@@ -53,7 +53,8 @@ def pending_ewi_revision_event(con: sqlite3.Connection, job_id: int) -> sqlite3.
              AND f.status='review_required'
              AND m.job_id=? AND m.part_id=j.part_id
              AND m.part_number=p.part_number AND m.revision=s.revision
-             AND s.revision<>f.drawing_revision
+             -- A new controlled vault version can retain the same revision label.
+             -- Source URI mismatch above is the actual version-change evidence.
              AND EXISTS (SELECT 1 FROM ewi_routes r WHERE r.job_id=j.id)
              AND (
                e.status IN ('pending_delivery','partial_failure')
