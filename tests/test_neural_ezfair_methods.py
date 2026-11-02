@@ -135,3 +135,48 @@ def test_mismatched_provenance_or_revision_cannot_create_planning_review(tmp_pat
         assert con.execute(
             "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-fai-evidence'"
         ).fetchone()[0]==0
+
+
+def test_drifted_document_or_exact_version_hash_blocks_planning_review(tmp_path,monkeypatch):
+    """The event consumer must revalidate controlled evidence after link-time."""
+    for changed_table in ("documents","document_versions"):
+        case_dir=tmp_path/changed_table
+        source,plan,fai=_seed(case_dir,monkeypatch)
+        uri="forgevault://"+source["record_id"]+"/"+source["file_version_id"]
+        note=json.dumps({"file_version_id":source["file_version_id"],
+                         "release_package":source["release_package_number"],
+                         "sha256":source["sha256"]},sort_keys=True)
+        with db() as con:
+            source_id=con.execute(
+                "INSERT INTO ezm_sources(plan_id,source_type,document_number,revision,location,note) "
+                "VALUES(?,'CONTROLLED_DRAWING',?,?,?,?)",
+                (plan,source["record_id"],"B",uri,note),
+            ).lastrowid
+            doc_id=con.execute(
+                "SELECT drawing_document_id FROM fai_runs WHERE id=?",(fai,)
+            ).fetchone()[0]
+            if changed_table=="documents":
+                con.execute("UPDATE documents SET sha256=? WHERE id=?",("c"*64,doc_id))
+            else:
+                con.execute(
+                    "UPDATE document_versions SET sha256=? WHERE document_id=? AND storage_reference=?",
+                    ("c"*64,doc_id,uri),
+                )
+        publish("methods.source.linked",source_module="methods",
+                entity_type="method_source",entity_id=str(source_id),
+                actor="synthetic-tester",
+                payload={"plan_id":plan,"file_version_id":source["file_version_id"],
+                         "drawing_sha256":source["sha256"]})
+        with db() as con:
+            assert con.execute(
+                "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-fai-evidence'"
+            ).fetchone()[0]==0
+            assert con.execute(
+                "SELECT status FROM ezm_method_plans WHERE id=?",(plan,)
+            ).fetchone()[0]=="DRAFT"
+            assert con.execute(
+                "SELECT status FROM fai_runs WHERE id=?",(fai,)
+            ).fetchone()[0]=="review_required"
+            assert con.execute(
+                "SELECT pdf_sha256 FROM fai_source_links WHERE fai_run_id=?",(fai,)
+            ).fetchone()[0]==source["sha256"]
