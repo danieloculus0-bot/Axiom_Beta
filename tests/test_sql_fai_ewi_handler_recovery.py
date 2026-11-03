@@ -333,3 +333,92 @@ def test_partial_fai_handler_failure_replays_ewi_review_after_restart(tmp_path, 
             "SELECT COUNT(*) FROM ewi_clock_sessions WHERE job_id=?", (job_id,),
         ).fetchone()[0] == 1
         assert con.execute("SELECT COUNT(*) FROM ewi_outbox").fetchone()[0] == 2
+
+    # A delivered receipt does not rebuild a deleted action by replay. Explicit
+    # repair must restore only this verified job's EWI review, with no other
+    # subscriber side effects or clocking authorization.
+    from superforge.integrations.controlled_revision_review import repair_missing_ewi_review
+
+    assert repair_missing_ewi_review(unrelated_job, event_id) is None
+    assert repair_missing_ewi_review(job_id, "evt_fictional_wrong_event") is None
+    with db() as con:
+        con.execute(
+            "UPDATE documents SET sha256='SYN-REPAIR-TAMPERED' WHERE job_id=?",
+            (job_id,),
+        )
+    assert repair_missing_ewi_review(job_id, event_id) is None
+    with db() as con:
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE event_id=? AND target_module='ewi'",
+            (event_id,),
+        ).fetchone()[0] == 0
+        con.execute(
+            "UPDATE documents SET sha256=? WHERE job_id=?",
+            (old_source["sha256"], job_id),
+        )
+        before_actions = [dict(row) for row in con.execute(
+            "SELECT id,target_module FROM workflow_actions WHERE event_id=? ORDER BY id",
+            (event_id,),
+        )]
+        before_receipts = [dict(row) for row in con.execute(
+            "SELECT handler_key,status FROM event_delivery_receipts WHERE event_id=? ORDER BY handler_key",
+            (event_id,),
+        )]
+        before_events = con.execute(
+            "SELECT COUNT(*) FROM event_ledger WHERE event_type='fai.imported' AND entity_id=?",
+            (str(new_fai["id"]),),
+        ).fetchone()[0]
+    assert len(before_actions) == 2
+    assert {row["target_module"] for row in before_actions} == {"planning", "quality"}
+
+    restored_id = repair_missing_ewi_review(job_id, event_id)
+    assert isinstance(restored_id, int) and restored_id > 0
+    assert repair_missing_ewi_review(job_id, event_id) == restored_id
+    assert repair_missing_ewi_review(unrelated_job, event_id) is None
+
+    with db() as con:
+        repaired = con.execute(
+            "SELECT * FROM workflow_actions WHERE id=?", (restored_id,),
+        ).fetchone()
+        assert repaired is not None
+        assert repaired["status"] == "open"
+        assert repaired["event_id"] == event_id
+        assert repaired["entity_type"] == "job" and repaired["entity_id"] == str(job_id)
+        assert repaired["target_module"] == "ewi"
+        assert repaired["step_key"] == f"review-job-packet-fai-{new_fai['id']}"
+        assert json.loads(repaired["input_json"])["source_event_id"] == event_id
+        assert [dict(row) for row in con.execute(
+            "SELECT id,target_module FROM workflow_actions WHERE event_id=? AND target_module!='ewi' ORDER BY id",
+            (event_id,),
+        )] == before_actions
+        assert [dict(row) for row in con.execute(
+            "SELECT handler_key,status FROM event_delivery_receipts WHERE event_id=? ORDER BY handler_key",
+            (event_id,),
+        )] == before_receipts
+        assert con.execute(
+            "SELECT COUNT(*) FROM event_ledger WHERE event_type='fai.imported' AND entity_id=?",
+            (str(new_fai["id"]),),
+        ).fetchone()[0] == before_events
+        assert con.execute(
+            "SELECT status FROM event_ledger WHERE event_id=?", (event_id,),
+        ).fetchone()[0] == "delivered"
+        assert pending_ewi_revision_event(con, job_id) is None
+        assert con.execute(
+            "SELECT COUNT(*) FROM ewi_clock_sessions WHERE job_id=?", (job_id,),
+        ).fetchone()[0] == 1
+        assert con.execute("SELECT COUNT(*) FROM ewi_outbox").fetchone()[0] == 2
+
+    assert packet(job_id)["ready"] is False
+    with pytest.raises(ValueError, match="revision review action"):
+        clock_start(job_id, "10", "SYN-OPERATOR-REPAIR", "synthetic-test")
+    create_app({"TESTING": True})
+    assert repair_missing_ewi_review(job_id, event_id) == restored_id
+    with db() as con:
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE event_id=? AND target_module='ewi'",
+            (event_id,),
+        ).fetchone()[0] == 1
+        assert con.execute(
+            "SELECT COUNT(*) FROM ewi_clock_sessions WHERE job_id=?", (job_id,),
+        ).fetchone()[0] == 1
+        assert con.execute("SELECT COUNT(*) FROM ewi_outbox").fetchone()[0] == 2
