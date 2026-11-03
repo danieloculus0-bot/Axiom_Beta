@@ -4,7 +4,7 @@
  * qualification, live BEAN service, draft mutation, or production release.
  */
 import {getJob,packetIssues,reservedTotal} from "./engine.mjs";
-import {DEMO_CENTER_OPTIONS} from "./routing-edit.mjs";
+import {DEMO_CENTER_OPTIONS,editableRouting,validateRoutingDraft} from "./routing-edit.mjs";
 import {assessAlternateCenters} from "./routing-capacity-advice.mjs";
 
 const h = value => String(value ?? "").replace(/[&<>"']/g, c =>
@@ -13,20 +13,24 @@ const localStamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 const fail = message => {throw Error(message);};
 const syntheticRef = x => typeof x === "string" && /^SYN-[A-Z0-9-]{1,60}$/.test(x);
 const roundHours = n => Math.round(n * 100) / 100;
-/** One fictional shift maximum; 25% interruption buffer is subtracted once
- * from nominal capacity before separate hypothetical booked/queued load.
+/** One fictional shift maximum. An editable interruption allowance is taken
+ * once from nominal capacity; booked/queued assumptions are separate.
  */
-export function conservativeCapacityPlaceholders(startLocal,endLocal) {
+export function conservativeCapacityPlaceholders(startLocal,endLocal,bufferPercent=25) {
   if(!localStamp.test(startLocal)||!localStamp.test(endLocal))fail("Enter a valid fictional planning window.");
+  if(typeof bufferPercent!=="number"||!Number.isFinite(bufferPercent)||
+     bufferPercent<0||bufferPercent>90)
+    fail("Fictional interruption allowance must be between 0 and 90 percent.");
   const duration=(new Date(endLocal)-new Date(startLocal))/3600000;
   if(!Number.isFinite(duration)||duration<=0)fail("Planning window must have positive duration.");
   const nominalHours=Math.min(8,duration);
-  const calendarHours=roundHours(nominalHours*0.75);
+  const calendarHours=roundHours(nominalHours*(1-bufferPercent/100));
   if(calendarHours<=0)fail("Planning window is too short for rounded scenario hours.");
   return {nominalHours:roundHours(nominalHours),calendarHours,
     bookedHours:roundHours(calendarHours*0.25),
     queuedHours:roundHours(calendarHours*0.125),
-    basis:"FICTIONAL one-shift estimate: 25% interruption buffer; 25% booked and 12.5% queued of effective hours."};
+    bufferPercent,
+    basis:"FICTIONAL one-shift estimate: "+bufferPercent+"% interruption allowance; 25% booked and 12.5% queued of effective hours."};
 }
 // Caller-supplied scenario assertions are never verified, persisted or auto-applied.
 function scopedScenarioCenter(e,job,op,id,startLocal,endLocal){
@@ -44,12 +48,17 @@ function scopedScenarioCenter(e,job,op,id,startLocal,endLocal){
   const allowed=["capability","calendarHours","bookedHours","queuedHours",
     "maintenanceHours","setupHours","runHours","capacitySourceRef",
     "readinessSourceRef","maintenanceState","tooling","fixture","material",
-    "deliveryState","routedOperationCount","capacityEstimateType","capacityHourSources"];
+    "deliveryState","routedOperationCount","capacityEstimateType","capacityHourSources",
+     "placeholderBufferPercent"];
   if(!c || typeof c!=="object" || Array.isArray(c) ||
       Object.keys(c).some(k=>!allowed.includes(k)))
     fail("Scenario center contains unsupported or missing evidence fields.");
   if(c.capacityEstimateType!==undefined && !["MANUAL","PLACEHOLDER_ASSISTED"].includes(c.capacityEstimateType))
     fail("Capacity estimate type must identify manual or placeholder-assisted scenario values.");
+  // A placeholder claim without field-level origins bypasses the arithmetic
+  // gate below. Legacy untagged and explicitly MANUAL scenarios stay valid.
+  if(c.capacityEstimateType==="PLACEHOLDER_ASSISTED" && c.capacityHourSources===undefined)
+    fail("Placeholder-assisted scenario requires per-field capacity hour provenance.");
   // Per-field origins describe estimates, not independently verified scheduling.
   // The metadata is optional to preserve existing scenario callers.
   if(c.capacityHourSources!==undefined){
@@ -63,6 +72,12 @@ function scopedScenarioCenter(e,job,op,id,startLocal,endLocal){
         (c.capacityEstimateType==="PLACEHOLDER_ASSISTED")))
       fail("Capacity hour provenance must match supplied values and estimate type.");
   }
+  if(c.placeholderBufferPercent!==undefined &&
+     (c.capacityHourSources?.calendarHours!=="PLACEHOLDER" ||
+      typeof c.placeholderBufferPercent!=="number" ||
+      !Number.isFinite(c.placeholderBufferPercent) ||
+      c.placeholderBufferPercent<0 || c.placeholderBufferPercent>90))
+    fail("Placeholder interruption allowance must be 0 to 90 percent and apply only to placeholder calendar hours.");
   const cap=c.capability;
   if(!cap || typeof cap!=="object" || Array.isArray(cap) ||
       Object.keys(cap).some(k=>!["operation","supported","sourceRef"].includes(k)) ||
@@ -82,6 +97,21 @@ function scopedScenarioCenter(e,job,op,id,startLocal,endLocal){
   if(c.routedOperationCount!==undefined &&
       (!Number.isSafeInteger(c.routedOperationCount)||c.routedOperationCount<0))
     fail("Scenario routed-operation count must be a nonnegative integer.");
+  // Provenance must describe actual scenario arithmetic, not merely a
+  // caller-supplied label. Manual values remain editable and unverified.
+  if(c.capacityHourSources){
+    const sources=c.capacityHourSources;
+    if(sources.calendarHours==="PLACEHOLDER"){
+      const expected=conservativeCapacityPlaceholders(
+        startLocal,endLocal,c.placeholderBufferPercent??25).calendarHours;
+      if(c.calendarHours!==expected)
+        fail("Placeholder calendar hours must match the fictional planning window and interruption allowance.");
+    }
+    for(const [key,rate] of [["bookedHours",0.25],["queuedHours",0.125]]){
+      if(sources[key]==="PLACEHOLDER" && c[key]!==roundHours(c.calendarHours*rate))
+        fail("Placeholder booked and queued hours must match the stated effective calendar hours.");
+    }
+  }
   return {id,...structuredClone(c)};
 }
 
@@ -109,7 +139,13 @@ export function readRoutingCapacityScenario(fields,job,step,centerId,startLocal,
     return n;
   };
   const placeholderMode=fields.has("scenario-placeholder");
-  const suggested=placeholderMode?conservativeCapacityPlaceholders(startLocal,endLocal):null;
+  const bufferRaw=get("bufferPercent");
+  const bufferPercent=bufferRaw===""?25:Number(bufferRaw);
+  if(placeholderMode &&
+     (bufferRaw!==""&&!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(bufferRaw) ||
+      !Number.isFinite(bufferPercent)||bufferPercent<0||bufferPercent>90))
+    fail("Fictional interruption allowance must be between 0 and 90 percent.");
+  const suggested=placeholderMode?conservativeCapacityPlaceholders(startLocal,endLocal,bufferPercent):null;
   const calendarInput=hour("calendarHours",placeholderMode);
   const calendarHours=calendarInput??suggested?.calendarHours;
   const bookedInput=hour("bookedHours",true),queuedInput=hour("queuedHours",true);
@@ -146,6 +182,7 @@ export function readRoutingCapacityScenario(fields,job,step,centerId,startLocal,
       "SYN-PLACEHOLDER-ONE-SHIFT":source("capacity-ref"),
     capacityEstimateType:usedPlaceholder?"PLACEHOLDER_ASSISTED":"MANUAL",
     capacityHourSources,
+    ...(capacityHourSources.calendarHours==="PLACEHOLDER"?{placeholderBufferPercent:bufferPercent}:{}),
     readinessSourceRef:source("readiness-ref"),...readiness
   };
   if(count!=="")center.routedOperationCount=Number(count);
@@ -197,8 +234,13 @@ export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, sta
   const capacityAssessment=result.assessments.find(item=>item.center===centerId);
   if(capacityAssessment && center.capacityEstimateType){
     capacityAssessment.capacityEstimateType=center.capacityEstimateType;
-    if(center.capacityEstimateType==="PLACEHOLDER_ASSISTED")
-      capacityAssessment.notes.push("PLACEHOLDER-ASSISTED: one fictional shift, 25% capacity buffer, 25% booked and 12.5% queued assumptions when blank; review actual load.");
+    if(center.capacityEstimateType==="PLACEHOLDER_ASSISTED") {
+      const calendarBasis=center.capacityHourSources?.calendarHours==="PLACEHOLDER" ?
+        "one fictional shift, "+(center.placeholderBufferPercent??25)+"% interruption allowance; " :
+        "manually entered effective calendar hours (no added interruption buffer); ";
+      capacityAssessment.notes.push("PLACEHOLDER-ASSISTED: "+calendarBasis+
+        "25% booked and 12.5% queued estimates only when blank; review actual load.");
+    }
     else capacityAssessment.notes.push("MANUAL scenario hours; not independently verified.");
     for(const suggestion of result.suggestions)
       if(suggestion.center===centerId)suggestion.capacityEstimateType=center.capacityEstimateType;
@@ -268,7 +310,44 @@ export function inspectRoutingCapacityEvidence(state, jobId, step, centerId, sta
   return {knownRoutedCount,clockHistoryCount,jobId,partNumber:job.partNumber,revision:job.revision,step,centerId,
     startLocal,endLocal,evidenceSupplied:scenarioEvidence !== null,
     scenarioEvidence:scenarioEvidence===null?null:structuredClone(scenarioEvidence),
+    routingSnapshot:JSON.stringify(job.routing.operations),
+    scenarioSnapshot:JSON.stringify(scenarioEvidence),
     result,assessment:result.assessments[0] || null};
+}
+
+/** Review-only handoff into the existing UNSAVED routing editor.
+ * Recheck the current job, clock sessions and scenario. Never write or release.
+ */
+export function prepareCapacitySuggestionDraft(state,review,sessions){
+  if(!Array.isArray(sessions))
+    fail("Current browser-local clock history is required before opening a routing suggestion.");
+  if(!review?.evidenceSupplied || !review.scenarioEvidence ||
+     !review.result?.suggestions?.some(s=>s.center===review.centerId))
+    fail("No eligible, previously reviewed fictional routing suggestion is available.");
+  const job=getJob(state,review.jobId);
+  if(!job || job.status!=="OPEN" || job.partNumber!==review.partNumber ||
+     job.revision!==review.revision || job.routing?.revision!==job.revision)
+    fail("The selected fictional work order or revision is no longer eligible.");
+  if(typeof review.routingSnapshot!=="string" ||
+     review.routingSnapshot!==JSON.stringify(job.routing.operations) ||
+     review.scenarioSnapshot!==JSON.stringify(review.scenarioEvidence))
+    fail("Routing or scenario evidence changed; review the current scenario again.");
+  if(sessions.some(s=>s?.jobId===job.id))
+    fail("Clock history exists; the existing routing editor cannot change this job.");
+  const refreshed=inspectRoutingCapacityEvidence(state,job.id,review.step,review.centerId,
+    review.startLocal,review.endLocal,review.scenarioEvidence,sessions);
+  const suggestion=refreshed.result.suggestions.find(s=>s.center===review.centerId);
+  if(refreshed.assessment?.status!=="SCENARIO_ELIGIBLE" || !suggestion)
+    fail("Capacity, maintenance or job evidence no longer supports this fictional alternative.");
+  const operations=editableRouting(job);
+  const operation=operations.find(op=>op.step===review.step);
+  if(!operation || operation.center===review.centerId)
+    fail("The selected operation is no longer eligible for an alternate center.");
+  operation.center=review.centerId;
+  return {jobId:job.id,operations:validateRoutingDraft(job,operations),
+    proposal:{step:review.step,center:review.centerId,
+      evidenceRefs:[...suggestion.evidenceRefs],
+      capacityEstimateType:refreshed.assessment.capacityEstimateType||"UNKNOWN"}};
 }
 
 export function routingCapacityEvidenceHtml(job, review = null) {
@@ -291,12 +370,13 @@ export function routingCapacityEvidenceHtml(job, review = null) {
     '<label><input type="checkbox" name="scenario-placeholder" value="yes"'+
       (scenario?.capacityEstimateType==="PLACEHOLDER_ASSISTED"?' checked':'')+
       '> Use conservative placeholders for blank capacity/booked/queued hours</label>'+
-    '<p class="small">Optional fictional one-shift assumption: at most 8 nominal hours, 25% interruption allowance, then hypothetical booked 25% and queued 12.5% of effective hours. Enter hours manually to override. PM downtime and setup/run time still require explicit input. NOT actual scheduled hours.</p>'+
+    '<p class="small">Optional fictional one-shift assumption: at most 8 nominal hours, editable interruption allowance (25% default), then hypothetical booked 25% and queued 12.5% of effective hours. Allowance applies only to a blank calendar-hour field; manual calendar hours are already effective hours. PM downtime and setup/run time still require explicit input. NOT actual scheduled hours.</p>'+
     '<div class="controls">'+
     pick("capability","Operation capability",["","supported","unsupported"],
       scenario?.capability?.supported===true?"supported":scenario?.capability?.supported===false?"unsupported":"")+
     ref("capability-ref","Capability source",scenario?.capability?.sourceRef)+
-    num("calendarHours","Calendar hours")+num("bookedHours","Booked hours (blank = UNKNOWN)")+
+    '<label>Interruption allowance % (blank calendar only)<input type="number" min="0" max="90" step="any" name="scenario-bufferPercent" value="'+h(scenario?.placeholderBufferPercent??25)+'"></label>'+
+    num("calendarHours","Effective planning hours")+num("bookedHours","Booked hours (blank = UNKNOWN)")+
     num("queuedHours","Queued hours (blank = UNKNOWN)")+num("maintenanceHours","PM downtime hours")+
     num("setupHours","Setup hours")+num("runHours","Run hours")+
     ref("capacity-ref","Capacity source",scenario?.capacitySourceRef)+
@@ -354,7 +434,7 @@ export function routingCapacityEvidenceHtml(job, review = null) {
       (a?.notes?.length?'<p class="small">'+a.notes.map(h).join(' ')+'</p>':'')+
       (messages.length?'<ul>'+messages.map(message=>'<li>'+h(message)+'</li>').join('')+'</ul>':'')+
       (review.result.suggestions.length ?
-        '<p class="small">Scenario-only alternate identified for human draft review. No routing saved, approved or released.</p>' :
+        '<p class="small">Scenario-only alternate identified for human draft review. No routing saved, approved or released.</p>'+(review.clockHistoryCount===0 && review.assessment?.status==="SCENARIO_ELIGIBLE" ?'<button type="button" class="action secondary" data-action="routing-use-capacity-draft">Open suggestion in routing editor</button>'+'<p class="small">Opens an UNSAVED draft only. Verify sources before explicitly saving for review.</p>' : '') :
         '<p class="small">No alternate routing proposed or saved. Source evidence, scheduled load, '+
         'tooling, material, maintenance clearance and human review are required before a recommendation.</p>')+
       '</div>';

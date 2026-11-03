@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {seedState} from "./engine.mjs";
 import {reviewPmWorkCenterAssociation} from "./pm-work-center-link.mjs";
 import {seedPm,completePmTask} from "./pm.mjs";
-import {inspectRoutingCapacityEvidence,routingCapacityEvidenceHtml,readRoutingCapacityScenario,conservativeCapacityPlaceholders} from "./routing-capacity-review.mjs";
+import {inspectRoutingCapacityEvidence,routingCapacityEvidenceHtml,readRoutingCapacityScenario,conservativeCapacityPlaceholders,prepareCapacitySuggestionDraft} from "./routing-capacity-review.mjs";
 
 const START="2026-11-02T08:00", END="2026-11-02T16:00";
 test("canonical routing and PM snapshot produce review-only UNKNOWN evidence without mutations",()=>{
@@ -447,6 +447,99 @@ test("placeholder arithmetic caps one fictional shift and rejects impossible win
   assert.throws(()=>conservativeCapacityPlaceholders(END,START),/positive duration/);
 });
 
+test("editable fictional interruption allowance changes provisional capacity without writing ERP records",()=>{
+  const state=seedState(),job=state.jobs[0],before=structuredClone(state);
+  const f=browserScenarioFields();
+  f.set("scenario-enabled","yes");f.set("scenario-placeholder","yes");
+  for(const key of ["calendarHours","bookedHours","queuedHours","capacity-ref"])
+    f.delete("scenario-"+key);
+  f.set("scenario-bufferPercent","50");
+  const cautious=readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END);
+  assert.deepEqual([cautious.center.calendarHours,cautious.center.bookedHours,
+    cautious.center.queuedHours,cautious.center.placeholderBufferPercent],[4,1,0.5,50]);
+  assert.equal(cautious.center.capacityHourSources.calendarHours,"PLACEHOLDER");
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,cautious,[]);
+  assert.equal(review.assessment.availableHours,2.5);
+  assert.equal(review.assessment.status,"EXCLUDED"); // Three required hours do not fit.
+  assert.equal(review.result.suggestions.length,0);
+  assert.equal(review.result.canAutoApply,false);
+  const html=routingCapacityEvidenceHtml(job,review);
+  assert.match(html,/name="scenario-bufferPercent" value="50"/);
+  assert.match(html,/50% interruption allowance/);
+  f.set("scenario-bufferPercent","0");
+  const optimistic=readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END);
+  assert.deepEqual([optimistic.center.calendarHours,optimistic.center.bookedHours,
+    optimistic.center.queuedHours],[8,2,1]);
+  assert.equal(optimistic.center.placeholderBufferPercent,0);
+  assert.equal(inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,
+    optimistic,[]).assessment.availableHours,5);
+  // A manual effective-hour override does not subtract the buffer again.
+  f.set("scenario-calendarHours","7");f.set("scenario-bufferPercent","50");
+  const manualCalendar=readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END);
+  assert.equal(manualCalendar.center.calendarHours,7);
+  assert.equal(manualCalendar.center.bookedHours,1.75);
+  assert.equal(manualCalendar.center.queuedHours,0.88);
+  assert.equal(manualCalendar.center.capacityHourSources.calendarHours,"MANUAL");
+  assert.equal(Object.hasOwn(manualCalendar.center,"placeholderBufferPercent"),false);
+  assert.match(routingCapacityEvidenceHtml(job,inspectRoutingCapacityEvidence(
+    state,job.id,"10","PRESS-02",START,END,manualCalendar,[])),
+    /manually entered effective calendar hours/);
+  for(const invalid of ["-1","91","garbage"]){
+    f.set("scenario-bufferPercent",invalid);
+    assert.throws(()=>readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END),
+      /interruption allowance/);
+  }
+  assert.throws(()=>conservativeCapacityPlaceholders(START,END,Infinity),/interruption allowance/);
+  assert.deepEqual(state,before);
+});
+test("external placeholder buffer metadata cannot claim a manual calendar or exceed bounds",()=>{
+  const state=seedState(),job=state.jobs[0],e=scopedEvidence(job);
+  e.center.placeholderBufferPercent=50;
+  assert.throws(()=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]),
+    /Placeholder interruption allowance/);
+  e.center.capacityEstimateType="PLACEHOLDER_ASSISTED";
+  e.center.capacityHourSources={calendarHours:"PLACEHOLDER",bookedHours:"MANUAL",queuedHours:"MANUAL"};
+  e.center.placeholderBufferPercent=91;
+  assert.throws(()=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]),
+    /Placeholder interruption allowance/);
+  e.center.placeholderBufferPercent=50;
+  e.center.calendarHours=4; // 8 nominal hours less the asserted 50% interruption allowance.
+  assert.doesNotThrow(()=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]));
+});
+
+test("fictional placeholder labels cannot launder inconsistent capacity hours into a review",()=>{
+  const state=seedState(),job=state.jobs[0],before=structuredClone(state);
+  const f=browserScenarioFields();
+  f.set("scenario-enabled","yes");f.set("scenario-placeholder","yes");
+  for(const key of ["calendarHours","bookedHours","queuedHours","capacity-ref"])
+    f.delete("scenario-"+key);
+  const valid=readRoutingCapacityScenario(f,job,"10","PRESS-02",START,END);
+  const inspect=e=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]);
+  assert.deepEqual([valid.center.calendarHours,valid.center.bookedHours,valid.center.queuedHours],[6,1.5,0.75]);
+  assert.doesNotThrow(()=>inspect(valid));
+  for(const [field,value,pattern] of [
+    ["calendarHours",8,/Placeholder calendar hours must match/],
+    ["bookedHours",2,/Placeholder booked and queued hours must match/],
+    ["queuedHours",1,/Placeholder booked and queued hours must match/],
+    ["placeholderBufferPercent",50,/Placeholder calendar hours must match/]
+  ]){
+    const forged=structuredClone(valid);
+    forged.center[field]=value;
+    assert.throws(()=>inspect(forged),pattern,field);
+  }
+  // A planner can still enter different manual estimates, but they are not
+  // mislabeled as system-calculated placeholders or verified scheduling.
+  const manual=structuredClone(valid);
+  manual.center.calendarHours=7;
+  manual.center.bookedHours=2;
+  manual.center.queuedHours=1;
+  manual.center.capacityHourSources={
+    calendarHours:"MANUAL",bookedHours:"MANUAL",queuedHours:"MANUAL"};
+  manual.center.capacityEstimateType="MANUAL";
+  delete manual.center.placeholderBufferPercent;
+  assert.doesNotThrow(()=>inspect(manual));
+  assert.deepEqual(state,before);
+});
 test("placeholder provenance remains field-specific and recalculates in a new window",()=>{
   const state=seedState(),job=state.jobs[0],before=structuredClone(state);
   const f=browserScenarioFields();f.set("scenario-enabled","yes");f.set("scenario-placeholder","yes");
@@ -482,6 +575,28 @@ test("fully manual capacity values are labeled MANUAL even when placeholder chec
     inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]));
   assert.doesNotMatch(html,/name="scenario-placeholder" value="yes" checked/);
 });
+test("placeholder-assisted claims without field provenance are rejected, legacy manual stays valid",()=>{
+  const state=seedState(),job=state.jobs[0],before=structuredClone(state),e=scopedEvidence(job);
+  const inspect=()=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]);
+  // A correctly scoped external scenario cannot call arbitrary hours a
+  // system-suggested placeholder without documenting their field origins.
+  e.center.capacityEstimateType="PLACEHOLDER_ASSISTED";
+  e.center.calendarHours=8;
+  e.center.bookedHours=0;
+  e.center.queuedHours=0;
+  assert.throws(inspect,/requires per-field capacity hour provenance/);
+  e.center.capacityEstimateType="MANUAL";
+  assert.doesNotThrow(inspect);
+  delete e.center.capacityEstimateType; // Existing untagged callers still work.
+  assert.doesNotThrow(inspect);
+  // Correctly labeled mixed scenarios retain the conservative arithmetic gate.
+  e.center.capacityEstimateType="PLACEHOLDER_ASSISTED";
+  e.center.capacityHourSources={
+    calendarHours:"PLACEHOLDER",bookedHours:"MANUAL",queuedHours:"MANUAL"};
+  e.center.calendarHours=6;
+  assert.doesNotThrow(inspect);
+  assert.deepEqual(state,before);
+});
 test("contradictory hour origins are rejected while older scenarios remain supported",()=>{
   const state=seedState(),job=state.jobs[0],e=scopedEvidence(job);
   assert.doesNotThrow(()=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]));
@@ -494,4 +609,44 @@ test("contradictory hour origins are rejected while older scenarios remain suppo
   e.center.capacityHourSources.queuedHours="UNKNOWN";
   assert.throws(()=>inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,e,[]),
     /hour provenance must match/);
+});
+
+
+test("eligible fictional capacity suggestion opens a validated UNSAVED routing draft",()=>{
+  const {state,job,e}=packetReadyAlternate(),before=structuredClone(state);
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e,[]);
+  assert.equal(review.assessment.status,"SCENARIO_ELIGIBLE");
+  assert.match(routingCapacityEvidenceHtml(job,review),/data-action="routing-use-capacity-draft"/);
+  const draft=prepareCapacitySuggestionDraft(state,review,[]);
+  assert.equal(draft.jobId,job.id);
+  assert.equal(draft.operations.find(op=>op.step==="10").center,"DEMO-CUT");
+  assert.equal(job.routing.operations.find(op=>op.step==="10").center,"LASER-01");
+  assert.ok(draft.proposal.evidenceRefs.includes("SYN-CAP-001"));
+  assert.deepEqual(state,before);
+});
+test("handoff rejects stale routing, altered scenario, and newly clocked job",()=>{
+  for(const kind of ["route","scenario","clock"]){
+    const {state,job,e}=packetReadyAlternate();
+    const review=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e,[]);
+    const sessions=[];
+    if(kind==="route")job.routing.operations[1].check="Synthetic edited check";
+    if(kind==="scenario")review.scenarioEvidence.center.setupHours=5;
+    if(kind==="clock")sessions.push({id:"SYN-CLOCK-003",jobId:job.id,step:"10"});
+    assert.throws(()=>prepareCapacitySuggestionDraft(state,review,sessions),/changed|Clock history/);
+  }
+});
+test("handoff rejects UNKNOWN, wrong job, new quality hold and maintenance concern",()=>{
+  const {state,job,e}=packetReadyAlternate();
+  const review=inspectRoutingCapacityEvidence(state,job.id,"10","DEMO-CUT",START,END,e,[]);
+  const missing=inspectRoutingCapacityEvidence(state,job.id,"10","PRESS-02",START,END,null,[]);
+  assert.doesNotMatch(routingCapacityEvidenceHtml(job,missing),/data-action="routing-use-capacity-draft"/);
+  assert.throws(()=>prepareCapacitySuggestionDraft(state,missing,[]),/No eligible/);
+  assert.throws(()=>prepareCapacitySuggestionDraft(state,review,null),/clock history/);
+  const wrong=structuredClone(review);wrong.jobId=state.jobs[1].id;
+  assert.throws(()=>prepareCapacitySuggestionDraft(state,wrong,[]),/work order or revision/);
+  state.quality.push({id:"q-handoff-synthetic",jobId:job.id,status:"OPEN",reason:"Synthetic hold"});
+  assert.throws(()=>prepareCapacitySuggestionDraft(state,review,[]),/no longer supports/);
+  state.quality.pop();
+  state.pm.machines[0].active=false;
+  assert.throws(()=>prepareCapacitySuggestionDraft(state,review,[]),/no longer supports/);
 });

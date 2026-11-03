@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {assessAlternateCenters} from "./routing-capacity-advice.mjs";
+import {reviewBeanCoreRoutingProposal} from "./routing-bean-adapter.mjs";
 import {seedPm,completePmTask,requestMaintenance,closeMaintenanceRequest} from "./pm.mjs";
 
 const job = () => ({jobNumber:"SYN-JOB-1",partNumber:"SYN-PART-1",revision:"A",
@@ -493,4 +494,76 @@ test("malformed routed-operation counts fail review while omitted counts remain 
   assert.equal(result.assessments[0].idleCandidate,false);
   assert.equal(result.suggestions.length,1);
   assert.equal(result.suggestions[0].canAutoApply,false);
+});
+
+
+test("public-domain NIST CTC-02 reference stays a manually mapped, review-only BEAN capacity simulation",()=>{
+  // Reference only: https://www.nist.gov/ctl/smart-connected-systems-division/smart-connected-manufacturing-systems-group/mbe-pmi-validation
+  // NIST CTC-02 is a public GD&T test case. Axiom does NOT extract its geometry,
+  // dimensions, datums or manufacturing requirements here. Everything below
+  // (job, operations, work centers, hours and proposal record) is fictional.
+  const j={jobNumber:"SYN-NIST-SIM-01",partNumber:"SYN-CTC02-INSPECTION",revision:"A",
+    routing:{revision:"A",operations:[{step:"10",name:"Review fictional GD&T inspection",
+      center:"DEMO-QC",instructions:["Planner must interpret the public drawing manually."],
+      check:"Human approval of datum strategy and inspection plan required."}]}};
+  const snapshot=structuredClone(j);
+  const base={
+    routedOperationCount:0,
+    capability:{operation:"Review fictional GD&T inspection",supported:true,
+      sourceRef:"SYN-CTC02-CAPABILITY-ASSERTION"},
+    calendarHours:6,bookedHours:1.5,queuedHours:0.75,maintenanceHours:0,
+    setupHours:0.5,runHours:1,
+    capacitySourceRef:"SYN-CTC02-SCENARIO-HOURS",
+    readinessSourceRef:"SYN-CTC02-READINESS-ASSERTION",
+    maintenanceState:"CLEAR",tooling:"READY",fixture:"READY",
+    material:"READY",deliveryState:"ON_TIME"
+  };
+  const eligible={...structuredClone(base),id:"QC-01"};
+  const incompatible={...structuredClone(base),id:"PRESS-02",
+    capability:{...base.capability,supported:false}};
+  const unknown={...structuredClone(base),id:"LASER-01",
+    capability:{...base.capability,supported:undefined}};
+  const window={start:"2026-11-02T08:00:00Z",end:"2026-11-02T16:00:00Z"};
+  const result=assessAlternateCenters(j,"10",{window,
+    centers:[eligible,incompatible,unknown]});
+  assert.equal(result.status,"SCENARIO_CANDIDATES");
+  assert.deepEqual(result.assessments.map(x=>[x.center,x.status]),[
+    ["QC-01","SCENARIO_ELIGIBLE"],["PRESS-02","EXCLUDED"],["LASER-01","NEEDS_REVIEW"]]);
+  assert.equal(result.suggestions.length,1);
+  const suggestion=result.suggestions[0];
+  assert.equal(suggestion.center,"QC-01");
+  assert.equal(suggestion.idleCandidate,true);
+  assert.equal(suggestion.utilizationPercent,37.5);
+  assert.equal(suggestion.availableHours,3.75);
+  assert.equal(suggestion.requiredHours,1.5);
+  assert.equal(suggestion.slackHours,2.25);
+  assert.equal(suggestion.canAutoApply,false);
+  assert.equal(suggestion.candidate.operations[0].center,"QC-01");
+  assert.equal(j.routing.operations[0].center,"DEMO-QC");
+
+  // A fictional BEAN Core proposal row, not a live BEAN invocation.
+  const record={
+    proposal_id:"proposal_abcdef123456",request_id:"req_nist_ctc02_demo",
+    response_id:"resp_nist_ctc02_demo",proposal_type:"reasoning",
+    status:"pending_review",summary:"Review an alternate fictional inspection center.",
+    confidence:0.4,
+    observations_json:JSON.stringify(["NIST CTC-02 is a public GD&T test case; no features were parsed."]),
+    interpretations_json:JSON.stringify(["Manual inspection-center mapping is only a scenario."]),
+    assumptions_json:JSON.stringify(["Six effective fictional planning hours; capability is asserted."]),
+    uncertainties_json:JSON.stringify(["Datums, dimensions, qualification and actual capacity not verified."]),
+    evidence_refs_json:JSON.stringify(["SYN-CTC02-MANUAL-REVIEW"]),
+    candidate_steps_json:JSON.stringify(["Human review of the QC-01 alternate."]),
+    risk_flags_json:JSON.stringify(["drawing-not-interpreted"])
+  };
+  const reviewed=reviewBeanCoreRoutingProposal(j,record,{
+    jobNumber:j.jobNumber,partNumber:j.partNumber,revision:j.revision
+  },suggestion.candidate);
+  assert.equal(reviewed.status,"REVIEW_REQUIRED");
+  assert.equal(reviewed.routingReview.status,"REVIEW_REQUIRED");
+  assert.equal(reviewed.routingReview.changes[0].kind,"MODIFIED");
+  assert.deepEqual(reviewed.routingReview.programAssociations,[]);
+  assert.equal(reviewed.canAutoApply,false);
+  assert.ok(reviewed.issues.some(x=>/risk flags/i.test(x)));
+  assert.ok(reviewed.limitations.some(x=>/not independently verified/i.test(x)));
+  assert.deepEqual(j,snapshot);
 });

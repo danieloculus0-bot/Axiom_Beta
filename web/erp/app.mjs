@@ -16,7 +16,7 @@ import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,renderCost,renderDelivery,renderSafety,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
-import {inspectRoutingCapacityEvidence,routingCapacityEvidenceHtml,readRoutingCapacityScenario} from "./routing-capacity-review.mjs";
+import {inspectRoutingCapacityEvidence,routingCapacityEvidenceHtml,readRoutingCapacityScenario,prepareCapacitySuggestionDraft} from "./routing-capacity-review.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
  issueRequestPO,syncReceivedRequests,verifyPurchaseRequest,followupPurchaseRequest} from "./requests.mjs";
@@ -39,10 +39,11 @@ const stateViews={
 let workforce=seedWorkforce();
 let payPreviewResult=null,camEnvelopeResult=null;
 let qcdsmDepartment="Assembly";
-let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""},routeDraft=null,capacityReview=null;
+let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""},routeDraft=null,capacityReview=null,erpStorageSnapshot=null;
 function load(){
   try{
     const raw=localStorage.getItem(ERP_KEY);
+    erpStorageSnapshot=raw;
     if(raw && raw.length<1800000) state=validateState(JSON.parse(raw));
     const clocks=localStorage.getItem(CLOCK_KEY);
     if(clocks && clocks.length<2500000){
@@ -57,7 +58,7 @@ function load(){
     }
     const k=ERP_KEY+"_test";localStorage.setItem(k,"ok");localStorage.removeItem(k);
     stored=true;
-  }catch{stored=false;state=seedState();sessions=[];}
+  }catch{stored=false;state=seedState();sessions=[];erpStorageSnapshot=null;}
   try{
     const raw=localStorage.getItem(WORKFORCE_KEY);
     workforce=raw&&raw.length<800000?validateWorkforce(JSON.parse(raw)):seedWorkforce();
@@ -65,8 +66,33 @@ function load(){
 }
 function persist(){
   if(!stored) return;
-  try{localStorage.setItem(ERP_KEY,JSON.stringify(state));localStorage.setItem(CLOCK_KEY,JSON.stringify(sessions));localStorage.setItem(WORKFORCE_KEY,JSON.stringify(workforce));}
+  try{
+    const erpJson=JSON.stringify(state);
+    localStorage.setItem(ERP_KEY,erpJson);
+    erpStorageSnapshot=erpJson;
+    localStorage.setItem(CLOCK_KEY,JSON.stringify(sessions));
+    localStorage.setItem(WORKFORCE_KEY,JSON.stringify(workforce));
+  }
   catch{stored=false;flash="Local storage unavailable. Export records before refreshing.";}
+}
+// Read shared browser storage at the instant a routing draft is submitted.
+// Storage/focus notifications can be delayed while another tab clocks a job.
+// Fail closed on changed or malformed clock snapshots rather than saving from
+// stale in-memory sessions (or overwriting newer clock history via persist).
+// Bind every unsaved routing edit to the canonical ERP snapshot it opened from.
+// A quality hold, revision or maintenance change in another tab must not be
+// overwritten by an old editor, even before storage notifications arrive.
+function assertFreshErpForRoutingSave(draft){
+  if(!stored)return;
+  if(localStorage.getItem(ERP_KEY)!==draft.erpSnapshot)
+    throw Error("Browser-local ERP records changed since routing edit opened. Review current job before saving routing.");
+}
+function assertFreshClockHistoryForRoutingSave(){
+  if(!stored)return; // The in-memory-only demo has no shared browser storage.
+  const current=localStorage.getItem(CLOCK_KEY);
+  if(current===null && sessions.length===0)return;
+  if(current!==JSON.stringify(sessions))
+    throw Error("Browser-local clock history changed in another tab. Review current job before saving routing.");
 }
 function transact(next,message){state=next;capacityReview=null;flash=message;persist();render();}
 function workforceTransact(next,type,detail,message){
@@ -231,6 +257,13 @@ function routingView(){
     moduleLink("ewi","EWI","Clock operation")+'</div>'+
     '<h3 style="margin-top:20px">Source labels</h3><p>Routing: '+h(j.routing.source)+'<br>Drawing: '+h(j.drawing.number)+' / Rev '+h(j.drawing.revision)+'</p></section></div>';
   s+=routingEditorHtml(j,routeDraft?.jobId===j.id?routeDraft.operations:null,sessions.some(session=>session.jobId===j.id));
+  if(routeDraft?.jobId===j.id && routeDraft.proposal){
+    const p=routeDraft.proposal;
+    s+='<div class="receipt" role="status"><b>UNSAVED scenario suggestion:</b> step '+h(p.step)+
+      ' at '+h(p.center)+' · '+h(p.capacityEstimateType)+
+      '. Asserted sources: '+p.evidenceRefs.map(h).join(", ")+
+      '. Recheck capability, schedule and material. Scenario evidence is NOT saved in routing history.</div>';
+  }
   s+=routingCapacityEvidenceHtml(j,capacityReview?.jobId===j.id?capacityReview:null);
   return s;
 }
@@ -475,10 +508,18 @@ document.addEventListener("click",event=>{
   if(!button)return;
   const action=button.dataset.action,id=button.dataset.id;
   try{
+    if(action==="routing-use-capacity-draft"){
+      if(routeDraft)throw Error("Save or cancel the current unsaved routing edit first.");
+      routeDraft={...prepareCapacitySuggestionDraft(state,capacityReview,sessions),erpSnapshot:erpStorageSnapshot};
+      capacityReview=null;
+      flash="Fictional suggestion opened as an UNSAVED routing edit. No ERP record changed.";
+      render();
+      document.getElementById("routing-editor")?.scrollIntoView({block:"start"});
+    }
     if(action==="routing-start"){
       const j=job();
       if(sessions.some(s=>s.jobId===j.id))throw Error("Clocking history exists for this job. Use another fictional job for routing changes.");
-      routeDraft={jobId:j.id,operations:editableRouting(j)};
+      routeDraft={jobId:j.id,operations:editableRouting(j),erpSnapshot:erpStorageSnapshot};
       capacityReview=null; // A saved-route assessment cannot describe an unsaved draft.
       flash="Edit fictional routing, then save for demo review.";
       render();
@@ -493,6 +534,7 @@ document.addEventListener("click",event=>{
       if(action==="routing-remove")routeDraft.operations=removeRouteStep(routeDraft.operations,index);
       if(action==="routing-add")routeDraft.operations=addRouteStep(routeDraft.operations);
       capacityReview=null; // Reordered/added/removed operations invalidate prior evidence.
+      routeDraft.proposal=null; // Editor changes invalidate ephemeral suggestion provenance.
       flash="";
       render();
       document.getElementById("routing-editor")?.scrollIntoView({block:"start"});
@@ -606,6 +648,8 @@ document.addEventListener("submit",event=>{
       }
       case "routing-save":{
         if(!routeDraft||routeDraft.jobId!==job().id)throw Error("No active routing edit for this job");
+        assertFreshErpForRoutingSave(routeDraft);
+        assertFreshClockHistoryForRoutingSave();
         const updated=saveRoutingDraft(state,routeDraft.jobId,readRoutingEditor(form),sessions);
         routeDraft=null;
         transact(updated,"Edited routing saved for demo review. EWI clocking is blocked until reviewed.");break;
