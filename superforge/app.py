@@ -13,7 +13,8 @@ from .schema_extensions import init_extensions
 from .finance_schema import init_finance_schema
 from .org_schema import init_org_schema
 from .runtime_paths import application_secret
-from .event_bus import logic_matrix, publish, register_default_logic
+from .event_bus import logic_matrix, publish, register_default_logic, delivery_diagnostics
+from .sql_recovery import recover_startup_backlog
 from .integrations.service import IntegrationService
 from .modules.learning import patterns
 from .modules.quality import (
@@ -42,6 +43,7 @@ from .modules.cost_ui import cost_blueprint
 from .modules.supplier_ui import supplier_blueprint
 from .modules.purchasing_ui import purchasing_blueprint
 from .modules.job_passport import passport_blueprint
+from .modules.manufacturing_context import manufacturing_context_blueprint
 from .modules.ewi import ewi_blueprint, init_ewi
 
 def e(value)->str:
@@ -106,6 +108,9 @@ def create_app(test_config:dict|None=None)->Flask:
     register_iso_hungry_logic()
     register_collaboration_logic()
     register_executive_logic()
+    # Recover at most 10,000 events per startup. The SQL cursor survives restarts,
+    # so later committed events are not stranded behind a fixed startup ceiling.
+    recover_startup_backlog()
     app=Flask(__name__)
     app.config.update(SECRET_KEY=application_secret())
     if test_config: app.config.update(test_config)
@@ -114,6 +119,7 @@ def create_app(test_config:dict|None=None)->Flask:
     app.register_blueprint(collaboration_blueprint)
     app.register_blueprint(reporting_blueprint)
     app.register_blueprint(passport_blueprint)
+    app.register_blueprint(manufacturing_context_blueprint)
     app.register_blueprint(ewi_blueprint)
     app.register_blueprint(purchasing_blueprint)
     app.register_blueprint(supplier_blueprint)
@@ -588,6 +594,11 @@ def create_app(test_config:dict|None=None)->Flask:
 <label>Phone<input name='phone'></label><label class='wide'>Notes<textarea name='notes'></textarea></label><div><button>Save Supplier</button></div></form></details>"""
         body="<section class='page-head'><div><p class='eyebrow'>Supply Chain</p><h1>Supplier History</h1></div></section>"+context_banner()+form+"<div class='panel'>"+table_html(rows,[("name","Supplier"),("code","Code"),("contact","Contact"),("email","Email"),("phone","Phone"),("status","Status"),("notes","Notes")],"supplier","name")+"</div>"
         return page("Supplier History",body,module_key="suppliers")
+
+    @app.get("/integrations/sync-health")
+    def integration_sync_health():
+        # Read-only evidence from the canonical local SQL ledger and in-process bus.
+        return jsonify(delivery_diagnostics())
 
     @app.route("/integrations",methods=["GET","POST"])
     def integrations():

@@ -11,7 +11,7 @@ import math
 
 from ..audit import record_event
 from ..db import db
-from ..event_bus import publish
+from ..event_bus import deliver_staged, stage_event
 
 SCHEMA = "ezfair.inspection_handoff.v1"
 SOURCE_SCHEMA = "forgevault.released_drawing.v1"
@@ -136,6 +136,15 @@ def import_controlled_fai(payload: dict, pdf_bytes: bytes, *, fai_number: str, a
             (fai_id, source["record_id"], source["file_version_id"],
              source["release_package_number"], digest, receipt_hash),
         )
+        # Commit the FAI, its source evidence and its notification atomically.
+        # A crash after commit leaves a recoverable pending event, not a silent FAI.
+        staged = stage_event(
+            con, "fai.imported", source_module="ezfair", entity_type="fai",
+            entity_id=str(fai_id), actor=actor,
+            payload={"vault_version": source["file_version_id"],
+                     "drawing_sha256": digest,
+                     "inspection_status": "review_required"},
+        )
     record_event(
         event_type="FAI", action="IMPORTED_CONTROLLED_DRAWING", module="ezfair",
         entity_type="fai", entity_id=fai_id, actor=actor,
@@ -143,11 +152,8 @@ def import_controlled_fai(payload: dict, pdf_bytes: bytes, *, fai_number: str, a
               "drawing_sha256": digest, "inspection_status": "review_required",
               "characteristics": len(chars)},
     )
-    publish(
-        "fai.imported", source_module="ezfair", entity_type="fai",
-        entity_id=str(fai_id), actor=actor,
-        payload={"vault_version": source["file_version_id"], "drawing_sha256": digest,
-                 "inspection_status": "review_required"},
-    )
+    # Delivery is after commit. Startup replay handles interruptions and
+    # successful-handler receipts prevent duplicate downstream review actions.
+    deliver_staged(staged.event_id)
     return {"id": fai_id, "fai_number": fai_number, "status": "review_required",
             "idempotent": False, "sha256": digest, "characteristics": len(chars)}

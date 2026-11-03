@@ -37,17 +37,30 @@ def sanitize(value: Any) -> Any:
     return value
 
 def _tail(path: Path) -> tuple[int,str]:
+    """Read the last nonblank audit row without rescanning the entire journal.
+
+    This is called for every event append. A full-file read made repeated
+    synchronization O(n²) as the journal grew.
+    """
     if not path.exists() or path.stat().st_size == 0:
         return 0,GENESIS
-    last=None
-    with path.open("r",encoding="utf-8") as handle:
-        for line in handle:
-            if line.strip():
-                last=line
-    if not last:
-        return 0,GENESIS
-    row=json.loads(last)
-    return int(row["sequence"]),str(row["entry_hash"])
+    with path.open("rb") as handle:
+        handle.seek(0,os.SEEK_END)
+        position=handle.tell()
+        tail=b""
+        while position>0:
+            size=min(4096,position)
+            position-=size
+            handle.seek(position)
+            tail=handle.read(size)+tail
+            # Ensure the last complete record is present in the chunk.
+            if position>0 and tail.count(b"\n")<2:
+                continue
+            for line in reversed(tail.splitlines()):
+                if line.strip():
+                    row=json.loads(line.decode("utf-8"))
+                    return int(row["sequence"]),str(row["entry_hash"])
+    return 0,GENESIS
 
 def record_event(
     *,
