@@ -571,6 +571,13 @@ def create_app(test_config:dict|None=None)->Flask:
     def quoting():
         rows=_list("""SELECT q.id,q.quote_number,q.customer_id,q.part_id,q.due_date,q.status,q.owner,q.estimated_value,q.notes, e.source_record_id, e.source_version_id, e.release_package_number, substr(e.drawing_sha256,1,16) AS drawing_sha_prefix FROM quote_intakes q LEFT JOIN ezstimate_quote_evidence e ON e.quote_intake_id=q.id ORDER BY q.id DESC LIMIT 300""")
         body="<section class='page-head'><div><p class='eyebrow'>Estimating</p><h1>Quoting</h1><p class='sub'>Quote intake, drawing context, material risk, supplier lead time, capacity and quality history can all feed the same review.</p></div></section>"+context_banner()+"<div class='panel'>"+table_html(rows,[("quote_number","Quote"),("customer_id","Customer ID"),("part_id","Part ID"),("due_date","Due"),("status","Status"),("owner","Owner"),("estimated_value","Draft Value"),("source_record_id","Vault Drawing"),("source_version_id","Version UUID"),("release_package_number","Released Package"),("drawing_sha_prefix","PDF Hash"),("notes","Notes")],"quote_intake","quote_number")+"</div>"
+        review_actions=_list("""SELECT id,workflow_key,step_key,entity_id,status,created_at
+            FROM workflow_actions WHERE target_module='quoting' AND entity_type='quote_intake'
+            ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END,id DESC LIMIT 300""")
+        body+="<div class='panel'><h2>Quote review actions</h2><p>Imported drafts require human review. No quote is automatically approved.</p>"+table_html(
+            review_actions,[("workflow_key","Workflow"),("step_key","Review step"),
+            ("entity_id","Quote intake ID"),("status","Status"),("created_at","Created")],
+            "workflow_action","workflow_key")+"</div>"
         return page("Quoting",body,module_key="quoting")
 
     @app.get("/planning")
