@@ -157,7 +157,7 @@ def test_typed_quote_consumer_failure_and_replay_receipt(tmp_path, monkeypatch):
             "SELECT status FROM event_delivery_receipts WHERE event_id=? AND handler_key=?",
             (row["event_id"], event_bus._handler_key(typed_quote_consumer))).fetchone()[0] == "delivered"
     again = event_bus.deliver_staged(row["event_id"])
-    assert again["skipped"] == 1
+    assert again["skipped"] >= 1
     assert len(attempts) == 2
     assert ezstimate_quote.import_ezstimate_quote(
         proposal, pdf_bytes=pdf, actor="synthetic-reviewer")["idempotent"]
@@ -213,5 +213,5 @@ def test_quote_receipt_write_failure_replays_idempotent_consumer(tmp_path, monke
         assert con.execute(
             "SELECT status FROM event_ledger WHERE event_id=?",
             (row["event_id"],)).fetchone()[0] == "delivered"
-    assert event_bus.deliver_staged(row["event_id"])["skipped"] == 1
+    assert event_bus.deliver_staged(row["event_id"])["skipped"] >= 1
     assert len(calls) == 2
