@@ -68,7 +68,7 @@ function persist(){
   try{localStorage.setItem(ERP_KEY,JSON.stringify(state));localStorage.setItem(CLOCK_KEY,JSON.stringify(sessions));localStorage.setItem(WORKFORCE_KEY,JSON.stringify(workforce));}
   catch{stored=false;flash="Local storage unavailable. Export records before refreshing.";}
 }
-function transact(next,message){state=next;capacityReview=null;flash=message;persist();render();}
+function transact(next,message){state=next;capacityReview=null;flash=message;persist();syncJobUrl();render();}
 function workforceTransact(next,type,detail,message){
   workforce=next;
   state=change(state,type,detail,()=>{});
@@ -78,6 +78,15 @@ function pmTransact(nextPm,type,detail,message){
   transact(change(state,type,detail,n=>{n.pm=nextPm;}),message);
 }
 function job(){return getJob(state,selectedJobId)||state.jobs[0];}
+// Keep the active fictional job in the shareable URL. Other same-origin workbenches
+// can return to this exact record without pretending to share browser storage.
+function syncJobUrl(){
+  if(!state.jobs.some(j=>j.id===selectedJobId))return;
+  const url=new URL(location.href);
+  if(url.searchParams.get("job")===selectedJobId)return;
+  url.searchParams.set("job",selectedJobId);
+  history.replaceState(history.state,"",url.pathname+url.search+url.hash);
+}
 function stamp(t){if(!t)return "RUNNING";if(t==="DEMO SEED")return "Sample";const d=new Date(t);return Number.isFinite(d.getTime())?d.toLocaleString():"Sample";}
 function hours(seconds){const s=Math.floor(seconds);return [Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(v=>String(v).padStart(2,"0")).join(":");}
 function currentView(){const view=location.hash.slice(1);return Object.hasOwn(stateViews,view)?view:"dashboard";}
@@ -699,7 +708,7 @@ document.addEventListener("submit",event=>{
     }else render();
   }
 });
-$("job-context").addEventListener("change",e=>{rememberJob(e.target.value);flash="";render();});
+$("job-context").addEventListener("change",e=>{rememberJob(e.target.value);syncJobUrl();flash="";render();});
 // An edited input invalidates the old read-only assessment, without replacing
 // the form or silently recalculating against different scenario assumptions.
 function invalidateCapacityReviewOnFormEdit(event){
@@ -732,6 +741,7 @@ setInterval(()=>{
 load();
 const requested=new URLSearchParams(location.search).get("job");
 selectedJobId=state.jobs.some(j=>j.id===requested)?requested:state.jobs[0].id;
+syncJobUrl();
 const requestedMachine=new URLSearchParams(location.search).get("machine");
 selectedPmMachineId=state.pm.machines.some(m=>m.id===requestedMachine)?requestedMachine:state.pm.machines[0]?.id||"";
 selectedStep=job().routing.operations[0].step;
