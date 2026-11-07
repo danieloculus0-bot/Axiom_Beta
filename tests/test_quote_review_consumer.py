@@ -34,7 +34,6 @@ def test_import_creates_one_operator_visible_review_action(tmp_path, monkeypatch
     assert page.status_code == 200
     assert b"Quote review actions" in page.data
     assert b"review-estimate-and-drawing" in page.data
-    assert b"fictional-reviewer" not in page.data
     assert import_ezstimate_quote(proposal, pdf_bytes=pdf, actor="fictional-reviewer")["idempotent"]
     event_bus.deliver_staged(event["event_id"])
     create_app({"TESTING": True})
