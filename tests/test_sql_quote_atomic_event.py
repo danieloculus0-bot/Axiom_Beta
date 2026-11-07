@@ -129,6 +129,7 @@ def test_typed_quote_consumer_failure_and_replay_receipt(tmp_path, monkeypatch):
         if len(attempts) == 1:
             raise RuntimeError("synthetic consumer failure")
 
+    # Other default and wildcard observers also receive events; inspect this consumer's receipt.
     monkeypatch.setitem(event_bus._HANDLERS, event_type, [typed_quote_consumer])
     result = ezstimate_quote.import_ezstimate_quote(
         proposal, pdf_bytes=pdf, actor="synthetic-reviewer")
@@ -139,8 +140,8 @@ def test_typed_quote_consumer_failure_and_replay_receipt(tmp_path, monkeypatch):
             (event_type,)).fetchone()
         assert row["status"] == "partial_failure"
         receipt = con.execute(
-            "SELECT status,error_text FROM event_delivery_receipts WHERE event_id=?",
-            (row["event_id"],)).fetchone()
+            "SELECT status,error_text FROM event_delivery_receipts WHERE event_id=? AND handler_key=?",
+            (row["event_id"], event_bus._handler_key(typed_quote_consumer))).fetchone()
         assert receipt["status"] == "failed"
         assert "synthetic consumer failure" in receipt["error_text"]
 
@@ -153,8 +154,8 @@ def test_typed_quote_consumer_failure_and_replay_receipt(tmp_path, monkeypatch):
             "SELECT status FROM event_ledger WHERE event_id=?",
             (row["event_id"],)).fetchone()[0] == "delivered"
         assert con.execute(
-            "SELECT status FROM event_delivery_receipts WHERE event_id=?",
-            (row["event_id"],)).fetchone()[0] == "delivered"
+            "SELECT status FROM event_delivery_receipts WHERE event_id=? AND handler_key=?",
+            (row["event_id"], event_bus._handler_key(typed_quote_consumer))).fetchone()[0] == "delivered"
     again = event_bus.deliver_staged(row["event_id"])
     assert again["skipped"] == 1
     assert len(attempts) == 2
@@ -199,16 +200,16 @@ def test_quote_receipt_write_failure_replays_idempotent_consumer(tmp_path, monke
             (event_type,)).fetchone()
         assert row["status"] == "partial_failure"
         assert con.execute(
-            "SELECT COUNT(*) FROM event_delivery_receipts WHERE event_id=?",
-            (row["event_id"],)).fetchone()[0] == 0
+            "SELECT COUNT(*) FROM event_delivery_receipts WHERE event_id=? AND handler_key=?",
+            (row["event_id"], event_bus._handler_key(idempotent_quote_consumer))).fetchone()[0] == 0
     replay = event_bus.recover_undelivered()
     assert replay["delivered"] == 1
     assert len(calls) == 2
     assert observed == {row["event_id"]}
     with db() as con:
         assert con.execute(
-            "SELECT status FROM event_delivery_receipts WHERE event_id=?",
-            (row["event_id"],)).fetchone()[0] == "delivered"
+            "SELECT status FROM event_delivery_receipts WHERE event_id=? AND handler_key=?",
+            (row["event_id"], event_bus._handler_key(idempotent_quote_consumer))).fetchone()[0] == "delivered"
         assert con.execute(
             "SELECT status FROM event_ledger WHERE event_id=?",
             (row["event_id"],)).fetchone()[0] == "delivered"
