@@ -111,3 +111,106 @@ def test_committed_quote_recovers_after_dispatch_crash(tmp_path, monkeypatch):
         assert con.execute(
             "SELECT COUNT(*) FROM event_ledger WHERE event_type='quote.estimate.draft_imported'"
         ).fetchone()[0] == 1
+
+
+def test_typed_quote_consumer_failure_and_replay_receipt(tmp_path, monkeypatch):
+    """Failed typed consumer replays exactly once after a committed quote."""
+    monkeypatch.setenv("AXIOM_DATA_DIR", str(tmp_path / "typed-replay"))
+    from superforge.app import create_app
+    from superforge import event_bus
+    create_app({"TESTING": True})
+    proposal, pdf = _proposal()
+    event_type = "quote.estimate.draft_imported"
+    attempts = []
+    def typed_quote_consumer(event):
+        attempts.append(event.event_id)
+        assert event.entity_type == "quote_intake"
+        assert event.payload["status"] == "review_required"
+        if len(attempts) == 1:
+            raise RuntimeError("synthetic consumer failure")
+
+    monkeypatch.setitem(event_bus._HANDLERS, event_type, [typed_quote_consumer])
+    result = ezstimate_quote.import_ezstimate_quote(
+        proposal, pdf_bytes=pdf, actor="synthetic-reviewer")
+    assert result["status"] == "review_required"
+    with db() as con:
+        row = con.execute(
+            "SELECT event_id,status FROM event_ledger WHERE event_type=?",
+            (event_type,)).fetchone()
+        assert row["status"] == "partial_failure"
+        receipt = con.execute(
+            "SELECT status,error_text FROM event_delivery_receipts WHERE event_id=?",
+            (row["event_id"],)).fetchone()
+        assert receipt["status"] == "failed"
+        assert "synthetic consumer failure" in receipt["error_text"]
+
+    replay = event_bus.recover_undelivered()
+    assert replay["delivered"] == 1
+    assert replay["failed"] == 0
+    assert attempts == [row["event_id"], row["event_id"]]
+    with db() as con:
+        assert con.execute(
+            "SELECT status FROM event_ledger WHERE event_id=?",
+            (row["event_id"],)).fetchone()[0] == "delivered"
+        assert con.execute(
+            "SELECT status FROM event_delivery_receipts WHERE event_id=?",
+            (row["event_id"],)).fetchone()[0] == "delivered"
+    again = event_bus.deliver_staged(row["event_id"])
+    assert again["skipped"] == 1
+    assert len(attempts) == 2
+    assert ezstimate_quote.import_ezstimate_quote(
+        proposal, pdf_bytes=pdf, actor="synthetic-reviewer")["idempotent"]
+    with db() as con:
+        assert con.execute("SELECT COUNT(*) FROM quote_intakes").fetchone()[0] == 1
+        assert con.execute("SELECT COUNT(*) FROM event_ledger WHERE event_type=?",
+                           (event_type,)).fetchone()[0] == 1
+
+
+def test_quote_receipt_write_failure_replays_idempotent_consumer(tmp_path, monkeypatch):
+    """A handler success without a durable receipt must remain retryable."""
+    monkeypatch.setenv("AXIOM_DATA_DIR", str(tmp_path / "receipt-replay"))
+    from superforge.app import create_app
+    from superforge import event_bus
+    create_app({"TESTING": True})
+    proposal, pdf = _proposal()
+    event_type = "quote.estimate.draft_imported"
+    observed = set()
+    calls = []
+    def idempotent_quote_consumer(event):
+        calls.append(event.event_id)
+        observed.add(event.event_id)
+
+    monkeypatch.setitem(event_bus._HANDLERS, event_type, [idempotent_quote_consumer])
+    original = event_bus._record_delivery
+    failures = [True]
+    def fail_first_success_receipt(event, handler, status, error_text=""):
+        if status == "delivered" and failures[0]:
+            failures[0] = False
+            return False
+        return original(event, handler, status, error_text)
+    with monkeypatch.context() as patch:
+        patch.setattr(event_bus, "_record_delivery", fail_first_success_receipt)
+        ezstimate_quote.import_ezstimate_quote(
+            proposal, pdf_bytes=pdf, actor="synthetic-reviewer")
+
+    with db() as con:
+        row = con.execute(
+            "SELECT event_id,status FROM event_ledger WHERE event_type=?",
+            (event_type,)).fetchone()
+        assert row["status"] == "partial_failure"
+        assert con.execute(
+            "SELECT COUNT(*) FROM event_delivery_receipts WHERE event_id=?",
+            (row["event_id"],)).fetchone()[0] == 0
+    replay = event_bus.recover_undelivered()
+    assert replay["delivered"] == 1
+    assert len(calls) == 2
+    assert observed == {row["event_id"]}
+    with db() as con:
+        assert con.execute(
+            "SELECT status FROM event_delivery_receipts WHERE event_id=?",
+            (row["event_id"],)).fetchone()[0] == "delivered"
+        assert con.execute(
+            "SELECT status FROM event_ledger WHERE event_id=?",
+            (row["event_id"],)).fetchone()[0] == "delivered"
+    assert event_bus.deliver_staged(row["event_id"])["skipped"] == 1
+    assert len(calls) == 2
