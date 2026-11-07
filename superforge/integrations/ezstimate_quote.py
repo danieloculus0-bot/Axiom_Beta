@@ -7,7 +7,7 @@ import json
 
 from ..db import db
 from ..audit import record_event
-from ..event_bus import publish
+from ..event_bus import stage_event, deliver_staged
 
 CENT=Decimal("0.01")
 
@@ -102,12 +102,15 @@ def import_ezstimate_quote(proposal:dict, *, pdf_bytes:bytes, actor:str):
             (quote_id,doc["record_id"],doc["file_version_id"],doc["release_package_number"],
              observed,proof_hash,canonical(proposal)),
         )
+        event = stage_event(
+            con, "quote.estimate.draft_imported", source_module="quoting",
+            entity_type="quote_intake", entity_id=str(quote_id), actor=actor,
+            payload={"source_version": doc["file_version_id"], "drawing_sha256": observed,
+                     "status": "review_required"},
+        )
     record_event(event_type="QUOTE",action="EZSTIMATE_DRAFT_IMPORTED",module="quoting",
                  entity_type="quote_intake",entity_id=quote_id,actor=actor,
                  data={"quote_number":quote_number,"source_version":doc["file_version_id"],
                        "pdf_sha256":observed,"quote_status":"review_required"})
-    publish("quote.estimate.draft_imported",source_module="quoting",
-            entity_type="quote_intake",entity_id=str(quote_id),actor=actor,
-            payload={"source_version":doc["file_version_id"],"drawing_sha256":observed,
-                     "status":"review_required"})
+    deliver_staged(event.event_id)
     return {"quote_id":quote_id,"status":"review_required","idempotent":False,"total":expected}
