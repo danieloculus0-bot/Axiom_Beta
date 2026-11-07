@@ -388,6 +388,17 @@ def _po_late(event:DomainEvent)->None:
     create_action(event,workflow_key="late-po",step_key="job-impact",target_module="job_tracker")
     create_action(event,workflow_key="late-po",step_key="inventory-impact",target_module="inventory")
 
+def _quote_draft_imported(event:DomainEvent)->None:
+    """Queue human review of an imported estimate; never approve or place an order."""
+    if event.entity_type != "quote_intake" or event.payload.get("status") != "review_required":
+        raise ValueError("Quote review event must reference a review-required quote intake")
+    create_action(
+        event, workflow_key="quote-draft-review", step_key="review-estimate-and-drawing",
+        target_module="quoting",
+        input_data={"quote_intake_id": event.entity_id, "status": "review_required"},
+    )
+
+
 def _inventory_short(event:DomainEvent)->None:
     create_action(event,workflow_key="inventory-shortage",step_key="buy-or-reallocate",target_module="purchase_orders")
     create_action(event,workflow_key="inventory-shortage",step_key="job-material-risk",target_module="job_tracker")
@@ -434,6 +445,7 @@ def register_default_logic()->None:
         "pm.failed":_pm_failed,
         "po.late":_po_late,
         "inventory.shortage":_inventory_short,
+        "quote.estimate.draft_imported":_quote_draft_imported,
         "clocking.error":_clocking_error,
         "job.changed":_job_changed,
         "methods.plan.created":_methods_plan_created,
