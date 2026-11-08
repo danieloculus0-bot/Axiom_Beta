@@ -54,14 +54,6 @@ def test_real_quote_consumer_receipt_loss_restart_and_operator_action(tmp_path, 
     assert result["status"] == "review_required"
     assert lost[0]
 
-    # Exercise the actual operator route, not only the SQL action table.
-    first_page = create_app({"TESTING": True}).test_client().get("/quoting")
-    assert first_page.status_code == 200
-    assert b"Quote review actions" in first_page.data
-    assert b"SYN-REPLAY-QUOTE" in first_page.data
-    assert b"quote-draft-review" in first_page.data
-    assert b"review-estimate-and-drawing" in first_page.data
-
     with db() as con:
         quote = con.execute(
             "SELECT id FROM quote_intakes WHERE quote_number=?",
@@ -86,6 +78,15 @@ def test_real_quote_consumer_receipt_loss_restart_and_operator_action(tmp_path, 
             """SELECT COUNT(*) FROM event_delivery_receipts
                WHERE event_id=? AND handler_key=?""",
             (event["event_id"], event_bus._handler_key(handler))).fetchone()[0] == 0
+
+    # Creating the operator app invokes startup recovery, so first assert the pending receipt state.
+    # Exercise the actual operator route, not only the SQL action table.
+    first_page = create_app({"TESTING": True}).test_client().get("/quoting")
+    assert first_page.status_code == 200
+    assert b"Quote review actions" in first_page.data
+    assert b"SYN-REPLAY-QUOTE" in first_page.data
+    assert b"quote-draft-review" in first_page.data
+    assert b"review-estimate-and-drawing" in first_page.data
 
     # Recreate the Flask app to exercise its real startup recovery registration.
     app = create_app({"TESTING": True})
