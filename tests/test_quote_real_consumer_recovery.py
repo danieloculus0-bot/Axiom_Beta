@@ -54,6 +54,14 @@ def test_real_quote_consumer_receipt_loss_restart_and_operator_action(tmp_path, 
     assert result["status"] == "review_required"
     assert lost[0]
 
+    # Exercise the actual operator route, not only the SQL action table.
+    first_page = create_app({"TESTING": True}).test_client().get("/quoting")
+    assert first_page.status_code == 200
+    assert b"Quote review actions" in first_page.data
+    assert b"SYN-REPLAY-QUOTE" in first_page.data
+    assert b"quote-draft-review" in first_page.data
+    assert b"review-estimate-and-drawing" in first_page.data
+
     with db() as con:
         quote = con.execute(
             "SELECT id FROM quote_intakes WHERE quote_number=?",
@@ -87,6 +95,11 @@ def test_real_quote_consumer_receipt_loss_restart_and_operator_action(tmp_path, 
     assert event_bus.deliver_staged(event["event_id"])["skipped"] >= 1
     assert ezstimate_quote.import_ezstimate_quote(
         proposal, pdf_bytes=pdf, actor="synthetic-reviewer")["idempotent"]
+
+    recovered_page = app.test_client().get("/quoting")
+    assert recovered_page.status_code == 200
+    assert recovered_page.data.count(b"review-estimate-and-drawing") == 1
+    assert b"SYN-REPLAY-QUOTE" in recovered_page.data
 
     with db() as con:
         assert con.execute(
