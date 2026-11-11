@@ -13,7 +13,7 @@ import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction,qualityJobSummary,jobQualityTarget} from "./quality-case.mjs";
-import {renderQualityCase,renderJobQualityEvidence,renderJobRegisterInspectionEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction,qualityJobInspectionTarget} from "./quality-case-view.mjs";
+import {renderQualityCase,renderJobQualityEvidence,renderJobRegisterInspectionEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction,qualityJobInspectionTarget,qualityJobCorrectiveTarget} from "./quality-case-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
@@ -660,13 +660,15 @@ document.addEventListener("click",event=>{
       if(location.hash==="#quality")render();
       else location.hash="#quality";
     }
-    if(action==="job-quality-inspection"){
-      const target=qualityJobInspectionTarget(state,button.dataset.job,button.dataset.case,id);
+    if(action==="job-quality-inspection"||action==="job-quality-corrective"){
+      const target=action==="job-quality-inspection"?
+        qualityJobInspectionTarget(state,button.dataset.job,button.dataset.case,id):
+        qualityJobCorrectiveTarget(state,button.dataset.job,button.dataset.case,id);
       const view=currentView();
       if(!target||!["routing","jobs"].includes(view)||
          (view==="routing"&&selectedJobId!==target.jobId)||
          (view==="jobs"&&!contextSelection("jobs",state.jobs).some(item=>item.id===target.jobId)))
-        throw Error("The selected fictional inspection is not linked to this work order");
+        throw Error("The selected fictional quality evidence is not linked to this work order");
       selectedContext={type:"job",id:target.jobId};
       selectedIntent="quality";
       selectedQualityId=target.caseId;
