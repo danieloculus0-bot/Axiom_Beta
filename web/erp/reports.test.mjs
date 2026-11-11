@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {seedState,makePurchaseOrder,receivePurchaseOrder,raiseQuality,createJob} from "./engine.mjs";
 import {makeReport,reportCsv,REPORTS} from "./reports.mjs";
 import {qualityCaseTimeline} from "./quality-timeline.mjs";
-import {renderQualityCase} from "./quality-case-view.mjs";
+import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary} from "./quality-case-view.mjs";
 import {startSession,stopSession} from "../ewi/engine.mjs";
 import {completePmTask} from "./pm.mjs";
 import {qualityJobSummary,jobQualityTarget,recordQualityInspection,recordQualityDisposition,closeReviewedQuality,
@@ -198,4 +198,48 @@ test("Quality Forge chronology handles legacy records and escapes fictional user
  const html=renderQualityCase(state,state.quality[0].id);
  assert.ok(html.includes("&lt;script&gt;alert(1)&lt;/script&gt;"));
  assert.ok(!html.includes("<script>"));
+});
+
+test("job routing evidence index links exact canonical cases and keeps closed reviews visible",()=>{
+ let state=seedState();
+ assert.ok(!renderJobQualityEvidence(state,"sample-1001").includes('data-action='));
+ state=raiseQuality(state,"sample-1001","Generic drawing revision conflict",at);
+ state=raiseQuality(state,"sample-1001","Generic drawing revision conflict",later);
+ state=raiseQuality(state,"sample-1002","Generic drawing revision conflict",later);
+ const [first,second,unrelated]=state.quality.map(q=>q.id);
+ const step=state.jobs[0].routing.operations[0].step;
+ state=recordQualityInspection(state,first,"FIRST_PIECE",step,"FAIL",
+   "Fictional check requires review","2026-10-30T12:01:00Z");
+ const inspectionId=state.quality[0].inspections[0].id;
+ state=recordQualityCorrectiveAction(state,first,"QUALITY","Review sample setup",
+   inspectionId,"2026-10-30T12:02:00Z");
+ const actionId=state.quality[0].correctiveActions[0].id;
+ state=recordQualityDisposition(state,first,"SCRAP","Fictional disposition","2026-10-30T12:03:00Z");
+ state=closeReviewedQuality(state,first,"2026-10-30T12:04:00Z");
+ state=reviewQualityCorrectiveAction(state,first,actionId,"NOT_EFFECTIVE",
+   "Further fictional action needed","2026-10-30T12:05:00Z");
+ const before=JSON.stringify(state),html=renderJobQualityEvidence(state,"sample-1001");
+ assert.deepEqual(qualityCaseEvidenceSummary(state.quality[0]),
+   {inspections:1,correctiveActions:1,latestEffectiveness:"NOT_EFFECTIVE"});
+ assert.match(html,new RegExp('data-action="report-quality-case" data-id="'+first+'"'));
+ assert.match(html,new RegExp('data-action="report-quality-case" data-id="'+second+'"'));
+ assert.ok(!html.includes('data-id="'+unrelated+'"'));
+ assert.match(html,/NOT_EFFECTIVE/);
+ assert.match(html,/CLOSED/);
+ assert.equal(JSON.stringify(state),before);
+ assert.equal(state.quality[0].status,"CLOSED");
+});
+test("quality evidence links escape legacy text and use existing record-aware navigation",()=>{
+ const state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
+ state.quality[0].number='<script>alert(1)</script>';
+ const html=renderJobQualityEvidence(state,"sample-1001");
+ assert.match(html,/&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+ assert.ok(!html.includes("<script>"));
+ assert.deepEqual(qualityCaseEvidenceSummary({id:"legacy"}),{
+   inspections:0,correctiveActions:0,latestEffectiveness:"NO ACTION"});
+ const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
+ assert.ok(app.includes("renderJobQualityEvidence(state,j.id)"));
+ assert.ok(app.includes("qualityCaseEvidenceSummary(q)"));
+ assert.ok(app.includes('if(action==="report-quality-case")'));
+ assert.ok(app.includes('openContext({type:"quality",id},{view:"quality",intent:"quality"})'));
 });

@@ -4,6 +4,33 @@ import {qualityCaseTimeline} from "./quality-timeline.mjs";
 const h=value=>String(value??"").replace(/[&<>"']/g,c=>({
   "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
 })[c]);
+/* Compact, read-only evidence projection for a real fictional NCR.
+ * Reuses the same chronology shown in the case itself, not a second store.
+ */
+export function qualityCaseEvidenceSummary(record){
+  const entries=qualityCaseTimeline(record);
+  const inspections=entries.filter(entry=>entry.kind==="inspection").length;
+  const correctiveActions=entries.filter(entry=>entry.kind==="corrective").length;
+  const effectiveness=entries.filter(entry=>entry.kind==="effectiveness").at(-1);
+  return {inspections,correctiveActions,
+    latestEffectiveness:effectiveness?effectiveness.title.replace(/^Effectiveness: /,""):
+      (correctiveActions?"NOT REVIEWED":"NO ACTION")};
+}
+/* Direct links preserve the exact NCR identity, including closed cases.
+ * No links are offered for a job without linked quality records.
+ */
+export function renderJobQualityEvidence(state,jobId){
+  const cases=state.quality.filter(record=>record.jobId===jobId);
+  if(!cases.length)return '<p class="small muted">No fictional NCR evidence for this work order.</p>';
+  return '<div class="quality-evidence-index">'+cases.map(record=>{
+    const evidence=qualityCaseEvidenceSummary(record);
+    return '<div class="receipt"><button type="button" class="action secondary" '+
+      'data-action="report-quality-case" data-id="'+h(record.id)+'">Open '+h(record.number)+'</button> '+
+      '<span class="small">'+h(record.status)+' · '+h(evidence.inspections)+' inspections · '+
+      h(evidence.correctiveActions)+' corrective actions · effectiveness: '+
+      h(evidence.latestEffectiveness)+'</span></div>';
+  }).join("")+'</div>';
+}
 export function renderQualityCase(state,id){
   const q=state.quality.find(record=>record.id===id);
   if(!q)return '<section class="panel" id="quality-case-detail"><h2>Case review</h2><p class="small">Select a fictional nonconformance above to review its linked record.</p></section>';
