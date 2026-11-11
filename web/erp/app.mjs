@@ -13,7 +13,7 @@ import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction,qualityJobSummary,jobQualityTarget} from "./quality-case.mjs";
-import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget} from "./quality-case-view.mjs";
+import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityEvidenceWorkOrderTarget} from "./quality-case-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
@@ -584,6 +584,19 @@ document.addEventListener("click",event=>{
       pendingRoutingStep={jobId:target.jobId,step:target.step};
       if(location.hash==="#routing")render();
       else location.hash="#routing";
+    }
+    if(action==="quality-evidence-work-order"){
+      const caseId=button.dataset.case,kind=button.dataset.kind;
+      const target=qualityEvidenceWorkOrderTarget(state,caseId,kind,id);
+      const panel=document.getElementById("quality-case-detail");
+      if(currentView()!=="quality"||!target||panel?.dataset.caseId!==target.caseId)
+        throw Error("The selected fictional quality evidence has no linked work order");
+      selectedQualityId=target.caseId;
+      selectedContext={type:"quality",id:target.caseId};
+      selectedIntent="evidence-work-order";
+      rememberJob(target.jobId);
+      if(location.hash==="#jobs")render();
+      else location.hash="#jobs";
     }
     if(action==="job-quality-cases"){
       const target=jobQualityTarget(state,id);
