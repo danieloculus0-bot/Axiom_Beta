@@ -857,6 +857,126 @@ def main():
                 page.wait_for_function("location.hash === '#quality'")
                 expect(panel).to_have_attribute("data-case-id", case_id)
                 expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+                # Chromium regression: duplicate browser-local evidence IDs
+                # must not focus the first matching receipt after case closure.
+                original_storage = page.evaluate(
+                    "() => localStorage.getItem('axiom_public_erp_suite_v1')"
+                )
+                evidence_ids = {
+                    "inspection": inspection_id,
+                    "corrective": corrective_id,
+                    "effectiveness": review_id,
+                    "followup": followup_id,
+                }
+                job_actions = {
+                    "inspection": "job-quality-inspection",
+                    "corrective": "job-quality-corrective",
+                    "effectiveness": "job-quality-effectiveness",
+                    "followup": "job-quality-followup",
+                }
+                for kind, evidence_id in evidence_ids.items():
+                    # Duplicate one evidence type at a time, leaving the
+                    # original canonical fictional NCR and other IDs intact.
+                    page.evaluate("""({snapshot, caseId, kind}) => {
+                        const data = JSON.parse(snapshot);
+                        const record = data.quality.find(q => q.id === caseId);
+                        if (!record) throw Error("Missing synthetic NCR");
+                        const copy = value => structuredClone(value);
+                        if (kind === "inspection")
+                            record.inspections.push(copy(record.inspections[0]));
+                        if (kind === "corrective")
+                            record.correctiveActions.push({
+                                ...copy(record.correctiveActions[0]), reviews: []
+                            });
+                        if (kind === "effectiveness")
+                            record.correctiveActions[0].reviews.push(
+                                copy(record.correctiveActions[0].reviews[0])
+                            );
+                        if (kind === "followup")
+                            record.followUps.push(copy(record.followUps[0]));
+                        localStorage.setItem("axiom_public_erp_suite_v1",
+                            JSON.stringify(data));
+                    }""", {"snapshot": original_storage, "caseId": case_id, "kind": kind})
+                    page.reload()
+                    expect(panel).to_have_attribute("data-case-id", case_id)
+                    expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+                    duplicate_receipts = panel.locator(
+                        f'[data-evidence-kind="{kind}"][data-evidence-id="{evidence_id}"]'
+                    )
+                    stored_count = page.evaluate("""({caseId, kind, id}) => {
+                        const data = JSON.parse(localStorage.getItem(
+                            "axiom_public_erp_suite_v1"));
+                        const record = data.quality.find(q => q.id === caseId);
+                        const rows = kind === "inspection" ? record.inspections :
+                            kind === "corrective" ? record.correctiveActions :
+                            kind === "followup" ? record.followUps :
+                            record.correctiveActions.flatMap(a => a.reviews || []);
+                        return rows.filter(row => row.id === id).length;
+                    }""", {"caseId": case_id, "kind": kind, "id": evidence_id})
+                    assert stored_count == 2, "Injected fictional evidence must survive reload"
+                    expect(duplicate_receipts).to_have_count(2)
+                    expect(panel.locator(
+                        f'button[data-action="quality-evidence-focus"]'
+                        f'[data-kind="{kind}"][data-id="{evidence_id}"]'
+                    )).to_have_count(0)
+                    expect(panel.locator(
+                        f'button[data-action="quality-evidence-work-order"]'
+                        f'[data-kind="{kind}"][data-id="{evidence_id}"]'
+                    )).to_have_count(0)
+
+                    # Unique evidence and the closed disposition must still
+                    # focus their own receipts without altering case identity.
+                    survivor_kind = "followup" if kind != "followup" else "inspection"
+                    survivor_id = evidence_ids[survivor_kind]
+                    panel.locator(
+                        f'button[data-action="quality-evidence-focus"]'
+                        f'[data-kind="{survivor_kind}"][data-id="{survivor_id}"]'
+                    ).first.click()
+                    survivor = panel.locator(
+                        f'[data-evidence-kind="{survivor_kind}"]'
+                        f'[data-evidence-id="{survivor_id}"]'
+                    ).first
+                    assert survivor.evaluate("el => document.activeElement === el")
+                    panel.locator(
+                        f'button[data-action="quality-evidence-focus"]'
+                        f'[data-kind="disposition"][data-id="{case_id}"]'
+                    ).click()
+                    assert disposition_receipt.evaluate(
+                        "el => document.activeElement === el"
+                    )
+                    expect(page.locator("#job-context")).to_have_value(job_id)
+
+                    # Routing and the shop-order register are independent
+                    # job-first paths. Neither may advertise ambiguous IDs.
+                    for module in ("routing", "jobs"):
+                        page.locator(f'#module-nav a[data-nav="{module}"]').click()
+                        page.wait_for_function(
+                            "(module) => location.hash === '#' + module", arg=module
+                        )
+                        if module == "jobs":
+                            page.locator(".job-inspection-details summary").first.click()
+                        expect(page.locator(
+                            f'button[data-action="{job_actions[kind]}"]'
+                            f'[data-case="{case_id}"][data-id="{evidence_id}"]'
+                        )).to_have_count(0)
+                    page.locator('#module-nav a[data-nav="quality"]').click()
+                    page.wait_for_function("location.hash === '#quality'")
+                    expect(panel).to_have_attribute("data-case-id", case_id)
+
+                # Restore the untouched canonical fictional history before
+                # the pre-existing duplicate-number and case-ID scenarios.
+                page.evaluate(
+                    "snapshot => localStorage.setItem('axiom_public_erp_suite_v1', snapshot)",
+                    original_storage,
+                )
+                page.reload()
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                for kind, evidence_id in evidence_ids.items():
+                    expect(panel.locator(
+                        f'button[data-action="quality-evidence-focus"]'
+                        f'[data-kind="{kind}"][data-id="{evidence_id}"]'
+                    ).first).to_be_visible()
+
                 # A legacy duplicate visible NCR number must still open each
                 # distinct canonical case from its own Report Center row.
                 duplicate_case_id = "q-report-same-number"

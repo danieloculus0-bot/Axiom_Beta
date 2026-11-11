@@ -850,3 +850,66 @@ test("Quality Forge corrective and effectiveness actions require unique source e
  assert.equal(state.quality[0].status,"CLOSED");
  assert.equal(state.quality[0].correctiveActions[0].reviews.length,1);
 });
+
+test("Quality Forge evidence focus refuses duplicate historical IDs without hiding receipts",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
+  const caseId=state.quality[0].id;
+  state=recordQualityInspection(state,caseId,"FIRST_PIECE",
+    state.jobs[0].routing.operations[0].step,"FAIL","Synthetic inspection observation",later);
+  const inspectionId=state.quality[0].inspections[0].id;
+  state=recordQualityCorrectiveAction(state,caseId,"QUALITY",
+    "Synthetic corrective action",inspectionId,"2026-10-30T12:01:00Z");
+  const actionId=state.quality[0].correctiveActions[0].id;
+  state=reviewQualityCorrectiveAction(state,caseId,actionId,"MORE_EVIDENCE",
+    "Synthetic effectiveness check","2026-10-30T12:02:00Z");
+  const reviewId=state.quality[0].correctiveActions[0].reviews[0].id;
+  state=recordQualityFollowup(state,caseId,"Synthetic follow-up note","2026-10-30T12:03:00Z");
+  const followupId=state.quality[0].followUps[0].id;
+  state=recordQualityDisposition(state,caseId,"SCRAP",
+    "Synthetic disposition rationale","2026-10-30T12:04:00Z");
+  state=closeReviewedQuality(state,caseId,"2026-10-30T12:05:00Z");
+  const before=JSON.stringify(state);
+  const ids={inspection:inspectionId,corrective:actionId,
+    effectiveness:reviewId,followup:followupId};
+  const variants={
+    inspection:s=>s.quality[0].inspections.push(
+      structuredClone(s.quality[0].inspections[0])),
+    corrective:s=>s.quality[0].correctiveActions.push({
+      ...structuredClone(s.quality[0].correctiveActions[0]),reviews:[]}),
+    effectiveness:s=>s.quality[0].correctiveActions[0].reviews.push(
+      structuredClone(s.quality[0].correctiveActions[0].reviews[0])),
+    followup:s=>s.quality[0].followUps.push(
+      structuredClone(s.quality[0].followUps[0]))
+  };
+  for(const [kind,duplicate] of Object.entries(variants)){
+    const legacy=structuredClone(state);
+    duplicate(legacy);
+    const snapshot=JSON.stringify(legacy),id=ids[kind],record=legacy.quality[0];
+    assert.equal(qualityEvidenceTarget(record,kind,id),null,
+      kind+" duplicate must not focus the first matching receipt");
+    assert.equal(qualityEvidenceWorkOrderTarget(legacy,caseId,kind,id),null,
+      kind+" duplicate must not create a work-order return");
+    const html=renderQualityCase(legacy,caseId);
+    assert.ok(html.includes('data-evidence-kind="'+kind+'" data-evidence-id="'+id+'"'),
+      "Historical "+kind+" evidence remains readable");
+    assert.ok(!html.includes('data-action="quality-evidence-focus" data-case="'+caseId+
+      '" data-kind="'+kind+'" data-id="'+id+'"'),
+      "Receipt and chronology must hide ambiguous "+kind+" focus actions");
+    for(const [otherKind,otherId] of Object.entries(ids)){
+      if(otherKind!==kind)
+        assert.deepEqual(qualityEvidenceTarget(record,otherKind,otherId),
+          {kind:otherKind,id:otherId},"Unrelated evidence must remain navigable");
+    }
+    assert.deepEqual(qualityEvidenceTarget(record,"disposition",caseId),
+      {kind:"disposition",id:caseId});
+    assert.equal(JSON.stringify(legacy),snapshot,"Focus guards are read-only");
+  }
+  assert.equal(JSON.stringify(state),before);
+  for(const [kind,id] of Object.entries(ids)){
+    assert.deepEqual(qualityEvidenceTarget(state.quality[0],kind,id),{kind,id},
+      "Valid closed-case evidence stays reachable");
+  }
+  const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
+  assert.ok(app.includes('!qualityEvidenceTarget(record,kind,id)'),
+    "Click handler must enforce the same canonical evidence guard");
+});
