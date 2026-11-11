@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {seedState,makePurchaseOrder,receivePurchaseOrder,raiseQuality,createJob} from "./engine.mjs";
 import {makeReport,reportCsv,REPORTS} from "./reports.mjs";
+import {qualityCaseTimeline} from "./quality-timeline.mjs";
+import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary} from "./quality-case-view.mjs";
 import {startSession,stopSession} from "../ewi/engine.mjs";
 import {completePmTask} from "./pm.mjs";
 import {qualityJobSummary,jobQualityTarget,recordQualityInspection,recordQualityDisposition,closeReviewedQuality,
@@ -156,4 +158,88 @@ test("job quality navigation target selects a real open case before closed histo
  state=closeReviewedQuality(state,second,"2026-10-30T12:03:00.000Z");
  assert.equal(jobQualityTarget(state,"sample-1001").caseId,first);
  assert.equal(jobQualityTarget(state,"sample-1002"),null);
+});
+
+test("Quality Forge case chronology follows canonical evidence through post-closure review",()=>{
+ let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict","2026-10-30T12:00:00Z");
+ const id=state.quality[0].id,step=state.jobs[0].routing.operations[0].step;
+ state=recordQualityInspection(state,id,"FIRST_PIECE",step,"FAIL","Fictional first piece deviation","2026-10-30T12:01:00Z");
+ state=recordQualityCorrectiveAction(state,id,"QUALITY","Review fictional sample setup",
+   state.quality[0].inspections[0].id,"2026-10-30T12:02:00Z");
+ const actionId=state.quality[0].correctiveActions[0].id;
+ state=recordQualityFollowup(state,id,"Fictional follow-up requested","2026-10-30T12:03:00Z");
+ state=recordQualityDisposition(state,id,"SCRAP","Fictional disposition rationale","2026-10-30T12:04:00Z");
+ state=closeReviewedQuality(state,id,"2026-10-30T12:05:00Z");
+ state=reviewQualityCorrectiveAction(state,id,actionId,"NOT_EFFECTIVE","Fictional later review","2026-10-30T12:06:00Z");
+ const before=JSON.stringify(state),timeline=qualityCaseTimeline(state.quality[0]);
+ assert.deepEqual(timeline.map(entry=>entry.kind),
+   ["opened","inspection","corrective","followup","disposition","closed","effectiveness"]);
+ assert.equal(timeline[1].sourceId,state.quality[0].inspections[0].id);
+ assert.equal(timeline.at(-1).sourceId,state.quality[0].correctiveActions[0].reviews[0].id);
+ assert.equal(JSON.stringify(state),before);
+ assert.equal(state.quality[0].status,"CLOSED");
+ const html=renderQualityCase(state,id);
+ const chronology=html.slice(html.indexOf("<h3>Case chronology</h3>"));
+ assert.ok(chronology.includes("Effectiveness: NOT_EFFECTIVE"));
+ assert.ok(chronology.indexOf("NCR closed")<chronology.indexOf("Effectiveness: NOT_EFFECTIVE"));
+ assert.ok(chronology.includes(state.jobs[0].jobNumber)===false); // Timeline is scoped to the already-selected case.
+});
+test("Quality Forge chronology handles legacy records and escapes fictional user text",()=>{
+ assert.deepEqual(qualityCaseTimeline(null),[]);
+ assert.deepEqual(qualityCaseTimeline({id:"legacy",status:"OPEN"}),[]);
+ const legacy={id:"legacy",reason:"Example",openedAt:"not a date",followUps:[
+   {id:"first",note:"A",at:"2026-10-30T12:00:00Z"},
+   {id:"second",note:"B",at:"2026-10-30T12:00:00Z"}]};
+ const rows=qualityCaseTimeline(legacy);
+ assert.deepEqual(rows.map(entry=>entry.sourceId),["first","second","legacy"]);
+ assert.equal(rows.at(-1).at,null);
+ let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict","2026-10-30T12:00:00Z");
+ state=recordQualityFollowup(state,state.quality[0].id,"<script>alert(1)</script>","2026-10-30T12:01:00Z");
+ const html=renderQualityCase(state,state.quality[0].id);
+ assert.ok(html.includes("&lt;script&gt;alert(1)&lt;/script&gt;"));
+ assert.ok(!html.includes("<script>"));
+});
+
+test("job routing evidence index links exact canonical cases and keeps closed reviews visible",()=>{
+ let state=seedState();
+ assert.ok(!renderJobQualityEvidence(state,"sample-1001").includes('data-action='));
+ state=raiseQuality(state,"sample-1001","Generic drawing revision conflict",at);
+ state=raiseQuality(state,"sample-1001","Generic drawing revision conflict",later);
+ state=raiseQuality(state,"sample-1002","Generic drawing revision conflict",later);
+ const [first,second,unrelated]=state.quality.map(q=>q.id);
+ const step=state.jobs[0].routing.operations[0].step;
+ state=recordQualityInspection(state,first,"FIRST_PIECE",step,"FAIL",
+   "Fictional check requires review","2026-10-30T12:01:00Z");
+ const inspectionId=state.quality[0].inspections[0].id;
+ state=recordQualityCorrectiveAction(state,first,"QUALITY","Review sample setup",
+   inspectionId,"2026-10-30T12:02:00Z");
+ const actionId=state.quality[0].correctiveActions[0].id;
+ state=recordQualityDisposition(state,first,"SCRAP","Fictional disposition","2026-10-30T12:03:00Z");
+ state=closeReviewedQuality(state,first,"2026-10-30T12:04:00Z");
+ state=reviewQualityCorrectiveAction(state,first,actionId,"NOT_EFFECTIVE",
+   "Further fictional action needed","2026-10-30T12:05:00Z");
+ const before=JSON.stringify(state),html=renderJobQualityEvidence(state,"sample-1001");
+ assert.deepEqual(qualityCaseEvidenceSummary(state.quality[0]),
+   {inspections:1,correctiveActions:1,latestEffectiveness:"NOT_EFFECTIVE"});
+ assert.match(html,new RegExp('data-action="report-quality-case" data-id="'+first+'"'));
+ assert.match(html,new RegExp('data-action="report-quality-case" data-id="'+second+'"'));
+ assert.ok(!html.includes('data-id="'+unrelated+'"'));
+ assert.match(html,/NOT_EFFECTIVE/);
+ assert.match(html,/CLOSED/);
+ assert.equal(JSON.stringify(state),before);
+ assert.equal(state.quality[0].status,"CLOSED");
+});
+test("quality evidence links escape legacy text and use existing record-aware navigation",()=>{
+ const state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
+ state.quality[0].number='<script>alert(1)</script>';
+ const html=renderJobQualityEvidence(state,"sample-1001");
+ assert.match(html,/&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+ assert.ok(!html.includes("<script>"));
+ assert.deepEqual(qualityCaseEvidenceSummary({id:"legacy"}),{
+   inspections:0,correctiveActions:0,latestEffectiveness:"NO ACTION"});
+ const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
+ assert.ok(app.includes("renderJobQualityEvidence(state,j.id)"));
+ assert.ok(app.includes("qualityCaseEvidenceSummary(q)"));
+ assert.ok(app.includes('if(action==="report-quality-case")'));
+ assert.ok(app.includes('openContext({type:"quality",id},{view:"quality",intent:"quality"})'));
 });

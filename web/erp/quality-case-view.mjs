@@ -1,8 +1,36 @@
 /* One job-linked fictional quality case, using existing ERP context and events. */
 import {QUALITY_DISPOSITIONS,QUALITY_INSPECTION_STAGES,QUALITY_INSPECTION_RESULTS,QUALITY_ACTION_ROLES,QUALITY_EFFECTIVENESS_RESULTS} from "./quality-case.mjs";
+import {qualityCaseTimeline} from "./quality-timeline.mjs";
 const h=value=>String(value??"").replace(/[&<>"']/g,c=>({
   "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
 })[c]);
+/* Compact, read-only evidence projection for a real fictional NCR.
+ * Reuses the same chronology shown in the case itself, not a second store.
+ */
+export function qualityCaseEvidenceSummary(record){
+  const entries=qualityCaseTimeline(record);
+  const inspections=entries.filter(entry=>entry.kind==="inspection").length;
+  const correctiveActions=entries.filter(entry=>entry.kind==="corrective").length;
+  const effectiveness=entries.filter(entry=>entry.kind==="effectiveness").at(-1);
+  return {inspections,correctiveActions,
+    latestEffectiveness:effectiveness?effectiveness.title.replace(/^Effectiveness: /,""):
+      (correctiveActions?"NOT REVIEWED":"NO ACTION")};
+}
+/* Direct links preserve the exact NCR identity, including closed cases.
+ * No links are offered for a job without linked quality records.
+ */
+export function renderJobQualityEvidence(state,jobId){
+  const cases=state.quality.filter(record=>record.jobId===jobId);
+  if(!cases.length)return '<p class="small muted">No fictional NCR evidence for this work order.</p>';
+  return '<div class="quality-evidence-index">'+cases.map(record=>{
+    const evidence=qualityCaseEvidenceSummary(record);
+    return '<div class="receipt"><button type="button" class="action secondary" '+
+      'data-action="report-quality-case" data-id="'+h(record.id)+'">Open '+h(record.number)+'</button> '+
+      '<span class="small">'+h(record.status)+' · '+h(evidence.inspections)+' inspections · '+
+      h(evidence.correctiveActions)+' corrective actions · effectiveness: '+
+      h(evidence.latestEffectiveness)+'</span></div>';
+  }).join("")+'</div>';
+}
 export function renderQualityCase(state,id){
   const q=state.quality.find(record=>record.id===id);
   if(!q)return '<section class="panel" id="quality-case-detail"><h2>Case review</h2><p class="small">Select a fictional nonconformance above to review its linked record.</p></section>';
@@ -11,7 +39,7 @@ export function renderQualityCase(state,id){
     '<a class="action secondary" href="#documents" data-job="'+h(j.id)+'">Drawing</a> '+
     '<a class="action secondary" href="#ewi" data-job="'+h(j.id)+'">EWI / hold</a>':"";
   const disp=q.disposition;
-  const notes=Array.isArray(q.followUps)?q.followUps:[];
+  const timeline=qualityCaseTimeline(q);
   const inspections=Array.isArray(q.inspections)?q.inspections:[];
   const actions=Array.isArray(q.correctiveActions)?q.correctiveActions:[];
   const operations=Array.isArray(j?.routing?.operations)?j.routing.operations:[];
@@ -97,9 +125,11 @@ export function renderQualityCase(state,id){
       '<div class="small">Job rev '+h(item.jobRevision)+' · drawing rev '+h(item.drawingRevision??"unknown")+'</div>'+
       '<div>'+h(item.observation)+'</div></div>').join(""):
       '<p class="small">No fictional inspection observations recorded for this case.</p>')+
-    '<h3>Case activity</h3>'+
-    (notes.length?notes.map(item=>'<div class="receipt"><b>'+h(item.at)+'</b> · '+h(item.note)+'</div>').join(""):
-      '<p class="small">No follow-ups recorded for this fictional case.</p>')+
+    '<h3>Case chronology</h3><p class="small">One read-only timeline of this NCR, its inspection evidence, dispositions, corrective actions, effectiveness reviews and follow-ups. Post-closure reviews do not reopen a case.</p>'+
+    (timeline.length?timeline.map(entry=>'<div class="receipt"><b>'+h(entry.at||"Date unknown")+'</b> · '+h(entry.title)+
+      (entry.sourceId?'<span class="small"> · '+h(entry.sourceId)+'</span>':"")+
+      '<div>'+h(entry.detail)+'</div></div>').join(""):
+      '<p class="small">No dated case evidence recorded for this fictional case.</p>')+
     '</section>';
   return html;
 }
