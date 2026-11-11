@@ -3,12 +3,13 @@ import {packetIssues,available,reservedTotal} from "./engine.mjs";
 import {taskDue,getMachine,localDay} from "./pm.mjs";
 import {durationSeconds} from "../ewi/engine.mjs";
 import {qcdsmEvidence} from "./qcdsm.mjs";
+import {qualityJobSummary} from "./quality-case.mjs";
 
 export const REPORTS=[
- {id:"jobs",label:"Work order readiness",description:"Job revision, reservations and example hold reasons"},
+ {id:"jobs",label:"Work order readiness",description:"Job readiness and linked fictional NCR / corrective-action evidence"},
  {id:"inventory",label:"Inventory position",description:"On hand, reserved and available by stock item"},
  {id:"purchasing",label:"Purchase order status",description:"Synthetic PO lifecycle and receiving"},
- {id:"quality",label:"Quality hold register",description:"Nonconformance status and job association"},
+ {id:"quality",label:"Quality hold register",description:"Linked fictional NCR dispositions, inspections, corrective actions, effectiveness and follow-up"},
  {id:"qcdsm",label:"QCDSM cross-domain evidence",description:"Morale, Quality, Cost, Delivery and Safety with explicit N/A baselines"},
  {id:"labor",label:"Operation clock sessions",description:"Genuine elapsed browser-local time events, not payroll"},
  {id:"pm",label:"PM schedule status",description:"Task due dates based on fictional machines"},
@@ -21,9 +22,14 @@ export function makeReport(state,sessions,id,today=localDay(),workforce=null){
  let columns=[],rows=[];
  switch(id){
  case "jobs":
-  columns=["Work order","Part","Revision","Quantity","Reserved","State","Demo checks"];
-  rows=state.jobs.map(j=>[j.jobNumber,j.partNumber,j.revision,j.quantity,j.reserved||0,j.status,
-    packetIssues(state,j.id).join("; ")||"Example checks passed"]);break;
+  columns=["Work order","Part","Revision","Quantity","Reserved","State","Demo checks",
+    "NCRs","Open NCRs","Corrective actions","Latest effectiveness"];
+  rows=state.jobs.map(j=>{
+    const q=qualityJobSummary(state,j.id);
+    return [j.jobNumber,j.partNumber,j.revision,j.quantity,j.reserved||0,j.status,
+      packetIssues(state,j.id).join("; ")||"Example checks passed",
+      q.total,q.open,q.correctiveActions,q.latestEffectiveness];
+  });break;
  case "inventory":
   columns=["Stock item","Description","Unit","On hand","Reserved","Available"];
   rows=state.items.map(i=>[i.id,i.name,i.unit,i.onHand,reservedTotal(state,i.id),available(state,i.id)]);break;
@@ -31,9 +37,19 @@ export function makeReport(state,sessions,id,today=localDay(),workforce=null){
   columns=["PO","Material","Quantity","Supplier","Status","Issued","Received"];
   rows=state.purchaseOrders.map(p=>[p.number,p.itemId,p.quantity,p.supplier,p.status,p.issuedAt,p.receivedAt||""]);break;
  case "quality":
-  columns=["NCR","Work order","Reason","Status","Opened","Closed"];
-  rows=state.quality.map(q=>[q.number,state.jobs.find(j=>j.id===q.jobId)?.jobNumber||"Unknown",
-    q.reason,q.status,q.openedAt,q.closedAt||""]);break;
+  columns=["NCR","Work order","Reason","Status","Opened","Closed","Disposition",
+    "Inspections","Corrective actions","Latest effectiveness","Follow-ups"];
+  rows=state.quality.map(q=>{
+    const actions=Array.isArray(q.correctiveActions)?q.correctiveActions:[];
+    const reviews=actions.flatMap(action=>Array.isArray(action.reviews)?action.reviews:[])
+      .filter(review=>typeof review.at==="string"&&typeof review.result==="string")
+      .sort((a,b)=>b.at.localeCompare(a.at));
+    return [q.number,state.jobs.find(j=>j.id===q.jobId)?.jobNumber||"Unknown",
+      q.reason,q.status,q.openedAt,q.closedAt||"",q.disposition?.decision||"NOT RECORDED",
+      Array.isArray(q.inspections)?q.inspections.length:0,actions.length,
+      reviews[0]?.result||(actions.length?"NOT REVIEWED":"NO ACTION"),
+      Array.isArray(q.followUps)?q.followUps.length:0];
+  });break;
  case "qcdsm":{
   columns=["Department","Morale risk / 100","Overtime hours","Overtime load %","Recent recordable examples","Safety review priority","Open quality NCR (plant)","Cost baseline","Delivery baseline"];
   rows=["Assembly","Machining","Quality","Maintenance","HR / Finance"].map(department=>{
