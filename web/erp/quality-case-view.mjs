@@ -4,6 +4,80 @@ import {qualityCaseTimeline} from "./quality-timeline.mjs";
 const h=value=>String(value??"").replace(/[&<>"']/g,c=>({
   "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
 })[c]);
+/* Resolve evidence from this canonical fictional NCR before offering a jump. */
+export function qualityEvidenceTarget(record,kind,id){
+  if(!record||typeof record!=="object"||typeof id!=="string"||!id)return null;
+  const inspections=Array.isArray(record.inspections)?record.inspections:[];
+  const actions=Array.isArray(record.correctiveActions)?record.correctiveActions:[];
+  if(kind==="inspection"&&inspections.some(item=>item?.id===id))return {kind,id};
+  if(kind==="corrective"&&actions.some(item=>item?.id===id))return {kind,id};
+  if(kind==="effectiveness"&&actions.some(action=>
+    Array.isArray(action?.reviews)&&action.reviews.some(review=>review?.id===id)))return {kind,id};
+  return null;
+}
+/* A work-order jump must originate from evidence on this exact canonical NCR.
+ * Never offer a generic or unrelated job when the evidence/job is missing.
+ */
+export function qualityEvidenceWorkOrderTarget(state,caseId,kind,id){
+  if(!Array.isArray(state?.quality)||!Array.isArray(state?.jobs))return null;
+  const record=state.quality.find(item=>item?.id===caseId);
+  if(!qualityEvidenceTarget(record,kind,id))return null;
+  const job=state.jobs.find(item=>item?.id===record.jobId);
+  return job?{caseId:record.id,kind,id,jobId:job.id}:null;
+}
+/* Link only to the current, matching routed operation for this inspection.
+ * Historical evidence remains readable when a routing or revision has changed.
+ */
+/* Explain why a historical observation cannot open a CURRENT routing step.
+ * This is a read-only projection, not an inference about why a route changed.
+ */
+export function qualityInspectionRoutingStatus(state,caseId,inspectionId){
+  if(!Array.isArray(state?.quality)||!Array.isArray(state?.jobs))return null;
+  const record=state.quality.find(item=>item?.id===caseId);
+  const inspection=(Array.isArray(record?.inspections)?record.inspections:[])
+    .find(item=>item?.id===inspectionId&&typeof inspectionId==="string"&&inspectionId.length>0);
+  if(!inspection)return null;
+  const unavailable=reason=>({target:null,reason});
+  const job=state.jobs.find(item=>item?.id===record?.jobId);
+  if(!job)return unavailable("Linked fictional work order is unavailable.");
+  if(typeof inspection.jobRevision!=="string"||!inspection.jobRevision||
+     typeof inspection.drawingRevision!=="string"||!inspection.drawingRevision)
+    return unavailable("Recorded revision evidence is incomplete.");
+  if(inspection.jobRevision!==job.revision)
+    return unavailable("Recorded job revision differs from the current work order.");
+  if(inspection.drawingRevision!==job.drawing?.revision)
+    return unavailable("Recorded drawing revision differs from the current drawing.");
+  const operation=job.routing?.operations?.find(op=>String(op.step)===String(inspection.step));
+  if(!operation)return unavailable("Recorded step is absent from the current routing.");
+  if(!inspection.operation||!inspection.center)
+    return unavailable("Recorded operation details are incomplete.");
+  if(inspection.operation!==operation.name||inspection.center!==operation.center)
+    return unavailable("Recorded operation or work center differs from the current routing.");
+  return {target:{caseId:record.id,inspectionId:inspection.id,jobId:job.id,step:String(operation.step)},reason:null};
+}
+export function qualityInspectionRoutingTarget(state,caseId,inspectionId){
+  return qualityInspectionRoutingStatus(state,caseId,inspectionId)?.target??null;
+}
+const evidenceAttrs=(kind,id)=>typeof id==="string"&&id?
+  ' data-evidence-kind="'+h(kind)+'" data-evidence-id="'+h(id)+'"':"";
+const evidenceButton=(record,kind,id,label)=>{
+  const target=qualityEvidenceTarget(record,kind,id);
+  return target?'<button type="button" class="action secondary" data-action="quality-evidence-focus" data-case="'+
+    h(record.id)+'" data-kind="'+h(target.kind)+'" data-id="'+h(target.id)+'">'+h(label)+'</button>':"";
+};
+const evidenceWorkOrderButton=(state,record,kind,id)=>{
+  const target=qualityEvidenceWorkOrderTarget(state,record?.id,kind,id);
+  return target?'<button type="button" class="action secondary" data-action="quality-evidence-work-order" data-case="'+
+    h(target.caseId)+'" data-kind="'+h(target.kind)+'" data-id="'+h(target.id)+'">Open linked work order</button>':"";
+};
+const routingStepButton=(state,record,inspection)=>{
+  const status=qualityInspectionRoutingStatus(state,record?.id,inspection?.id);
+  const target=status?.target;
+  if(target)return '<button type="button" class="action secondary" data-action="quality-routing-step" data-case="'+
+    h(target.caseId)+'" data-id="'+h(target.inspectionId)+'">Open routed step '+h(target.step)+'</button>';
+  return status?.reason?'<span class="small" role="note">Historical route: '+
+    h(status.reason)+' Current step link unavailable.</span>':"";
+};
 /* Compact, read-only evidence projection for a real fictional NCR.
  * Reuses the same chronology shown in the case itself, not a second store.
  */
@@ -35,7 +109,8 @@ export function renderQualityCase(state,id){
   const q=state.quality.find(record=>record.id===id);
   if(!q)return '<section class="panel" id="quality-case-detail"><h2>Case review</h2><p class="small">Select a fictional nonconformance above to review its linked record.</p></section>';
   const j=state.jobs.find(job=>job.id===q.jobId);
-  const links=j?'<a class="action secondary" href="#routing" data-job="'+h(j.id)+'">Routing</a> '+
+  const links=j?'<a class="action secondary" href="#jobs" data-job="'+h(j.id)+'">Work order</a> '+
+    '<a class="action secondary" href="#routing" data-job="'+h(j.id)+'">Routing</a> '+
     '<a class="action secondary" href="#documents" data-job="'+h(j.id)+'">Drawing</a> '+
     '<a class="action secondary" href="#ewi" data-job="'+h(j.id)+'">EWI / hold</a>':"";
   const disp=q.disposition;
@@ -43,7 +118,7 @@ export function renderQualityCase(state,id){
   const inspections=Array.isArray(q.inspections)?q.inspections:[];
   const actions=Array.isArray(q.correctiveActions)?q.correctiveActions:[];
   const operations=Array.isArray(j?.routing?.operations)?j.routing.operations:[];
-  let html='<section class="panel" id="quality-case-detail"><div class="panel-head"><h2>Quality Forge case · '+h(q.number)+'</h2><span class="tag">'+h(q.status)+'</span></div>'+
+  let html='<section class="panel" id="quality-case-detail" data-case-id="'+h(q.id)+'"><div class="panel-head"><h2>Quality Forge case · '+h(q.number)+'</h2><span class="tag">'+h(q.status)+'</span></div>'+
     '<p class="small">Linked work order: <b>'+h(j?.jobNumber||"Missing fictional job")+'</b> · '+h(q.reason)+
     '. Browser-local demonstration only. No production disposition or release authority.</p>'+
     '<div class="controls">'+links+'</div>'+
@@ -95,15 +170,16 @@ export function renderQualityCase(state,id){
     (actions.length?actions.map(action=>{
       const linked=inspections.find(item=>item.id===action.sourceInspectionId);
       const reviews=Array.isArray(action.reviews)?action.reviews:[];
-      return '<div class="receipt"><b>'+h(action.id)+'</b> · '+
+      return '<div class="receipt"'+evidenceAttrs("corrective",action.id)+'><b>'+h(action.id)+'</b> · '+
         h(QUALITY_ACTION_ROLES.find(role=>role.id===action.ownerRole)?.label||action.ownerRole)+
         ' · '+h(action.createdAt)+
         '<div>'+h(action.description)+'</div>'+
         '<div class="small">Linked observation: '+h(action.sourceInspectionId?(linked?
-          linked.stage+' / step '+linked.step+' / '+linked.result:'Missing fictional observation'):'None (case-level)')+'</div>'+
+          linked.stage+' / step '+linked.step+' / '+linked.result:'Missing fictional observation'):'None (case-level)')+'</div>'+(linked?evidenceButton(q,"inspection",linked.id,"View observation"):"")+
+        (linked?routingStepButton(state,q,linked):"")+evidenceWorkOrderButton(state,q,"corrective",action.id)+
         (reviews.length?reviews.map(review=>
-          '<div class="receipt"><b>Effectiveness review:</b> '+h(review.result)+' · '+h(review.at)+
-          '<div>'+h(review.note)+'</div></div>').join(""):
+          '<div class="receipt"'+evidenceAttrs("effectiveness",review.id)+'><b>Effectiveness review:</b> '+h(review.result)+' · '+h(review.at)+
+          '<div>'+h(review.note)+'</div>'+evidenceWorkOrderButton(state,q,"effectiveness",review.id)+'</div>').join(""):
           '<p class="small">Effectiveness not yet reviewed.</p>')+
         '<form class="controls" data-form="quality-effectiveness">'+
         '<input type="hidden" name="id" value="'+h(q.id)+'">'+
@@ -119,15 +195,18 @@ export function renderQualityCase(state,id){
     '<label>Case follow-up (also available after closing)<textarea name="note" minlength="5" maxlength="500" required placeholder="Record a fictional follow-up or effectiveness check."></textarea></label>'+
     '<button class="action secondary" type="submit">Record follow-up</button></form>'+
     '<h3>Inspection observations</h3>'+
-    (inspections.length?inspections.map(item=>'<div class="receipt"><b>'+h(item.at)+'</b> · '+
+    (inspections.length?inspections.map(item=>'<div class="receipt"'+evidenceAttrs("inspection",item.id)+'><b>'+h(item.at)+'</b> · '+
       h(QUALITY_INSPECTION_STAGES.find(stage=>stage.id===item.stage)?.label||item.stage)+' · '+
       h(item.result)+' · step '+h(item.step)+' / '+h(item.operation)+' ('+h(item.center)+')'+
       '<div class="small">Job rev '+h(item.jobRevision)+' · drawing rev '+h(item.drawingRevision??"unknown")+'</div>'+
-      '<div>'+h(item.observation)+'</div></div>').join(""):
+      '<div>'+h(item.observation)+'</div>'+routingStepButton(state,q,item)+evidenceWorkOrderButton(state,q,"inspection",item.id)+actions.filter(action=>action.sourceInspectionId===item.id).map(action=>
+        evidenceButton(q,"corrective",action.id,"View corrective action")).join(" ")+'</div>').join(""):
       '<p class="small">No fictional inspection observations recorded for this case.</p>')+
     '<h3>Case chronology</h3><p class="small">One read-only timeline of this NCR, its inspection evidence, dispositions, corrective actions, effectiveness reviews and follow-ups. Post-closure reviews do not reopen a case.</p>'+
     (timeline.length?timeline.map(entry=>'<div class="receipt"><b>'+h(entry.at||"Date unknown")+'</b> · '+h(entry.title)+
       (entry.sourceId?'<span class="small"> · '+h(entry.sourceId)+'</span>':"")+
+      evidenceButton(q,entry.kind,entry.sourceId,"View evidence")+
+      (entry.kind==="inspection"?routingStepButton(state,q,inspections.find(item=>item.id===entry.sourceId)):"")+
       '<div>'+h(entry.detail)+'</div></div>').join(""):
       '<p class="small">No dated case evidence recorded for this fictional case.</p>')+
     '</section>';
