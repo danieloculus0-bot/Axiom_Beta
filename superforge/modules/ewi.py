@@ -146,6 +146,72 @@ def packet(job_id: int) -> dict | None:
             "sessions": sessions, "issues": errors, "ready": not errors}
 
 
+
+def _sql_operation_review(job_id: int) -> dict:
+    """Read the latest canonical SQL job event; never infer from EWI routes."""
+    try:
+        with db() as con:
+            con.execute("PRAGMA query_only=ON")
+            event = con.execute(
+                """SELECT event_id FROM event_ledger
+                   WHERE event_type='job.changed' AND source_module='integrations'
+                     AND entity_type='job' AND entity_id=?
+                   ORDER BY id DESC LIMIT 1""", (str(job_id),),
+            ).fetchone()
+    except sqlite3.Error:
+        return {"status": "sql_evidence_unavailable", "event_id": None}
+    if event is None:
+        return {"status": "no_sql_job_change_event", "event_id": None}
+
+    # Reuse the single-snapshot SQL freshness contract. No duplicate matcher.
+    from ..integrations.operation_freshness import inspect_operation_event
+    try:
+        return inspect_operation_event(job_id, event["event_id"])
+    except sqlite3.Error:
+        return {"status": "sql_evidence_unavailable", "event_id": event["event_id"]}
+
+
+def _sql_operation_review_html(job_id: int) -> str:
+    """Operator-visible advisory, not a new release or clocking gate."""
+    evidence = _sql_operation_review(job_id)
+    status = evidence["status"]
+    messages = {
+        "current_review_candidate": "Canonical SQL identity and EZ Methods candidate still match. Human review required.",
+        "no_sql_job_change_event": "No canonical SQL job-change event is recorded for this job.",
+        "sql_evidence_unavailable": "Local SQL evidence could not be checked. No synchronization is claimed.",
+        "event_not_delivered": "SQL event delivery is incomplete. Planning evidence is not current for use.",
+        "consumer_evidence_incomplete": "Planning or EZ Methods action/receipt evidence is missing.",
+        "stale_identity": "The job, part, revision or Methods record changed after this event.",
+        "superseded_event": "This SQL event was superseded by a later job change.",
+        "unresolved_operation": "No unique EZ Methods operation candidate is available.",
+    }
+    current = status == "current_review_candidate"
+    label = "CURRENT CANDIDATE, REVIEW REQUIRED" if current else "UNVERIFIED, REVIEW REQUIRED"
+    badge = "good" if current else "danger"
+    html = (
+        "<section class='panel'><h2>SQL planning evidence</h2>"
+        "<p class='sub'>Read-only local Axiom SQL. Independent of the JobBOSS routing "
+        "and controlled drawing. This is not a released instruction or an EWI step match.</p>"
+        "<p><span class='badge " + badge + "'>" + label + "</span> " +
+        _e(messages.get(status, "SQL operation evidence is unavailable for review.")) + "</p>"
+        "<p class='sub'>Evidence status: <code>" + _e(status) + "</code></p>"
+    )
+    if evidence.get("event_id"):
+        html += "<p class='sub'>Source event: <code>" + _e(evidence["event_id"]) + "</code>"
+        if evidence.get("event_created_at"):
+            html += " | Recorded: " + _e(evidence["event_created_at"])
+        html += "</p>"
+    if current:
+        html += (
+            "<p>Methods plan candidate #" + _e(evidence["method_plan_id"]) +
+            " | Operation candidate #" + _e(evidence["operation_id"]) +
+            " | Part revision " + _e(evidence["part_revision"]) +
+            ". Verify the operation against the released EWI routing before acting.</p>"
+        )
+    elif status == "stale_identity" and evidence.get("changed_fields"):
+        html += "<p class='sub'>Changed evidence fields: " + _e(", ".join(evidence["changed_fields"])) + "</p>"
+    return html + "</section>"
+
 def save_remote_routes(job_id: int, routes: list[dict]) -> int:
     """Atomically replace one job's routing snapshot; never overwrite ERP."""
     if not routes:
@@ -279,6 +345,7 @@ def job_view(job_id: int):
         body += "<section class='panel'>" + notice + "</section>"
     if alerts:
         body += "<section class='panel'><h2>Release / sync checks</h2>" + alerts + "</section>"
+    body += _sql_operation_review_html(job_id)
     body += "<section class='panel'><h2>JobBOSS² routed operations</h2>"
     body += ("<p class='sub'>API read: " + ("Configured" if configured() else "Not configured") +
              ". Sync reads routing data only. No production ERP updates.</p>"
