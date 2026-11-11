@@ -66,6 +66,17 @@ def main():
                 page.locator('form[data-form="quality-reviewed-close"] button[type="submit"]').click()
                 expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
 
+                # The current canonical disposition is reachable from its chronology
+                # and retains its original NCR identity after closure.
+                disposition_receipt = panel.locator(
+                    f'[data-evidence-kind="disposition"][data-evidence-id="{case_id}"]'
+                )
+                expect(disposition_receipt).to_have_count(1)
+                panel.locator(
+                    f'button[data-action="quality-evidence-focus"][data-kind="disposition"][data-id="{case_id}"]'
+                ).click()
+                assert disposition_receipt.evaluate("el => document.activeElement === el")
+
                 page.locator('form[data-form="quality-effectiveness"] textarea[name="note"]').fill(
                     "Synthetic post-closure effectiveness review"
                 )
@@ -74,10 +85,29 @@ def main():
                 assert review_id
                 expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
 
+                # Follow-up evidence is recorded on the same closed NCR, then
+                # reached from its chronology without creating another case.
+                page.locator('form[data-form="quality-followup"] textarea[name="note"]').fill(
+                    "Synthetic post-closure case follow-up"
+                )
+                page.locator('form[data-form="quality-followup"] button[type="submit"]').click()
+                followup_id = panel.locator('[data-evidence-kind="followup"]').first.get_attribute("data-evidence-id")
+                assert followup_id
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+                panel.locator(
+                    f'button[data-action="quality-evidence-focus"][data-kind="followup"][data-id="{followup_id}"]'
+                ).click()
+                followup_receipt = panel.locator(
+                    f'[data-evidence-kind="followup"][data-evidence-id="{followup_id}"]'
+                ).first
+                assert followup_receipt.evaluate("el => document.activeElement === el")
+
                 for kind, evidence_id in (
                     ("inspection", inspection_id),
+                    ("disposition", case_id),
                     ("corrective", corrective_id),
                     ("effectiveness", review_id),
+                    ("followup", followup_id),
                 ):
                     panel.locator(
                         f'button[data-action="quality-evidence-work-order"][data-kind="{kind}"][data-id="{evidence_id}"]'
@@ -90,7 +120,7 @@ def main():
                     assert return_button.get_attribute("data-kind") == kind
                     assert return_button.get_attribute("data-id") == evidence_id
 
-                    if kind == "inspection":
+                    if kind in ("inspection", "disposition", "followup"):
                         other_job = page.locator("#job-context option").evaluate_all(
                             "(options, selected) => options.map(o => o.value).find(v => v !== selected)", job_id
                         )
@@ -235,6 +265,48 @@ def main():
                 assert page.locator('#view [data-action="select-quality"][data-id="' + case_id + '"]').count() == 1, (
                     "Related-workflow links must not duplicate the canonical NCR"
                 )
+
+                # The NCR heading is an accessible record-specific Open with
+                # entry point. It reuses the canonical quality context menu,
+                # not a second navigation or quality record implementation.
+                case_heading = panel.locator('h2.context-record[data-ctx-type="quality"]')
+                expect(case_heading).to_have_attribute("data-ctx-id", case_id)
+                page.locator("#job-context").select_option(other_job)
+                case_heading.focus()
+                case_heading.press("Shift+F10")
+                case_menu = page.locator("#axiom-record-menu")
+                expect(case_menu).to_be_visible()
+                case_number = case_heading.inner_text().split(" · ", 1)[-1]
+                expect(case_menu.locator(".record-menu-heading")).to_have_text(case_number)
+                expect(case_menu.get_by_role("menuitem", name="Job Tracker")).to_be_visible()
+                page.keyboard.press("Escape")
+                expect(case_menu).to_be_hidden()
+                assert case_heading.evaluate("el => document.activeElement === el"), (
+                    "Escape must restore focus to the original NCR heading"
+                )
+                native_case_heading = case_heading.evaluate("""el => {
+                    const event = new MouseEvent('contextmenu',
+                        {bubbles: true, cancelable: true, button: 2, shiftKey: true});
+                    el.dispatchEvent(event);
+                    return !event.defaultPrevented;
+                }""")
+                assert native_case_heading, "Shift+right-click must retain the browser menu"
+                case_heading.press("ContextMenu")
+                expect(case_menu).to_be_visible()
+                case_menu.get_by_role("menuitem", name="Job Tracker").click()
+                page.wait_for_function("location.hash === '#jobs'")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                expect(page.locator(".context-trail")).to_contain_text(case_number)
+                page.locator('#module-nav a[data-nav="quality"]').click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+                expect(panel.locator(
+                    f'[data-evidence-kind="effectiveness"][data-evidence-id="{review_id}"]'
+                ).first).to_be_visible()
+                expect(page.locator(
+                    f'#view button[data-action="select-quality"][data-id="{case_id}"]'
+                )).to_have_count(1)
 
                 # An inspection's routed-step action must resolve the exact
                 # current operation, even when another job was selected.
