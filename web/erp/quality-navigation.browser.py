@@ -98,6 +98,22 @@ def main():
                 ).click()
                 assert disposition_receipt.evaluate("el => document.activeElement === el")
 
+                # The corrective receipt and case chronology must reach the
+                # SAME existing review form after closure without writing evidence.
+                review_handoffs = panel.locator(
+                    f'button[data-action="quality-corrective-review"][data-case="{case_id}"][data-id="{corrective_id}"]'
+                )
+                assert review_handoffs.count() == 2, "Both entry points should target one corrective action"
+                review_note = page.locator('form[data-form="quality-effectiveness"] textarea[name="note"]')
+                for handoff in (review_handoffs.first, review_handoffs.last):
+                    handoff.click()
+                    assert review_note.evaluate("el => document.activeElement === el")
+                    assert panel.get_attribute("data-case-id") == case_id
+                    expect(page.locator("#job-context")).to_have_value(job_id)
+                    assert panel.locator('[data-evidence-kind="effectiveness"]').count() == 0, (
+                        "Review navigation must not create evidence before submission"
+                    )
+
                 page.locator('form[data-form="quality-effectiveness"] textarea[name="note"]').fill(
                     "Synthetic post-closure effectiveness review"
                 )
@@ -131,6 +147,29 @@ def main():
                 assert review_receipt.evaluate("el => document.activeElement === el")
                 assert panel.get_attribute("data-case-id") == case_id
                 expect(page.locator("#job-context")).to_have_value(job_id)
+
+                # The effectiveness receipt and its chronology entry both
+                # return to the exact inspection cited by the parent action.
+                receipt_source = panel.locator(
+                    f'[data-evidence-kind="effectiveness"][data-evidence-id="{review_id}"] '
+                    f'button[data-action="quality-evidence-focus"][data-kind="inspection"][data-id="{inspection_id}"]'
+                )
+                chronology_source = panel.locator(
+                    'h3:has-text("Case chronology") ~ div.receipt'
+                ).filter(has_text="Effectiveness:").locator(
+                    f'button[data-action="quality-evidence-focus"][data-kind="inspection"][data-id="{inspection_id}"]'
+                )
+                expect(receipt_source).to_have_count(1)
+                expect(chronology_source).to_have_count(1)
+                for source in (receipt_source, chronology_source):
+                    source.click()
+                    observation = panel.locator(
+                        f'[data-evidence-kind="inspection"][data-evidence-id="{inspection_id}"]'
+                    ).first
+                    assert observation.evaluate("el => document.activeElement === el")
+                    assert panel.get_attribute("data-case-id") == case_id
+                    expect(page.locator("#job-context")).to_have_value(job_id)
+                    expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
 
                 # Follow-up evidence is recorded on the same closed NCR, then
                 # reached from its chronology without creating another case.

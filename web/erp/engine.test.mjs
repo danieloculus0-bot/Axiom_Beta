@@ -1,5 +1,5 @@
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction} from "./quality-case.mjs";
-import {renderQualityCase,qualityInspectionCorrectiveTarget} from "./quality-case-view.mjs";
+import {renderQualityCase,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEffectivenessInspectionTarget} from "./quality-case-view.mjs";
 import {contextActions,contextRelated} from "./context-actions.mjs";
 import {readFileSync} from "node:fs";
 import test from "node:test";
@@ -308,4 +308,66 @@ test("inspection and chronology start one corrective-action draft only on the ma
   state=closeReviewedQuality(state,caseId,u);
   assert.equal(qualityInspectionCorrectiveTarget(state,caseId,inspectionId),null);
   assert.doesNotMatch(renderQualityCase(state,caseId),/data-action="quality-inspection-corrective"/);
+});
+
+test("corrective action receipt and chronology open one exact effectiveness review draft after closure",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
+  const caseId=state.quality[0].id;
+  state=recordQualityCorrectiveAction(state,caseId,"QUALITY","Fictional corrective check one","",t);
+  state=recordQualityCorrectiveAction(state,caseId,"ENGINEERING","Fictional corrective check two","",u);
+  const actionId=state.quality[0].correctiveActions[1].id;
+  assert.deepEqual(qualityCorrectiveReviewTarget(state,caseId,actionId),
+    {caseId,actionId,jobId:"sample-1001"});
+  assert.equal(qualityCorrectiveReviewTarget(state,"other-case",actionId),null);
+  assert.equal(qualityCorrectiveReviewTarget(state,caseId,"missing-action"),null);
+  assert.equal(qualityCorrectiveReviewTarget(state,caseId,undefined),null);
+  const html=renderQualityCase(state,caseId);
+  const button='data-action="quality-corrective-review" data-case="'+caseId+'" data-id="'+actionId+'"';
+  assert.equal(html.split(button).length-1,2);
+  assert.equal(state.quality[0].correctiveActions[1].reviews.length,0);
+  const missingJob=structuredClone(state);
+  missingJob.jobs=missingJob.jobs.filter(job=>job.id!=="sample-1001");
+  assert.equal(qualityCorrectiveReviewTarget(missingJob,caseId,actionId),null);
+  assert.doesNotMatch(renderQualityCase(missingJob,caseId),/data-action="quality-corrective-review"/);
+  state=recordQualityDisposition(state,caseId,"SCRAP","Fictional disposition review",u);
+  state=closeReviewedQuality(state,caseId,u);
+  assert.equal(state.quality[0].status,"CLOSED");
+  assert.deepEqual(qualityCorrectiveReviewTarget(state,caseId,actionId),
+    {caseId,actionId,jobId:"sample-1001"});
+  assert.equal(renderQualityCase(state,caseId).split(button).length-1,2);
+  assert.match(readFileSync(new URL("./app.mjs",import.meta.url),"utf8"),
+    /if\(action==="quality-corrective-review"\)/);
+});
+
+test("effectiveness evidence traces only its own linked source inspection through two canonical entry points",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
+  const caseId=state.quality[0].id,step=state.jobs[0].routing.operations[0].step;
+  state=recordQualityInspection(state,caseId,"FIRST_PIECE",step,"FAIL","Synthetic source observation",t);
+  const inspectionId=state.quality[0].inspections[0].id;
+  state=recordQualityCorrectiveAction(state,caseId,"QUALITY","Synthetic linked corrective action",inspectionId,u);
+  state=recordQualityCorrectiveAction(state,caseId,"ENGINEERING","Synthetic case-level action","",u);
+  const linkedAction=state.quality[0].correctiveActions[0].id;
+  const caseAction=state.quality[0].correctiveActions[1].id;
+  const v="2026-10-30T12:01:00.000Z";
+  state=reviewQualityCorrectiveAction(state,caseId,linkedAction,"MORE_EVIDENCE","Synthetic linked effectiveness review",v);
+  state=reviewQualityCorrectiveAction(state,caseId,caseAction,"EFFECTIVE","Synthetic case-level effectiveness review",v);
+  const record=state.quality[0],reviewId=record.correctiveActions[0].reviews[0].id;
+  const caseReviewId=record.correctiveActions[1].reviews[0].id;
+  assert.deepEqual(qualityEffectivenessInspectionTarget(record,reviewId),{kind:"inspection",id:inspectionId});
+  assert.equal(qualityEffectivenessInspectionTarget(record,caseReviewId),null);
+  assert.equal(qualityEffectivenessInspectionTarget(record,"other-case-review"),null);
+  const html=renderQualityCase(state,caseId);
+  const link='data-action="quality-evidence-focus" data-case="'+caseId+
+    '" data-kind="inspection" data-id="'+inspectionId+'">View source inspection';
+  assert.equal(html.split(link).length-1,2,"review receipt and chronology share one source observation");
+  assert.equal(state.quality[0].inspections.length,1,"read-only links must not duplicate evidence");
+  const missing=structuredClone(record);missing.inspections=[];
+  assert.equal(qualityEffectivenessInspectionTarget(missing,reviewId),null);
+  const ambiguous=structuredClone(record);ambiguous.inspections.push({...ambiguous.inspections[0]});
+  assert.equal(qualityEffectivenessInspectionTarget(ambiguous,reviewId),null);
+  state=recordQualityDisposition(state,caseId,"SCRAP","Synthetic disposition reviewed",v);
+  state=closeReviewedQuality(state,caseId,v);
+  assert.equal(state.quality[0].status,"CLOSED");
+  assert.equal(renderQualityCase(state,caseId).split(link).length-1,2,
+    "historical inspection remains reachable after fictional case closure");
 });

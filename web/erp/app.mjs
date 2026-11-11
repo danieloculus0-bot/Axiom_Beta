@@ -13,7 +13,7 @@ import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction,qualityJobSummary,jobQualityTarget} from "./quality-case.mjs";
-import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionCorrectiveTarget,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction} from "./quality-case-view.mjs";
+import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction} from "./quality-case-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
@@ -603,6 +603,18 @@ document.addEventListener("click",event=>{
       picker.value=target.inspectionId;
       description.scrollIntoView({block:"center"});
       description.focus({preventScroll:true});
+    }
+    if(action==="quality-corrective-review"){
+      const target=qualityCorrectiveReviewTarget(state,button.dataset.case,id);
+      const panel=document.getElementById("quality-case-detail");
+      const form=[...(panel?.querySelectorAll('form[data-form="quality-effectiveness"]')||[])]
+        .find(item=>item.querySelector('input[name="actionId"]')?.value===target?.actionId);
+      const note=form?.querySelector('textarea[name="note"]');
+      if(currentView()!=="quality"||!target||panel?.dataset.caseId!==target.caseId||
+         form?.querySelector('input[name="id"]')?.value!==target.caseId||!note)
+        throw Error("This corrective action cannot open an effectiveness review on the current fictional case");
+      note.scrollIntoView({block:"center"});
+      note.focus({preventScroll:true});
     }
     if(action==="quality-routing-step"){
       const target=qualityInspectionRoutingTarget(state,button.dataset.case,id);
