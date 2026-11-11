@@ -1094,6 +1094,221 @@ def main():
                 )
                 register_case.evaluate("el => { el.dataset.job = 'wrong-job'; el.click(); }")
                 assert page.url.endswith("#jobs"), "Stale job binding must not redirect"
+                # Two independent NCRs on ONE fictional work order must
+                # retain their own OPEN/CLOSED state and canonical identity.
+                # The job-level shortcut deliberately chooses the open case,
+                # while explicit record links can still open the closed one.
+                same_job_snapshot = page.evaluate(
+                    "() => localStorage.getItem('axiom_public_erp_suite_v1')"
+                )
+                same_job_open_id = "q-same-job-open"
+                page.evaluate("""({jobId, closedId, openId}) => {
+                    const key = "axiom_public_erp_suite_v1";
+                    const demo = JSON.parse(localStorage.getItem(key));
+                    const closed = demo.quality.find(q => q.id === closedId);
+                    if (!closed || closed.status !== "CLOSED")
+                        throw Error("Missing closed synthetic NCR");
+                    demo.quality.push({
+                        id: openId, number: "NCR-SYNTHETIC-OPEN", jobId,
+                        reason: "Illustrative second observation on same job",
+                        status: "OPEN", openedAt: "2026-11-01T13:00:00Z",
+                        closedAt: null, inspections: [],
+                        correctiveActions: [], followUps: []
+                    });
+                    localStorage.setItem(key, JSON.stringify(demo));
+                }""", {"jobId": job_id, "closedId": case_id, "openId": same_job_open_id})
+                page.goto(f"http://127.0.0.1:{server.server_port}/erp/#dashboard")
+                page.locator("#job-context").select_option(other_job)
+                same_job_badge = page.locator(
+                    f'button[data-action="job-quality-cases"][data-id="{job_id}"]'
+                )
+                expect(same_job_badge).to_have_count(1)
+                expect(same_job_badge).to_contain_text("1 open / 2 NCRs")
+                same_job_badge.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(panel).to_have_attribute("data-case-id", same_job_open_id)
+                expect(panel.locator(".panel-head .tag")).to_have_text("OPEN")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+
+                # Both cases remain separately selectable from the one
+                # canonical Quality register, regardless of current selection.
+                for target_id, target_status in (
+                    (case_id, "CLOSED"), (same_job_open_id, "OPEN")
+                ):
+                    picker = page.locator(
+                        f'button[data-action="select-quality"][data-id="{target_id}"]'
+                    )
+                    expect(picker).to_have_count(1)
+                    picker.click()
+                    expect(panel).to_have_attribute("data-case-id", target_id)
+                    expect(panel.locator(".panel-head .tag")).to_have_text(target_status)
+                    expect(page.locator("#job-context")).to_have_value(job_id)
+
+                # Routing and the shop-order register must offer BOTH case
+                # links, never silently substituting the open case for a
+                # specifically selected historical closed NCR.
+                for module in ("routing", "jobs"):
+                    page.locator(f'#module-nav a[data-nav="{module}"]').click()
+                    page.wait_for_function(
+                        "(view) => location.hash === '#' + view", arg=module
+                    )
+                    if module == "jobs":
+                        page.locator(".job-inspection-details summary").click()
+                    for target_id, target_status in (
+                        (case_id, "CLOSED"), (same_job_open_id, "OPEN")
+                    ):
+                        case_link = page.locator(
+                            f'button[data-action="job-quality-case"]'
+                            f'[data-job="{job_id}"][data-id="{target_id}"]'
+                        )
+                        expect(case_link).to_have_count(1)
+                        case_link.click()
+                        page.wait_for_function("location.hash === '#quality'")
+                        expect(panel).to_have_attribute("data-case-id", target_id)
+                        expect(panel.locator(".panel-head .tag")).to_have_text(target_status)
+                        expect(page.locator("#job-context")).to_have_value(job_id)
+                        page.locator(f'#module-nav a[data-nav="{module}"]').click()
+                        page.wait_for_function(
+                            "(view) => location.hash === '#' + view", arg=module
+                        )
+                        if module == "jobs":
+                            page.locator(".job-inspection-details summary").click()
+
+                # A second OPEN NCR on this job must never steal evidence
+                # from its CLOSED sibling. Exercise the real Chromium links
+                # from both job-first workspaces, including post-close receipts.
+                closed_evidence_paths = (
+                    ("inspection", "job-quality-inspection", inspection_id),
+                    ("corrective", "job-quality-corrective", corrective_id),
+                    ("followup", "job-quality-followup", followup_id),
+                    ("effectiveness", "job-quality-effectiveness", review_id),
+                )
+                for module in ("routing", "jobs"):
+                    page.locator(f'#module-nav a[data-nav="{module}"]').click()
+                    page.wait_for_function(
+                        "(view) => location.hash === '#' + view", arg=module
+                    )
+                    if module == "jobs":
+                        page.locator(".job-inspection-details summary").click()
+                    for kind, action, evidence_id in closed_evidence_paths:
+                        evidence_link = page.locator(
+                            f'button[data-action="{action}"][data-case="{case_id}"]'
+                            f'[data-job="{job_id}"][data-id="{evidence_id}"]'
+                        )
+                        expect(evidence_link).to_have_count(1)
+                        evidence_link.click()
+                        page.wait_for_function("location.hash === '#quality'")
+                        expect(panel).to_have_attribute("data-case-id", case_id)
+                        expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+                        expect(page.locator("#job-context")).to_have_value(job_id)
+                        receipt = panel.locator(
+                            f'[data-evidence-kind="{kind}"][data-evidence-id="{evidence_id}"]'
+                        ).first
+                        assert receipt.evaluate("el => document.activeElement === el"), (
+                            "Job-first evidence link must focus the exact closed NCR receipt"
+                        )
+                        page.locator(f'#module-nav a[data-nav="{module}"]').click()
+                        page.wait_for_function(
+                            "(view) => location.hash === '#' + view", arg=module
+                        )
+                        if module == "jobs":
+                            page.locator(".job-inspection-details summary").click()
+
+                    # A stale case binding on an otherwise valid receipt
+                    # must not silently redirect to the other OPEN NCR.
+                    stale_link = page.locator(
+                        f'button[data-action="job-quality-followup"]'
+                        f'[data-case="{case_id}"][data-job="{job_id}"]'
+                        f'[data-id="{followup_id}"]'
+                    )
+                    expect(stale_link).to_have_count(1)
+                    stale_link.evaluate(
+                        "(el, openId) => { el.dataset.case = openId; el.click(); }",
+                        same_job_open_id,
+                    )
+                    assert page.url.endswith("#" + module), (
+                        "A stale cross-case evidence link must not change workspaces"
+                    )
+
+                # The closed NCR's evidence-to-work-order return also keeps
+                # the precise case and receipt, even with an OPEN sibling.
+                page.locator('#module-nav a[data-nav="quality"]').click()
+                page.wait_for_function("location.hash === '#quality'")
+                page.locator(
+                    f'button[data-action="select-quality"][data-id="{case_id}"]'
+                ).click()
+                closed_work_order_link = panel.locator(
+                    f'button[data-action="quality-evidence-work-order"]'
+                    f'[data-case="{case_id}"][data-kind="followup"]'
+                    f'[data-id="{followup_id}"]'
+                ).first
+                expect(closed_work_order_link).to_have_count(1)
+                closed_work_order_link.click()
+                page.wait_for_function("location.hash === '#jobs'")
+                return_link = page.locator(
+                    f'button[data-action="quality-evidence-return"]'
+                    f'[data-case="{case_id}"][data-kind="followup"]'
+                    f'[data-id="{followup_id}"]'
+                )
+                expect(return_link).to_have_count(1)
+                return_link.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                assert panel.locator(
+                    f'[data-evidence-kind="followup"][data-evidence-id="{followup_id}"]'
+                ).first.evaluate("el => document.activeElement === el")
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+
+                # Tampering with the return case must fail in the job view
+                # rather than focusing an unrelated OPEN case's history.
+                closed_work_order_link = panel.locator(
+                    f'button[data-action="quality-evidence-work-order"]'
+                    f'[data-case="{case_id}"][data-kind="followup"]'
+                    f'[data-id="{followup_id}"]'
+                ).first
+                closed_work_order_link.click()
+                page.wait_for_function("location.hash === '#jobs'")
+                return_link = page.locator(
+                    f'button[data-action="quality-evidence-return"]'
+                    f'[data-case="{case_id}"][data-kind="followup"]'
+                    f'[data-id="{followup_id}"]'
+                )
+                expect(return_link).to_have_count(1)
+                return_link.evaluate(
+                    "(el, openId) => { el.dataset.case = openId; el.click(); }",
+                    same_job_open_id,
+                )
+                assert page.url.endswith("#jobs"), (
+                    "Stale evidence return must not open the sibling NCR"
+                )
+
+                # Navigation is read-only. No synthetic evidence or event may
+                # be written simply by opening the two case histories.
+                assert page.evaluate("""snapshot => {
+                    const key = "axiom_public_erp_suite_v1";
+                    const before = JSON.parse(snapshot);
+                    const now = JSON.parse(localStorage.getItem(key));
+                    return now.quality.length === before.quality.length + 1 &&
+                        JSON.stringify(now.quality.slice(0, -1)) ===
+                            JSON.stringify(before.quality) &&
+                        JSON.stringify(now.events) === JSON.stringify(before.events);
+                }""", same_job_snapshot), "Case navigation must not mutate canonical history"
+
+                # Leave the original two-case fixture intact for the legacy
+                # duplicate-canonical-ID guard immediately below.
+                page.evaluate(
+                    "snapshot => localStorage.setItem('axiom_public_erp_suite_v1', snapshot)",
+                    same_job_snapshot,
+                )
+                # A same-URL goto may retain the current page; force the
+                # application to reload the restored browser-local fixture.
+                page.reload()
+                assert page.evaluate("""() => {
+                    const data = JSON.parse(localStorage.getItem(
+                        "axiom_public_erp_suite_v1"));
+                    return data.quality.length === 2 &&
+                        !data.quality.some(q => q.id === "q-same-job-open");
+                }"""), "The temporary same-job NCR must not leak into later tests"
                 # Duplicate canonical IDs are ambiguous even if the visible
                 # numbers differ. Neither register nor right-click may guess.
                 page.evaluate("""({originalId, otherId}) => {
