@@ -6,7 +6,7 @@ import vm from "node:vm";
 // Exercise the actual browser loader without importing DOM-dependent UI modules.
 const source=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
 const loader=source.slice(source.indexOf("function load(){"),source.indexOf("\nfunction persist(){"));
-assert.ok(loader.startsWith("function load(){") && loader.endsWith("}\n"));
+assert.ok(loader.startsWith("function load(){") && loader.endsWith("}"));
 const keys=["erp","clock","workforce"];
 function run({erp='{"generation":2}',clock="[]",workforce='{"generation":2}',recoveryFails=false}={}){
   const data=new Map([[keys[0],erp],[keys[1],clock],[keys[2],workforce]]);
