@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {seedState,makePurchaseOrder,receivePurchaseOrder,raiseQuality,createJob} from "./engine.mjs";
 import {makeReport,reportCsv,REPORTS} from "./reports.mjs";
 import {qualityCaseTimeline} from "./quality-timeline.mjs";
-import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionRoutingStatus,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction,qualityEffectivenessParentTarget} from "./quality-case-view.mjs";
+import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionRoutingStatus,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction,qualityEffectivenessParentTarget,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget} from "./quality-case-view.mjs";
 import {startSession,stopSession} from "../ewi/engine.mjs";
 import {completePmTask} from "./pm.mjs";
 import {qualityJobSummary,jobQualityTarget,recordQualityInspection,recordQualityDisposition,closeReviewedQuality,
@@ -348,6 +348,55 @@ test("inspection routing navigation rejects changed revisions, operations, missi
    assert.equal(qualityInspectionRoutingTarget(stale,q.id,inspectionId),null);
    assert.ok(!renderQualityCase(stale,q.id).includes('data-action="quality-routing-step"'));
  }
+});
+
+test("inspection routing links require unique case, observation, job and operation identity",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
+  const caseId=state.quality[0].id,jobId=state.quality[0].jobId;
+  const step=state.jobs[0].routing.operations[0].step;
+  state=recordQualityInspection(state,caseId,"FIRST_PIECE",step,"FAIL",
+    "Synthetic routed observation","2026-10-30T12:01:00Z");
+  const inspectionId=state.quality[0].inspections[0].id;
+  state=recordQualityCorrectiveAction(state,caseId,"QUALITY",
+    "Synthetic source-linked corrective action",inspectionId,"2026-10-30T12:02:00Z");
+  const before=JSON.stringify(state);
+  assert.deepEqual(qualityInspectionRoutingTarget(state,caseId,inspectionId),
+    {caseId,inspectionId,jobId,step:String(step)});
+  assert.equal((renderQualityCase(state,caseId).match(/data-action="quality-routing-step"/g)||[]).length,3,
+    "Observation, linked corrective and chronology share the canonical route target");
+  const variants=[
+    ["duplicate case",s=>s.quality.push({...structuredClone(s.quality[0]),jobId:"sample-1002"})],
+    ["duplicate observation",s=>s.quality[0].inspections.push(
+      structuredClone(s.quality[0].inspections[0]))],
+    ["duplicate job",s=>s.jobs.push(structuredClone(s.jobs[0]))],
+    ["duplicate routed step",s=>s.jobs[0].routing.operations.push({
+      ...structuredClone(s.jobs[0].routing.operations[0]),name:"Alternative fictional operation"
+    })]
+  ];
+  for(const [name,mutate] of variants){
+    const legacy=structuredClone(state);
+    mutate(legacy);
+    const snapshot=JSON.stringify(legacy);
+    assert.equal(qualityInspectionRoutingTarget(legacy,caseId,inspectionId),null,name);
+    assert.doesNotMatch(renderQualityCase(legacy,caseId),
+      /data-action="quality-routing-step"/,name+" must not advertise a guessed destination");
+    assert.equal(JSON.stringify(legacy),snapshot,"Read-only resolution cannot mutate "+name);
+  }
+  const ambiguous=structuredClone(state);
+  ambiguous.jobs[0].routing.operations.push(
+    structuredClone(ambiguous.jobs[0].routing.operations[0]));
+  assert.deepEqual(qualityInspectionRoutingStatus(ambiguous,caseId,inspectionId),{
+    target:null,reason:"Recorded step is ambiguous in the current routing."
+  });
+  assert.match(renderQualityCase(ambiguous,caseId),
+    /Historical route: Recorded step is ambiguous in the current routing/);
+  assert.equal(JSON.stringify(state),before);
+  state=recordQualityDisposition(state,caseId,"SCRAP","Synthetic disposition",
+    "2026-10-30T12:03:00Z");
+  state=closeReviewedQuality(state,caseId,"2026-10-30T12:04:00Z");
+  assert.deepEqual(qualityInspectionRoutingTarget(state,caseId,inspectionId),
+    {caseId,inspectionId,jobId,step:String(step)},
+    "Valid closed-case evidence remains reachable");
 });
 
 test("closed fictional NCR retains read-only routing link without changing case status",()=>{
@@ -746,4 +795,58 @@ test("effectiveness evidence links back to its exact parent corrective action fr
   assert.equal(qualityEffectivenessParentTarget(ambiguous,reviewIds[0]),null);
   assert.equal(qualityEffectivenessParentTarget(state.quality.find(item=>item.id===otherCaseId),reviewIds[0]),null);
   assert.equal(JSON.stringify(state),before,"Read-only navigation must not mutate NCR state");
+});
+
+test("Quality Forge corrective and effectiveness actions require unique source evidence across entry points",()=>{
+ let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
+ const caseId=state.quality[0].id,jobId=state.quality[0].jobId;
+ const step=state.jobs[0].routing.operations[0].step;
+ state=recordQualityInspection(state,caseId,"FIRST_PIECE",step,"FAIL",
+   "Synthetic first-piece observation",later);
+ const inspectionId=state.quality[0].inspections[0].id;
+ assert.deepEqual(qualityInspectionCorrectiveTarget(state,caseId,inspectionId),
+   {caseId,inspectionId,jobId});
+ assert.match(renderQualityCase(state,caseId),/data-action="quality-inspection-corrective"/);
+ const ambiguousInspection=structuredClone(state);
+ ambiguousInspection.quality[0].inspections.push(
+   structuredClone(ambiguousInspection.quality[0].inspections[0]));
+ const inspectionSnapshot=JSON.stringify(ambiguousInspection);
+ assert.equal(qualityInspectionCorrectiveTarget(ambiguousInspection,caseId,inspectionId),null);
+ assert.doesNotMatch(renderQualityCase(ambiguousInspection,caseId),
+   /data-action="quality-inspection-corrective"/);
+ assert.doesNotMatch(renderQualityCase(ambiguousInspection,caseId),
+   new RegExp('<option value="'+inspectionId+'">'));
+ assert.throws(()=>recordQualityCorrectiveAction(ambiguousInspection,caseId,"QUALITY",
+   "Synthetic corrective action",inspectionId,later),/unambiguous inspection/);
+ assert.equal(JSON.stringify(ambiguousInspection),inspectionSnapshot);
+
+ state=recordQualityCorrectiveAction(state,caseId,"QUALITY",
+   "Synthetic source-linked corrective action",inspectionId,"2026-10-30T12:01:00Z");
+ const actionId=state.quality[0].correctiveActions[0].id;
+ assert.deepEqual(qualityCorrectiveReviewTarget(state,caseId,actionId),
+   {caseId,actionId,jobId});
+ assert.match(renderQualityCase(state,caseId),/data-action="quality-corrective-review"/);
+ assert.match(renderQualityCase(state,caseId),/data-form="quality-effectiveness"/);
+ const ambiguousAction=structuredClone(state);
+ ambiguousAction.quality[0].correctiveActions.push(
+   structuredClone(ambiguousAction.quality[0].correctiveActions[0]));
+ const actionSnapshot=JSON.stringify(ambiguousAction);
+ assert.equal(qualityCorrectiveReviewTarget(ambiguousAction,caseId,actionId),null);
+ assert.doesNotMatch(renderQualityCase(ambiguousAction,caseId),
+   /data-action="quality-corrective-review"/);
+ assert.doesNotMatch(renderQualityCase(ambiguousAction,caseId),
+   /data-form="quality-effectiveness"/);
+ assert.throws(()=>reviewQualityCorrectiveAction(ambiguousAction,caseId,actionId,
+   "EFFECTIVE","Synthetic review evidence","2026-10-30T12:02:00Z"),/ambiguous/);
+ assert.equal(JSON.stringify(ambiguousAction),actionSnapshot);
+
+ state=recordQualityDisposition(state,caseId,"SCRAP",
+   "Synthetic case disposition","2026-10-30T12:03:00Z");
+ state=closeReviewedQuality(state,caseId,"2026-10-30T12:04:00Z");
+ assert.deepEqual(qualityCorrectiveReviewTarget(state,caseId,actionId),
+   {caseId,actionId,jobId},"Closed-case effectiveness review remains reachable");
+ state=reviewQualityCorrectiveAction(state,caseId,actionId,
+   "EFFECTIVE","Synthetic post-closure review","2026-10-30T12:05:00Z");
+ assert.equal(state.quality[0].status,"CLOSED");
+ assert.equal(state.quality[0].correctiveActions[0].reviews.length,1);
 });

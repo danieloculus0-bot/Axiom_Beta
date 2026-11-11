@@ -85,23 +85,22 @@ export function qualityEvidenceWorkOrderTarget(state,caseId,kind,id){
  * open fictional NCR and its existing work order. No case or job is created.
  */
 export function qualityInspectionCorrectiveTarget(state,caseId,inspectionId){
-  if(!Array.isArray(state?.quality)||!Array.isArray(state?.jobs))return null;
-  const record=state.quality.find(item=>item?.id===caseId);
-  if(record?.status!=="OPEN"||!qualityEvidenceTarget(record,"inspection",inspectionId))return null;
-  const job=state.jobs.find(item=>item?.id===record.jobId);
-  return job?{caseId:record.id,inspectionId,jobId:job.id}:null;
+  const record=uniqueQualityCase(state,caseId);
+  if(record?.status!=="OPEN"||typeof inspectionId!=="string"||!inspectionId)return null;
+  const inspections=Array.isArray(record.inspections)?record.inspections:[];
+  if(inspections.filter(item=>item?.id===inspectionId).length!==1)return null;
+  return {caseId:record.id,inspectionId,jobId:record.jobId};
 }
 /* Review the exact corrective action from its receipt or case chronology.
  * This only locates the existing fictional effectiveness form, including after
  * closure; no new action, approval or duplicate evidence store is created.
  */
 export function qualityCorrectiveReviewTarget(state,caseId,actionId){
-  if(!Array.isArray(state?.quality)||!Array.isArray(state?.jobs))return null;
-  const record=state.quality.find(item=>item?.id===caseId);
-  if(!["OPEN","CLOSED"].includes(record?.status)||
-     !qualityEvidenceTarget(record,"corrective",actionId))return null;
-  const job=state.jobs.find(item=>item?.id===record.jobId);
-  return job?{caseId:record.id,actionId,jobId:job.id}:null;
+  const record=uniqueQualityCase(state,caseId);
+  if(!record||typeof actionId!=="string"||!actionId)return null;
+  const actions=Array.isArray(record.correctiveActions)?record.correctiveActions:[];
+  if(actions.filter(item=>item?.id===actionId).length!==1)return null;
+  return {caseId:record.id,actionId,jobId:record.jobId};
 }
 /* Return navigation is valid only for the original evidence and its canonical job.
  * This is an in-memory UI route, not a second NCR or work-order record.
@@ -125,14 +124,22 @@ export function qualityEvidenceReturnAction(state,selection,jobId){
  * This is a read-only projection, not an inference about why a route changed.
  */
 export function qualityInspectionRoutingStatus(state,caseId,inspectionId){
-  if(!Array.isArray(state?.quality)||!Array.isArray(state?.jobs))return null;
-  const record=state.quality.find(item=>item?.id===caseId);
-  const inspection=(Array.isArray(record?.inspections)?record.inspections:[])
-    .find(item=>item?.id===inspectionId&&typeof inspectionId==="string"&&inspectionId.length>0);
-  if(!inspection)return null;
+  if(!Array.isArray(state?.quality)||!Array.isArray(state?.jobs)||
+     typeof caseId!=="string"||!caseId||
+     typeof inspectionId!=="string"||!inspectionId)return null;
+  // Historical browser-local records may have colliding IDs. A routed-step
+  // jump must identify one case, one observation, one job and one operation.
+  const cases=state.quality.filter(item=>item?.id===caseId);
+  if(cases.length!==1||!["OPEN","CLOSED"].includes(cases[0].status))return null;
+  const record=cases[0];
+  const observations=(Array.isArray(record.inspections)?record.inspections:[])
+    .filter(item=>item?.id===inspectionId);
+  if(observations.length!==1)return null;
+  const inspection=observations[0];
   const unavailable=reason=>({target:null,reason});
-  const job=state.jobs.find(item=>item?.id===record?.jobId);
-  if(!job)return unavailable("Linked fictional work order is unavailable.");
+  const jobs=state.jobs.filter(item=>item?.id===record.jobId);
+  if(jobs.length!==1)return unavailable("Linked fictional work order is unavailable.");
+  const job=jobs[0];
   if(typeof inspection.jobRevision!=="string"||!inspection.jobRevision||
      typeof inspection.drawingRevision!=="string"||!inspection.drawingRevision)
     return unavailable("Recorded revision evidence is incomplete.");
@@ -140,8 +147,11 @@ export function qualityInspectionRoutingStatus(state,caseId,inspectionId){
     return unavailable("Recorded job revision differs from the current work order.");
   if(inspection.drawingRevision!==job.drawing?.revision)
     return unavailable("Recorded drawing revision differs from the current drawing.");
-  const operation=job.routing?.operations?.find(op=>String(op.step)===String(inspection.step));
-  if(!operation)return unavailable("Recorded step is absent from the current routing.");
+  const operations=(Array.isArray(job.routing?.operations)?job.routing.operations:[])
+    .filter(op=>op&&String(op.step)===String(inspection.step));
+  if(!operations.length)return unavailable("Recorded step is absent from the current routing.");
+  if(operations.length!==1)return unavailable("Recorded step is ambiguous in the current routing.");
+  const operation=operations[0];
   if(!inspection.operation||!inspection.center)
     return unavailable("Recorded operation details are incomplete.");
   if(inspection.operation!==operation.name||inspection.center!==operation.center)
@@ -404,7 +414,9 @@ export function renderQualityCase(state,id){
       '<label>Responsible role<select name="ownerRole">'+QUALITY_ACTION_ROLES.map(role=>
         '<option value="'+h(role.id)+'">'+h(role.label)+'</option>').join("")+'</select></label>'+
       '<label>Related inspection (optional)<select name="inspectionId"><option value="">Case-level action</option>'+
-        inspections.map(item=>'<option value="'+h(item.id)+'">'+h(item.stage)+' · step '+h(item.step)+' · '+h(item.result)+'</option>').join("")+
+        inspections.filter(item=>typeof item?.id==="string"&&item.id&&
+          inspections.filter(other=>other?.id===item.id).length===1)
+          .map(item=>'<option value="'+h(item.id)+'">'+h(item.stage)+' · step '+h(item.step)+' · '+h(item.result)+'</option>').join("")+
       '</select></label>'+
       '<label>Proposed fictional action<textarea name="description" minlength="5" maxlength="500" required placeholder="Describe a generic corrective action."></textarea></label>'+
       '<button class="action secondary" type="submit">Record sample corrective action</button></form>';
@@ -430,14 +442,15 @@ export function renderQualityCase(state,id){
             evidenceButton(q,"inspection",qualityEffectivenessInspectionTarget(q,review.id).id,"View source inspection"):"")+
           evidenceWorkOrderButton(state,q,"effectiveness",review.id)+'</div>').join(""):
           '<p class="small">Effectiveness not yet reviewed.</p>')+
-        '<form class="controls" data-form="quality-effectiveness">'+
+        (qualityCorrectiveReviewTarget(state,q.id,action.id)?'<form class="controls" data-form="quality-effectiveness">'+
         '<input type="hidden" name="id" value="'+h(q.id)+'">'+
         '<input type="hidden" name="actionId" value="'+h(action.id)+'">'+
         '<label>Review result<select name="result">'+QUALITY_EFFECTIVENESS_RESULTS.map(item=>
           '<option value="'+h(item.id)+'">'+h(item.label)+'</option>').join("")+'</select></label>'+
         '<label>Fictional effectiveness evidence<textarea name="note" minlength="5" maxlength="500" required placeholder="Describe a generic follow-up check."></textarea></label>'+
         '<button class="action secondary" type="submit">Record effectiveness review</button>'+
-        '<span class="small">A review does not automatically change case closure or job readiness.</span></form></div>';
+        '<span class="small">A review does not automatically change case closure or job readiness.</span></form>':
+        '<p class="small">Effectiveness review unavailable: corrective action identity is ambiguous.</p>')+'</div>';
     }).join(""):'<p class="small">No fictional corrective actions recorded for this case.</p>');
   html+='<form class="controls" data-form="quality-followup">'+
     '<input type="hidden" name="id" value="'+h(q.id)+'">'+

@@ -259,6 +259,13 @@ test("effectiveness review is historical evidence, not automatic case closure or
   state=recordQualityCorrectiveAction(state,id,"ENGINEERING","Update a fictional check", "",t);
   const actionId=state.quality[0].correctiveActions[0].id,original=state;
   assert.throws(()=>reviewQualityCorrectiveAction(state,id,"missing","EFFECTIVE","Sample check",u),/not found/);
+  const ambiguous=structuredClone(state);
+  ambiguous.quality[0].correctiveActions.push(
+    structuredClone(ambiguous.quality[0].correctiveActions[0]));
+  const ambiguousBefore=JSON.stringify(ambiguous);
+  assert.throws(()=>reviewQualityCorrectiveAction(ambiguous,id,actionId,"EFFECTIVE","Sample check",u),/ambiguous/);
+  assert.equal(JSON.stringify(ambiguous),ambiguousBefore,
+    "Duplicate corrective IDs must not create effectiveness evidence");
   assert.throws(()=>reviewQualityCorrectiveAction(state,id,actionId,"APPROVED","Sample check",u),/effectiveness result/);
   assert.throws(()=>reviewQualityCorrectiveAction(state,id,actionId,"EFFECTIVE","x",u),/5 to 500/);
   assert.throws(()=>reviewQualityCorrectiveAction(state,id,actionId,"EFFECTIVE","Sample check","invalid"),/timestamp/);
