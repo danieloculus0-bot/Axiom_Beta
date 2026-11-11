@@ -22,6 +22,7 @@ from ..audit import record_event
 from ..db import db
 from ..ui import page
 from ..integrations.jobboss2_reader import JobBoss2Reader, JobBossError, configured
+from ..integrations.ewi_revision_evidence import blocking_ewi_revision_review
 
 ewi_blueprint = Blueprint("ewi", __name__)
 _EMPLOYEE = re.compile(r"^[A-Za-z0-9_.-]{1,32}$")
@@ -143,8 +144,15 @@ def packet(job_id: int) -> dict | None:
             SELECT * FROM ewi_clock_sessions WHERE job_id=?
             ORDER BY started_utc DESC LIMIT 30
         """, (job_id,))]
+        revision_review = blocking_ewi_revision_review(con, job_id)
     path, drawing, issue = _released_pdf(job)
     errors = [issue] if issue else []
+    if revision_review is not None:
+        errors.append(
+            f"controlled drawing revision review action #{revision_review['id']} "
+            f"({revision_review['status']}) requires independently verified "
+            "reconciliation; new clocking blocked"
+        )
     if not routes:
         errors.append("No JobBOSS² routed operations have been synchronized")
     if routes and any(r["part_number"] and r["part_number"] != (job.get("part_number") or "") for r in routes):
@@ -318,6 +326,15 @@ def clock_start(job_id: int, step: str, employee_ref: str, actor: str) -> str:
     stamp = _now()
     import json
     with db() as con:
+        # Reserve the SQL write transaction before reviewing action and route.
+        # An importer cannot insert a new review between this read and clock-in.
+        con.execute("BEGIN IMMEDIATE")
+        review = blocking_ewi_revision_review(con, job_id)
+        if review is not None:
+            raise ValueError(
+                f"EWI is blocked: controlled drawing revision review action #{review['id']} "
+                "requires independently verified reconciliation"
+            )
         # Recheck inside the same SQL transaction that creates the clocking
         # session. The part or route may have changed after packet() returned.
         scope = con.execute(

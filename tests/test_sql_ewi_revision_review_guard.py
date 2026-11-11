@@ -392,3 +392,87 @@ def test_legacy_ewi_route_schema_migrates_without_claiming_revision(tmp_path, mo
         assert con.execute(
             "SELECT COUNT(*) FROM ewi_routes WHERE job_id=?", (job_id,)
         ).fetchone()[0] == 1
+
+
+def test_sql_revision_review_blocks_clocking_even_after_action_completed(tmp_path, monkeypatch):
+    """SQL EZ FAIR review must block real clock-in, not just the advisory panel."""
+    client, job_id, part_id, _, job_event_id = _fictional_aligned_job(tmp_path, monkeypatch)
+    from superforge.modules.ewi import packet, clock_start, clock_stop
+    from superforge.app import create_app
+
+    assert packet(job_id)["ready"] is True
+    prior_session = clock_start(job_id, "10", "SYN-TECH-OLD", "synthetic-bridge")
+    event, action_id = _revision_action(job_id, part_id, suffix="301")
+    with db() as con:
+        assert con.execute(
+            "SELECT status FROM event_ledger WHERE event_id=?", (job_event_id,)
+        ).fetchone()[0] == "delivered"
+        assert tuple(con.execute(
+            "SELECT event_type,source_module FROM event_ledger WHERE event_id=?",
+            (event.event_id,),
+        ).fetchone()) == ("fai.imported", "ezfair")
+        assert con.execute(
+            "SELECT COUNT(*) FROM event_delivery_receipts WHERE event_id=? AND status='delivered'",
+            (job_event_id,),
+        ).fetchone()[0] >= 2
+        before = (
+            con.execute("SELECT COUNT(*) FROM ewi_clock_sessions").fetchone()[0],
+            con.execute("SELECT COUNT(*) FROM ewi_outbox").fetchone()[0],
+        )
+    counts = _counts()
+    assert packet(job_id)["ready"] is False
+    assert f"revision review action #{action_id}" in client.get(
+        f"/ewi/jobs/{job_id}"
+    ).get_data(as_text=True)
+    with pytest.raises(ValueError, match="revision review action"):
+        clock_start(job_id, "10", "SYN-TECH-NEW", "synthetic-bridge")
+    with db() as con:
+        assert before == (
+            con.execute("SELECT COUNT(*) FROM ewi_clock_sessions").fetchone()[0],
+            con.execute("SELECT COUNT(*) FROM ewi_outbox").fetchone()[0],
+        )
+        con.execute(
+            "UPDATE workflow_actions SET status='completed',completed_at=CURRENT_TIMESTAMP WHERE id=?",
+            (action_id,),
+        )
+    create_app({"TESTING": True})  # Restart must not turn task completion into route approval.
+    assert packet(job_id)["ready"] is False
+    with pytest.raises(ValueError, match="revision review action"):
+        clock_start(job_id, "10", "SYN-TECH-NEW", "synthetic-bridge")
+    with db() as con:
+        assert before == (
+            con.execute("SELECT COUNT(*) FROM ewi_clock_sessions").fetchone()[0],
+            con.execute("SELECT COUNT(*) FROM ewi_outbox").fetchone()[0],
+        )
+    assert _counts() == counts
+    clock_stop(prior_session, "SYN-TECH-OLD", "synthetic-bridge")
+    with db() as con:
+        assert con.execute(
+            "SELECT ended_utc FROM ewi_clock_sessions WHERE id=?", (prior_session,)
+        ).fetchone()[0] is not None
+
+
+def test_revision_review_arriving_after_packet_read_blocks_transactional_clock_in(
+    tmp_path, monkeypatch,
+):
+    """No time-of-check gap between the operator packet and durable session."""
+    _, job_id, part_id, _, _ = _fictional_aligned_job(tmp_path, monkeypatch)
+    from superforge.modules import ewi as ewi_module
+
+    original_packet = ewi_module.packet
+
+    def packet_then_review(job):
+        snapshot = original_packet(job)
+        assert snapshot["ready"] is True
+        _revision_action(job, part_id, suffix="302")
+        return snapshot
+
+    monkeypatch.setattr(ewi_module, "packet", packet_then_review)
+    with pytest.raises(ValueError, match="revision review action"):
+        ewi_module.clock_start(job_id, "10", "SYN-TECH-RACE", "synthetic-bridge")
+    with db() as con:
+        assert con.execute("SELECT COUNT(*) FROM ewi_clock_sessions").fetchone()[0] == 0
+        assert con.execute("SELECT COUNT(*) FROM ewi_outbox").fetchone()[0] == 0
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-ewi-review'"
+        ).fetchone()[0] == 1
