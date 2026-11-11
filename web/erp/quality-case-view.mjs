@@ -19,6 +19,17 @@ export function qualityEvidenceTarget(record,kind,id){
     Array.isArray(action?.reviews)&&action.reviews.some(review=>review?.id===id)))return {kind,id};
   return null;
 }
+/* A review belongs to exactly one corrective action on this same fictional NCR.
+ * Legacy, ambiguous and unrelated review IDs never produce a guessed link.
+ */
+export function qualityEffectivenessParentTarget(record,reviewId){
+  if(!qualityEvidenceTarget(record,"effectiveness",reviewId))return null;
+  const actions=Array.isArray(record.correctiveActions)?record.correctiveActions:[];
+  const matches=actions.filter(action=>Array.isArray(action?.reviews)&&
+    action.reviews.some(review=>review?.id===reviewId));
+  if(matches.length!==1||!qualityEvidenceTarget(record,"corrective",matches[0].id))return null;
+  return {kind:"corrective",id:matches[0].id};
+}
 /* A work-order jump must originate from evidence on this exact canonical NCR.
  * Never offer a generic or unrelated job when the evidence/job is missing.
  */
@@ -28,6 +39,16 @@ export function qualityEvidenceWorkOrderTarget(state,caseId,kind,id){
   if(!qualityEvidenceTarget(record,kind,id))return null;
   const job=state.jobs.find(item=>item?.id===record.jobId);
   return job?{caseId:record.id,kind,id,jobId:job.id}:null;
+}
+/* A corrective-action draft may start only from an inspection on the same
+ * open fictional NCR and its existing work order. No case or job is created.
+ */
+export function qualityInspectionCorrectiveTarget(state,caseId,inspectionId){
+  if(!Array.isArray(state?.quality)||!Array.isArray(state?.jobs))return null;
+  const record=state.quality.find(item=>item?.id===caseId);
+  if(record?.status!=="OPEN"||!qualityEvidenceTarget(record,"inspection",inspectionId))return null;
+  const job=state.jobs.find(item=>item?.id===record.jobId);
+  return job?{caseId:record.id,inspectionId,jobId:job.id}:null;
 }
 /* Return navigation is valid only for the original evidence and its canonical job.
  * This is an in-memory UI route, not a second NCR or work-order record.
@@ -88,6 +109,11 @@ const evidenceWorkOrderButton=(state,record,kind,id)=>{
   const target=qualityEvidenceWorkOrderTarget(state,record?.id,kind,id);
   return target?'<button type="button" class="action secondary" data-action="quality-evidence-work-order" data-case="'+
     h(target.caseId)+'" data-kind="'+h(target.kind)+'" data-id="'+h(target.id)+'">Open linked work order</button>':"";
+};
+const inspectionCorrectiveButton=(state,record,inspectionId)=>{
+  const target=qualityInspectionCorrectiveTarget(state,record?.id,inspectionId);
+  return target?'<button type="button" class="action secondary" data-action="quality-inspection-corrective" data-case="'+
+    h(target.caseId)+'" data-id="'+h(target.inspectionId)+'">Start corrective action</button>':"";
 };
 const routingStepButton=(state,record,inspection)=>{
   const status=qualityInspectionRoutingStatus(state,record?.id,inspection?.id);
@@ -200,7 +226,10 @@ export function renderQualityCase(state,id){
         (linked?routingStepButton(state,q,linked):"")+evidenceWorkOrderButton(state,q,"corrective",action.id)+
         (reviews.length?reviews.map(review=>
           '<div class="receipt"'+evidenceAttrs("effectiveness",review.id)+'><b>Effectiveness review:</b> '+h(review.result)+' · '+h(review.at)+
-          '<div>'+h(review.note)+'</div>'+evidenceWorkOrderButton(state,q,"effectiveness",review.id)+'</div>').join(""):
+          '<div>'+h(review.note)+'</div>'+
+          (qualityEffectivenessParentTarget(q,review.id)?
+            evidenceButton(q,"corrective",action.id,"View parent corrective action"):"")+
+          evidenceWorkOrderButton(state,q,"effectiveness",review.id)+'</div>').join(""):
           '<p class="small">Effectiveness not yet reviewed.</p>')+
         '<form class="controls" data-form="quality-effectiveness">'+
         '<input type="hidden" name="id" value="'+h(q.id)+'">'+
@@ -225,14 +254,16 @@ export function renderQualityCase(state,id){
       h(QUALITY_INSPECTION_STAGES.find(stage=>stage.id===item.stage)?.label||item.stage)+' · '+
       h(item.result)+' · step '+h(item.step)+' / '+h(item.operation)+' ('+h(item.center)+')'+
       '<div class="small">Job rev '+h(item.jobRevision)+' · drawing rev '+h(item.drawingRevision??"unknown")+'</div>'+
-      '<div>'+h(item.observation)+'</div>'+routingStepButton(state,q,item)+evidenceWorkOrderButton(state,q,"inspection",item.id)+actions.filter(action=>action.sourceInspectionId===item.id).map(action=>
+      '<div>'+h(item.observation)+'</div>'+routingStepButton(state,q,item)+inspectionCorrectiveButton(state,q,item.id)+evidenceWorkOrderButton(state,q,"inspection",item.id)+actions.filter(action=>action.sourceInspectionId===item.id).map(action=>
         evidenceButton(q,"corrective",action.id,"View corrective action")).join(" ")+'</div>').join(""):
       '<p class="small">No fictional inspection observations recorded for this case.</p>')+
     '<h3>Case chronology</h3><p class="small">One read-only timeline of this NCR, its inspection evidence, dispositions, corrective actions, effectiveness reviews and follow-ups. Post-closure reviews do not reopen a case.</p>'+
     (timeline.length?timeline.map(entry=>'<div class="receipt"><b>'+h(entry.at||"Date unknown")+'</b> · '+h(entry.title)+
       (entry.sourceId?'<span class="small"> · '+h(entry.sourceId)+'</span>':"")+
       evidenceButton(q,entry.kind,entry.sourceId,"View evidence")+
-      (entry.kind==="inspection"?routingStepButton(state,q,inspections.find(item=>item.id===entry.sourceId)):"")+
+      (entry.kind==="effectiveness"?(qualityEffectivenessParentTarget(q,entry.sourceId)?
+        evidenceButton(q,"corrective",qualityEffectivenessParentTarget(q,entry.sourceId).id,"View parent corrective action"):""):"")+
+      (entry.kind==="inspection"?routingStepButton(state,q,inspections.find(item=>item.id===entry.sourceId))+inspectionCorrectiveButton(state,q,entry.sourceId):"")+
       '<div>'+h(entry.detail)+'</div></div>').join(""):
       '<p class="small">No dated case evidence recorded for this fictional case.</p>')+
     '</section>';

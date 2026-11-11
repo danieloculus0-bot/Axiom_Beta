@@ -1,5 +1,5 @@
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction} from "./quality-case.mjs";
-import {renderQualityCase} from "./quality-case-view.mjs";
+import {renderQualityCase,qualityInspectionCorrectiveTarget} from "./quality-case-view.mjs";
 import {contextActions,contextRelated} from "./context-actions.mjs";
 import {readFileSync} from "node:fs";
 import test from "node:test";
@@ -285,4 +285,27 @@ test("effectiveness review is historical evidence, not automatic case closure or
   assert.match(renderQualityCase(state,id),/Fictional sample still needs follow-up/);
   state=recordQualityFollowup(state,id,"Further fictional review planned","2026-10-31T12:01:00Z");
   assert.equal(state.quality[0].followUps.length,1);
+});
+
+
+test("inspection and chronology start one corrective-action draft only on the matching open NCR",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
+  const caseId=state.quality[0].id,step=state.jobs[0].routing.operations[0].step;
+  state=recordQualityInspection(state,caseId,"FIRST_PIECE",step,"FAIL","Fictional inspection needs action",u);
+  const inspectionId=state.quality[0].inspections[0].id;
+  assert.deepEqual(qualityInspectionCorrectiveTarget(state,caseId,inspectionId),
+    {caseId,inspectionId,jobId:"sample-1001"});
+  assert.equal(qualityInspectionCorrectiveTarget(state,"another-case",inspectionId),null);
+  assert.equal(qualityInspectionCorrectiveTarget(state,caseId,"missing-inspection"),null);
+  const html=renderQualityCase(state,caseId);
+  assert.equal((html.match(/data-action="quality-inspection-corrective"/g)||[]).length,2);
+  assert.match(html,/data-form="quality-corrective-action"/);
+  assert.equal(state.quality[0].correctiveActions?.length??0,0);
+  const otherJobMissing=structuredClone(state);
+  otherJobMissing.jobs=otherJobMissing.jobs.filter(j=>j.id!=="sample-1001");
+  assert.equal(qualityInspectionCorrectiveTarget(otherJobMissing,caseId,inspectionId),null);
+  state=recordQualityDisposition(state,caseId,"SCRAP","Fictional disposition recorded",u);
+  state=closeReviewedQuality(state,caseId,u);
+  assert.equal(qualityInspectionCorrectiveTarget(state,caseId,inspectionId),null);
+  assert.doesNotMatch(renderQualityCase(state,caseId),/data-action="quality-inspection-corrective"/);
 });
