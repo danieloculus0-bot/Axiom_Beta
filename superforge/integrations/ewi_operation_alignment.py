@@ -10,6 +10,7 @@ import sqlite3
 from ..db import db
 from ..modules.ewi import packet
 from .operation_freshness import inspect_operation_event
+from .ewi_revision_evidence import blocking_ewi_revision_review
 
 
 
@@ -25,17 +26,7 @@ def _controlled_revision_review_gate(job_id: int) -> dict | None:
     """
     with db() as con:
         con.execute("PRAGMA query_only=ON")
-        action = con.execute(
-            """SELECT a.id,a.status,a.event_id,e.event_type,e.source_module
-               FROM workflow_actions a
-               LEFT JOIN event_ledger e ON e.event_id=a.event_id
-               WHERE a.workflow_key='controlled-drawing-ewi-review'
-                 AND a.target_module='ewi'
-                 AND a.entity_type='job' AND a.entity_id=?
-               ORDER BY CASE WHEN a.status='open' THEN 0 ELSE 1 END,
-                        a.id DESC LIMIT 1""",
-            (str(job_id),),
-        ).fetchone()
+        action = blocking_ewi_revision_review(con, job_id)
     if action is None:
         return None
     verified = (action["event_type"] == "fai.imported"
@@ -92,7 +83,16 @@ def inspect_ewi_operation_alignment(job_id: int, event_id: str) -> dict:
             result["status"] = "job_not_found"
             return result
         if not ewi["ready"]:
-            result["status"] = "ewi_packet_not_ready"
+            # Packet readiness now blocks stale routes for clock-in. Preserve
+            # the established, specific read-only alignment status instead of
+            # collapsing that evidence into a generic packet-not-ready result.
+            issues = ewi.get("issues") or []
+            if any("routing revision stale" in issue for issue in issues):
+                result["status"] = "ewi_route_revision_stale"
+            elif any("routing revision snapshot unverified" in issue for issue in issues):
+                result["status"] = "ewi_route_revision_unverified"
+            else:
+                result["status"] = "ewi_packet_not_ready"
             return result
 
         drawing = ewi["drawing"]
@@ -132,6 +132,19 @@ def inspect_ewi_operation_alignment(job_id: int, event_id: str) -> dict:
             result["status"] = "ewi_route_part_unverified"
             return result
 
+        # A route pull records the *local* part revision seen at capture time.
+        # The JobBOSS route API does not provide verified drawing/revision
+        # provenance. Missing legacy snapshots or mismatches fail closed; even
+        # a match is not evidence of remote ERP revision approval.
+        captured_revision = str(route.get("local_part_revision_at_pull") or "").strip()
+        current_revision = str(evidence.get("part_revision") or "").strip()
+        if not captured_revision or not current_revision:
+            result["status"] = "ewi_route_revision_unverified"
+            return result
+        if captured_revision.casefold() != current_revision.casefold():
+            result["status"] = "ewi_route_revision_stale"
+            return result
+
         # A PDF hash check performs file I/O outside the SQL read snapshot.
         # Recheck both sources to avoid returning an already-stale candidate.
         again = inspect_operation_event(job_id, event_id)
@@ -160,6 +173,8 @@ def inspect_ewi_operation_alignment(job_id: int, event_id: str) -> dict:
             "ewi_step": route["step"],
             "ewi_route_external_id": route["external_id"] or None,
             "ewi_route_pulled_at": route["pulled_at"],
+            "route_local_part_revision_at_pull": captured_revision,
+            "remote_erp_revision_verified": False,
             "drawing_document_id": drawing["id"],
             "drawing_revision": drawing["revision"],
             "drawing_sha256": drawing["sha256"],
@@ -167,8 +182,8 @@ def inspect_ewi_operation_alignment(job_id: int, event_id: str) -> dict:
             "planning_action_id": evidence["planning_action_id"],
             "methods_suggestion_id": evidence["methods_suggestion_id"],
             "limitation": (
-                "Exact operation-label agreement between independent local records; "
-                "no shared external operation ID or live ERP synchronization is proven. "
+                "Exact operation-label and local revision-snapshot agreement; "
+                "the remote ERP drawing revision and external operation ID remain unverified. "
                 "Human verification of the routed step and drawing is required."
             ),
         })
