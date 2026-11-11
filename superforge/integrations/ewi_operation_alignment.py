@@ -13,40 +13,49 @@ from .operation_freshness import inspect_operation_event
 
 
 
-def _pending_controlled_revision_review(job_id: int) -> dict | None:
-    """Consume PR #106's existing job-scoped EZ FAIR review action, if present.
+def _controlled_revision_review_gate(job_id: int) -> dict | None:
+    """Fail closed on any recorded EZ FAIR EWI revision review for this job.
 
-    An open review is evidence that the previously linked controlled drawing
-    may be superseded. Fail closed even if its source event is missing, rather
-    than treating an orphaned review action as permission to use the old route.
-    No new table, subscription or workflow action is created here.
+    Completing a workflow action records a human task state, not evidence that
+    the controlled drawing, Methods source and EWI routing were reconciled.
+    Existing EWI routes have no revision-scoped provenance to verify that.
+    Until a separately tested reconciliation contract exists, even a completed
+    action (or an unverified output_json claim) cannot restore alignment.
+    This read-only guard never changes routes, drawings or workflow actions.
     """
     with db() as con:
         con.execute("PRAGMA query_only=ON")
         action = con.execute(
-            """SELECT a.id,a.event_id,e.event_type,e.source_module
+            """SELECT a.id,a.status,a.event_id,e.event_type,e.source_module
                FROM workflow_actions a
                LEFT JOIN event_ledger e ON e.event_id=a.event_id
                WHERE a.workflow_key='controlled-drawing-ewi-review'
                  AND a.target_module='ewi'
                  AND a.entity_type='job' AND a.entity_id=?
-                 AND a.status='open'
-               ORDER BY a.id LIMIT 1""",
+               ORDER BY CASE WHEN a.status='open' THEN 0 ELSE 1 END,
+                        a.id DESC LIMIT 1""",
             (str(job_id),),
         ).fetchone()
     if action is None:
         return None
     verified = (action["event_type"] == "fai.imported"
                 and action["source_module"] == "ezfair")
+    is_open = action["status"] == "open"
     return {
-        "status": "controlled_revision_review_pending",
+        "status": ("controlled_revision_review_pending" if is_open
+                   else "controlled_revision_reconciliation_unverified"),
         "revision_review_action_id": int(action["id"]),
+        "revision_review_action_status": action["status"],
         "revision_review_source_event_id": action["event_id"] if verified else None,
         "limitation": (
             "An open EZ FAIR controlled drawing revision review requires human "
             "reconciliation before EWI operation alignment can be offered. "
-            "No released drawing, route or clocking state was changed."
-        ),
+            if is_open else
+            "Closing a drawing revision review does not verify the current "
+            "drawing, Methods source or revision-scoped EWI route. Alignment "
+            "remains unavailable until independent reconciliation evidence "
+            "can be verified. "
+        ) + "No released drawing, route or clocking state was changed.",
     }
 
 
@@ -73,7 +82,7 @@ def inspect_ewi_operation_alignment(job_id: int, event_id: str) -> dict:
 
         # PR #106's verified FAI revision review is a separate producer. A
         # still-open review invalidates an otherwise current SQL/route match.
-        pending = _pending_controlled_revision_review(job_id)
+        pending = _controlled_revision_review_gate(job_id)
         if pending:
             result.update(pending)
             return result
@@ -139,7 +148,7 @@ def inspect_ewi_operation_alignment(job_id: int, event_id: str) -> dict:
 
         # Recheck after PDF I/O, so a revision review created during the
         # alignment read cannot be overlooked by the final response.
-        pending = _pending_controlled_revision_review(job_id)
+        pending = _controlled_revision_review_gate(job_id)
         if pending:
             result.update(pending)
             return result
