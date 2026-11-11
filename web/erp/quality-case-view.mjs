@@ -30,6 +30,31 @@ export function qualityEffectivenessParentTarget(record,reviewId){
   if(matches.length!==1||!qualityEvidenceTarget(record,"corrective",matches[0].id))return null;
   return {kind:"corrective",id:matches[0].id};
 }
+/* A corrective action may cite exactly one existing inspection on this NCR.
+ * Legacy missing/duplicate IDs and case-level actions do not get guessed links.
+ */
+export function qualityCorrectiveInspectionTarget(record,actionId){
+  if(!qualityEvidenceTarget(record,"corrective",actionId))return null;
+  const matches=(Array.isArray(record.correctiveActions)?record.correctiveActions:[])
+    .filter(item=>item?.id===actionId);
+  if(matches.length!==1)return null;
+  const inspectionId=matches[0].sourceInspectionId;
+  if(typeof inspectionId!=="string"||!inspectionId)return null;
+  const observations=(Array.isArray(record.inspections)?record.inspections:[])
+    .filter(item=>item?.id===inspectionId);
+  return observations.length===1?{kind:"inspection",id:inspectionId}:null;
+}
+/* Reverse navigation from one inspection to its canonical corrective evidence.
+ * Use the same source resolver as corrective receipts; duplicate legacy IDs,
+ * missing observations and unrelated case-level actions are not guessed.
+ */
+export function qualityInspectionCorrectiveTargets(record,inspectionId){
+  if(typeof inspectionId!=="string"||!inspectionId)return [];
+  const actions=Array.isArray(record?.correctiveActions)?record.correctiveActions:[];
+  return actions.filter(action=>
+    qualityCorrectiveInspectionTarget(record,action?.id)?.id===inspectionId)
+    .map(action=>({kind:"corrective",id:action.id}));
+}
 /* An effectiveness review may point back to the inspection that actually
  * triggered its parent corrective action. Case-level actions, missing or
  * ambiguous legacy observations never get an invented inspection link.
@@ -37,13 +62,7 @@ export function qualityEffectivenessParentTarget(record,reviewId){
 export function qualityEffectivenessInspectionTarget(record,reviewId){
   const parent=qualityEffectivenessParentTarget(record,reviewId);
   if(!parent)return null;
-  const action=(Array.isArray(record.correctiveActions)?record.correctiveActions:[])
-    .find(item=>item?.id===parent.id);
-  const inspectionId=action?.sourceInspectionId;
-  if(typeof inspectionId!=="string"||!inspectionId)return null;
-  const matches=(Array.isArray(record.inspections)?record.inspections:[])
-    .filter(item=>item?.id===inspectionId);
-  return matches.length===1?qualityEvidenceTarget(record,"inspection",inspectionId):null;
+  return qualityCorrectiveInspectionTarget(record,parent.id);
 }
 /* A work-order jump must originate from evidence on this exact canonical NCR.
  * Never offer a generic or unrelated job when the evidence/job is missing.
@@ -167,6 +186,23 @@ export function qualityCaseEvidenceSummary(record){
     latestEffectiveness:effectiveness?effectiveness.title.replace(/^Effectiveness: /,""):
       (correctiveActions?"NOT REVIEWED":"NO ACTION")};
 }
+/* A job workspace may drill into a specific recorded inspection only when
+ * the canonical job, case and inspection are all uniquely identifiable.
+ * Historical closed-case evidence stays available without implying that its
+ * original routing operation is still current.
+ */
+export function qualityJobInspectionTarget(state,jobId,caseId,inspectionId){
+  if(typeof jobId!=="string"||!jobId||typeof caseId!=="string"||!caseId||
+     typeof inspectionId!=="string"||!inspectionId)return null;
+  if(!Array.isArray(state?.jobs)||state.jobs.filter(job=>job?.id===jobId).length!==1||
+     !Array.isArray(state?.quality))return null;
+  const cases=state.quality.filter(record=>record?.id===caseId);
+  if(cases.length!==1||cases[0].jobId!==jobId||
+     !["OPEN","CLOSED"].includes(cases[0].status))return null;
+  const observations=Array.isArray(cases[0].inspections)?cases[0].inspections:[];
+  if(observations.filter(item=>item?.id===inspectionId).length!==1)return null;
+  return {caseId,jobId,kind:"inspection",id:inspectionId};
+}
 /* Direct links preserve the exact NCR identity, including closed cases.
  * No links are offered for a job without linked quality records.
  */
@@ -179,7 +215,13 @@ export function renderJobQualityEvidence(state,jobId){
       'data-action="report-quality-case" data-id="'+h(record.id)+'">Open '+h(record.number)+'</button> '+
       '<span class="small">'+h(record.status)+' · '+h(evidence.inspections)+' inspections · '+
       h(evidence.correctiveActions)+' corrective actions · effectiveness: '+
-      h(evidence.latestEffectiveness)+'</span></div>';
+      h(evidence.latestEffectiveness)+'</span>'+
+      (Array.isArray(record.inspections)?record.inspections.map(inspection=>{
+        const target=qualityJobInspectionTarget(state,jobId,record.id,inspection?.id);
+        return target?'<button type="button" class="action secondary" data-action="job-quality-inspection" data-case="'+
+          h(target.caseId)+'" data-job="'+h(target.jobId)+'" data-id="'+h(target.id)+
+          '">Inspection step '+h(inspection.step)+' · '+h(inspection.result)+'</button>':"";
+      }).join(" "):"")+'</div>';
   }).join("")+'</div>';
 }
 export function renderQualityCase(state,id){
@@ -247,14 +289,15 @@ export function renderQualityCase(state,id){
   }
   html+='<h3>Corrective actions and effectiveness</h3>'+
     (actions.length?actions.map(action=>{
-      const linked=inspections.find(item=>item.id===action.sourceInspectionId);
+      const source=qualityCorrectiveInspectionTarget(q,action.id);
+      const linked=source?inspections.find(item=>item.id===source.id):null;
       const reviews=Array.isArray(action.reviews)?action.reviews:[];
       return '<div class="receipt"'+evidenceAttrs("corrective",action.id)+'><b>'+h(action.id)+'</b> · '+
         h(QUALITY_ACTION_ROLES.find(role=>role.id===action.ownerRole)?.label||action.ownerRole)+
         ' · '+h(action.createdAt)+
         '<div>'+h(action.description)+'</div>'+
         '<div class="small">Linked observation: '+h(action.sourceInspectionId?(linked?
-          linked.stage+' / step '+linked.step+' / '+linked.result:'Missing fictional observation'):'None (case-level)')+'</div>'+(linked?evidenceButton(q,"inspection",linked.id,"View observation"):"")+
+          linked.stage+' / step '+linked.step+' / '+linked.result:'Missing or ambiguous fictional observation'):'None (case-level)')+'</div>'+(linked?evidenceButton(q,"inspection",linked.id,"View observation"):"")+
         (linked?routingStepButton(state,q,linked):"")+evidenceWorkOrderButton(state,q,"corrective",action.id)+correctiveReviewButton(state,q,action.id)+
         (reviews.length?reviews.map(review=>
           '<div class="receipt"'+evidenceAttrs("effectiveness",review.id)+'><b>Effectiveness review:</b> '+h(review.result)+' · '+h(review.at)+
@@ -288,8 +331,8 @@ export function renderQualityCase(state,id){
       h(QUALITY_INSPECTION_STAGES.find(stage=>stage.id===item.stage)?.label||item.stage)+' · '+
       h(item.result)+' · step '+h(item.step)+' / '+h(item.operation)+' ('+h(item.center)+')'+
       '<div class="small">Job rev '+h(item.jobRevision)+' · drawing rev '+h(item.drawingRevision??"unknown")+'</div>'+
-      '<div>'+h(item.observation)+'</div>'+routingStepButton(state,q,item)+inspectionCorrectiveButton(state,q,item.id)+evidenceWorkOrderButton(state,q,"inspection",item.id)+actions.filter(action=>action.sourceInspectionId===item.id).map(action=>
-        evidenceButton(q,"corrective",action.id,"View corrective action")).join(" ")+'</div>').join(""):
+      '<div>'+h(item.observation)+'</div>'+routingStepButton(state,q,item)+inspectionCorrectiveButton(state,q,item.id)+evidenceWorkOrderButton(state,q,"inspection",item.id)+qualityInspectionCorrectiveTargets(q,item.id).map(target=>
+        evidenceButton(q,target.kind,target.id,"View corrective action")).join(" ")+'</div>').join(""):
       '<p class="small">No fictional inspection observations recorded for this case.</p>')+
     '<h3>Case chronology</h3><p class="small">One read-only timeline of this NCR, its inspection evidence, dispositions, corrective actions, effectiveness reviews and follow-ups. Post-closure reviews do not reopen a case.</p>'+
     (timeline.length?timeline.map(entry=>'<div class="receipt"><b>'+h(entry.at||"Date unknown")+'</b> · '+h(entry.title)+
@@ -300,7 +343,11 @@ export function renderQualityCase(state,id){
       (entry.kind==="effectiveness"&&qualityEffectivenessInspectionTarget(q,entry.sourceId)?
         evidenceButton(q,"inspection",qualityEffectivenessInspectionTarget(q,entry.sourceId).id,"View source inspection"):"")+
       (entry.kind==="inspection"?routingStepButton(state,q,inspections.find(item=>item.id===entry.sourceId))+inspectionCorrectiveButton(state,q,entry.sourceId):"")+
+      (entry.kind==="inspection"?qualityInspectionCorrectiveTargets(q,entry.sourceId).map(target=>
+        evidenceButton(q,target.kind,target.id,"View corrective action")).join(" "):"")+
       (entry.kind==="corrective"?correctiveReviewButton(state,q,entry.sourceId):"")+
+      (entry.kind==="corrective"&&qualityCorrectiveInspectionTarget(q,entry.sourceId)?
+        evidenceButton(q,"inspection",qualityCorrectiveInspectionTarget(q,entry.sourceId).id,"View source inspection"):"")+
       '<div>'+h(entry.detail)+'</div></div>').join(""):
       '<p class="small">No dated case evidence recorded for this fictional case.</p>')+
     '</section>';

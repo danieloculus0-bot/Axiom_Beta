@@ -13,7 +13,7 @@ import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction,qualityJobSummary,jobQualityTarget} from "./quality-case.mjs";
-import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction} from "./quality-case-view.mjs";
+import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction,qualityJobInspectionTarget} from "./quality-case-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
@@ -656,6 +656,18 @@ document.addEventListener("click",event=>{
       pendingQualityFocus={caseId:target.caseId,kind:target.kind,id:target.id};
       selectedQualityEvidence=null;
       selectedIntent="evidence-return";
+      rememberJob(target.jobId);
+      if(location.hash==="#quality")render();
+      else location.hash="#quality";
+    }
+    if(action==="job-quality-inspection"){
+      const target=qualityJobInspectionTarget(state,button.dataset.job,button.dataset.case,id);
+      if(currentView()!=="routing"||!target||selectedJobId!==target.jobId)
+        throw Error("The selected fictional inspection is not linked to this work order");
+      selectedContext={type:"job",id:target.jobId};
+      selectedIntent="quality";
+      selectedQualityId=target.caseId;
+      pendingQualityFocus=target;
       rememberJob(target.jobId);
       if(location.hash==="#quality")render();
       else location.hash="#quality";

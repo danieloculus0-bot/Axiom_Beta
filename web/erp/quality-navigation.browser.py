@@ -98,6 +98,51 @@ def main():
                 ).click()
                 assert disposition_receipt.evaluate("el => document.activeElement === el")
 
+                # The inspection receipt and its chronology independently
+                # locate the same corrective evidence without changing state.
+                inspection_receipt_action = panel.locator(
+                    f'[data-evidence-kind="inspection"][data-evidence-id="{inspection_id}"] '
+                    f'button[data-action="quality-evidence-focus"][data-kind="corrective"][data-id="{corrective_id}"]'
+                )
+                inspection_chronology_action = panel.locator(
+                    'h3:has-text("Case chronology") ~ div.receipt'
+                ).filter(has_text="Inspection:").locator(
+                    f'button[data-action="quality-evidence-focus"][data-kind="corrective"][data-id="{corrective_id}"]'
+                )
+                expect(inspection_receipt_action).to_have_count(1)
+                expect(inspection_chronology_action).to_have_count(1)
+                for action_link in (inspection_receipt_action, inspection_chronology_action):
+                    action_link.click()
+                    corrective_evidence = panel.locator(
+                        f'[data-evidence-kind="corrective"][data-evidence-id="{corrective_id}"]'
+                    ).first
+                    assert corrective_evidence.evaluate("el => document.activeElement === el")
+                    assert panel.get_attribute("data-case-id") == case_id
+                    expect(page.locator("#job-context")).to_have_value(job_id)
+                    expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+
+                # Corrective receipt and chronology return to the exact
+                # source inspection without writing or reopening the case.
+                corrective_receipt_source = panel.locator(
+                    f'[data-evidence-kind="corrective"][data-evidence-id="{corrective_id}"] > '
+                    f'button[data-action="quality-evidence-focus"][data-kind="inspection"][data-id="{inspection_id}"]'
+                )
+                corrective_chronology_source = panel.locator(
+                    'h3:has-text("Case chronology") ~ div.receipt'
+                ).filter(has_text="Corrective action:").locator(
+                    f'button[data-action="quality-evidence-focus"][data-kind="inspection"][data-id="{inspection_id}"]'
+                )
+                expect(corrective_receipt_source).to_have_count(1)
+                expect(corrective_chronology_source).to_have_count(1)
+                for source in (corrective_receipt_source, corrective_chronology_source):
+                    source.click()
+                    observation = panel.locator(
+                        f'[data-evidence-kind="inspection"][data-evidence-id="{inspection_id}"]'
+                    ).first
+                    assert observation.evaluate("el => document.activeElement === el")
+                    expect(page.locator("#job-context")).to_have_value(job_id)
+                    expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+
                 # The corrective receipt and case chronology must reach the
                 # SAME existing review form after closure without writing evidence.
                 review_handoffs = panel.locator(
@@ -227,6 +272,34 @@ def main():
                         f"Return must focus original {kind} evidence"
                     )
                     expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+
+                # Routing is a separate job-first entry point to the exact
+                # historical inspection. It must not substitute a different job.
+                page.locator('#module-nav a[data-nav="routing"]').click()
+                page.wait_for_function("location.hash === '#routing'")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                job_inspection_link = page.locator(
+                    f'button[data-action="job-quality-inspection"][data-case="{case_id}"]'
+                    f'[data-job="{job_id}"][data-id="{inspection_id}"]'
+                )
+                expect(job_inspection_link).to_have_count(1)
+                other_routing_job = page.locator("#job-context option").evaluate_all(
+                    "(options, selected) => options.map(o => o.value).find(v => v !== selected)", job_id
+                )
+                assert other_routing_job
+                page.locator("#job-context").select_option(other_routing_job)
+                expect(page.locator('button[data-action="job-quality-inspection"]')).to_have_count(0)
+                page.locator("#job-context").select_option(job_id)
+                expect(job_inspection_link).to_have_count(1)
+                job_inspection_link.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                focused_observation = panel.locator(
+                    f'[data-evidence-kind="inspection"][data-evidence-id="{inspection_id}"]'
+                ).first
+                assert focused_observation.evaluate("el => document.activeElement === el")
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
 
                 editable = page.locator('form[data-form="quality-followup"] textarea')
                 native_menu = editable.evaluate("""el => {
