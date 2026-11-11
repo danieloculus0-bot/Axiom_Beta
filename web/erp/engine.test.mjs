@@ -809,3 +809,36 @@ test("Quality Forge inspection evidence refuses ambiguous current routing steps"
     "PASS","Synthetic blocked observation",u),/unambiguous routed operation/);
   assert.equal(blocked.quality[0].inspections?.length??0,0);
 });
+
+test("Quality Forge new inspection evidence IDs cannot collide with sparse browser-local history",()=>{
+  const initial=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
+  const caseId=initial.quality[0].id,step=initial.jobs[0].routing.operations[0].step;
+  for(const historicalSuffix of [3,9]){
+    let state=recordQualityInspection(initial,caseId,"FIRST_PIECE",step,
+      "FAIL","Synthetic original observation",t);
+    const historicalId=caseId+"-inspection-"+historicalSuffix;
+    state.quality[0].inspections.push({
+      ...structuredClone(state.quality[0].inspections[0]),
+      id:historicalId,observation:"Synthetic historical observation"
+    });
+    const before=JSON.stringify(state),events=state.events.length;
+    const updated=recordQualityInspection(state,caseId,"IN_PROCESS",step,
+      "PASS","Synthetic new observation",u);
+    const newId=caseId+"-inspection-"+(historicalSuffix+1);
+    assert.equal(JSON.stringify(state),before,"New evidence must not mutate its input");
+    assert.deepEqual(updated.quality[0].inspections.map(item=>item.id),
+      [caseId+"-inspection-1",historicalId,newId]);
+    assert.equal(updated.events.length,events+1,"Exactly one new event is recorded");
+    assert.deepEqual(qualityJobInspectionTarget(updated,"sample-1001",caseId,newId),
+      {caseId,jobId:"sample-1001",kind:"inspection",id:newId});
+    assert.deepEqual(qualityInspectionCorrectiveTarget(updated,caseId,newId),
+      {caseId,inspectionId:newId,jobId:"sample-1001"});
+    const html=renderJobRegisterInspectionEvidence(updated,"sample-1001");
+    assert.ok(html.includes('data-id="'+newId+'"'),
+      "Work-order register must navigate to the newly recorded exact inspection");
+    const following=recordQualityInspection(updated,caseId,"FINAL_REVIEW",step,
+      "PASS","Synthetic next observation",u);
+    assert.equal(following.quality[0].inspections.at(-1).id,
+      caseId+"-inspection-"+(historicalSuffix+2));
+  }
+});

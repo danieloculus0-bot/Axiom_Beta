@@ -34,6 +34,26 @@ export const QUALITY_INSPECTION_STAGES=[
   {id:"FINAL_REVIEW",label:"Final review"}
 ];
 export const QUALITY_INSPECTION_RESULTS=["PASS","FAIL","REVIEW_REQUIRED"];
+/* Existing browser-local inspections may have sparse or manually restored IDs.
+ * Allocate beyond the highest valid suffix rather than using array length,
+ * so a new observation cannot silently reuse historical evidence identity.
+ */
+const nextInspectionEvidenceId=record=>{
+  const prefix=record.id+"-inspection-";
+  const inspections=Array.isArray(record.inspections)?record.inspections:[];
+  let sequence=inspections.length+1;
+  for(const item of inspections){
+    const existing=item?.id;
+    if(typeof existing!=="string"||!existing.startsWith(prefix))continue;
+    const suffix=existing.slice(prefix.length);
+    if(!/^[1-9][0-9]*$/.test(suffix))continue;
+    const number=Number(suffix);
+    if(Number.isSafeInteger(number))sequence=Math.max(sequence,number+1);
+  }
+  if(!Number.isSafeInteger(sequence))
+    throw Error("Fictional inspection evidence ID range exhausted");
+  return prefix+sequence;
+};
 /* Records a fictional observation against the existing NCR, job and routed step.
  * It is evidence only, never a production inspection approval or automatic release.
  */
@@ -53,12 +73,12 @@ export function recordQualityInspection(state,id,stage,step,result,observation,a
     throw Error("Choose one unambiguous routed operation on this fictional job");
   const operation=matches[0];
   if(!QUALITY_INSPECTION_RESULTS.includes(result))throw Error("Choose a listed fictional inspection result");
-  const detail=noteText(observation),time=timestamp(at);
+  const detail=noteText(observation),time=timestamp(at),inspectionId=nextInspectionEvidenceId(record);
   return change(state,"quality.inspection.recorded",record.number+" / "+stage+" / "+result,n=>{
     const q=n.quality.find(item=>item.id===id);
     if(!Array.isArray(q.inspections))q.inspections=[];
     q.inspections.push({
-      id:id+"-inspection-"+(q.inspections.length+1),stage,step:String(operation.step),
+      id:inspectionId,stage,step:String(operation.step),
       operation:operation.name,center:operation.center,result,observation:detail,
       jobRevision:job.revision,drawingRevision:job.drawing?.revision??null,at:time
     });
