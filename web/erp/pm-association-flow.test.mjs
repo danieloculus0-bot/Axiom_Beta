@@ -59,7 +59,7 @@ test("PM association form persists through a simulated reload and remains histor
   const mount=async token=>{
     const doc=fakeDocument();globalThis.document=doc;
     globalThis.localStorage=storage;
-    globalThis.location={hash:"#pm",search:"?machine=DEMO-M-001",pathname:"/erp/index.html",origin:"https://example.invalid"};
+    globalThis.location={href:"https://example.invalid/erp/index.html?machine=DEMO-M-001#pm",hash:"#pm",search:"?machine=DEMO-M-001",pathname:"/erp/index.html",origin:"https://example.invalid"};
     globalThis.window={addEventListener(){},innerWidth:1200,innerHeight:800};
     globalThis.history={replaceState(){}};
     globalThis.FormData=fakeFormData;
