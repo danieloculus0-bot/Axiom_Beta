@@ -57,13 +57,11 @@ function load(){
         (s.end==null || (typeof s.end==="string" && Date.parse(s.end)>=Date.parse(s.start)))
       ).slice(-2000);
     }
+    const rawWorkforce=localStorage.getItem(WORKFORCE_KEY);
+    workforce=rawWorkforce&&rawWorkforce.length<800000?validateWorkforce(JSON.parse(rawWorkforce)):seedWorkforce();
     const k=ERP_KEY+"_test";localStorage.setItem(k,"ok");localStorage.removeItem(k);
     stored=true;
-  }catch{stored=false;state=seedState();sessions=[];}
-  try{
-    const raw=localStorage.getItem(WORKFORCE_KEY);
-    workforce=raw&&raw.length<800000?validateWorkforce(JSON.parse(raw)):seedWorkforce();
-  }catch{workforce=seedWorkforce();}
+  }catch{stored=false;state=seedState();sessions=[];workforce=seedWorkforce();}
 }
 function persist(){
   if(!stored) return;
