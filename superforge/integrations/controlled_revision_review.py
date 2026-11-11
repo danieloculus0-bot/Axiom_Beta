@@ -10,9 +10,10 @@ from dataclasses import replace
 
 from ..db import db
 from ..event_bus import DomainEvent, create_action
+from .ewi_revision_evidence import pending_ewi_revision_event
 
 
-def review_controlled_fai_revision(event: DomainEvent) -> None:
+def review_controlled_fai_revision(event: DomainEvent, *, ewi_job_only: int | None = None) -> None:
     """Request one human review for plans referencing an older controlled version."""
     if event.source_module != "ezfair" or event.entity_type != "fai":
         return
@@ -155,31 +156,34 @@ def review_controlled_fai_revision(event: DomainEvent) -> None:
         "provenance": "EZ_FAIR_IMPORTED_CONTROLLED_DRAWING",
         "review_state": "REVIEW_REQUIRED",
     }
-    # Both consumers use the same verified event and exact source identities.
-    # A previous Planning delivery must not suppress a missing Quality review.
-    for workflow_key, step_key, target_module, limitation in (
-        ("controlled-drawing-revision-review", "reassess-linked-methods", "planning",
-         "New controlled evidence may affect linked methods; human review required. No routing or EWI change was applied."),
-        ("controlled-drawing-quality-review", "review-fai-characteristic-impact", "quality",
-         "Compare old and new FAI characteristics manually; no inspection acceptance, plan edit, or release was applied."),
-    ):
-        with db() as con:
-            already = con.execute(
-                """SELECT 1 FROM workflow_actions
-                   WHERE workflow_key=? AND entity_type='fai' AND entity_id=? LIMIT 1""",
-                (workflow_key, str(fai_id)),
-            ).fetchone()
-        if not already:
-            create_action(
-                event, workflow_key=workflow_key, step_key=step_key,
-                target_module=target_module,
-                input_data={**evidence, "limitation": limitation},
-            )
+    if ewi_job_only is None:
+        # Both consumers use the same verified event and exact source identities.
+        # A previous Planning delivery must not suppress a missing Quality review.
+        for workflow_key, step_key, target_module, limitation in (
+            ("controlled-drawing-revision-review", "reassess-linked-methods", "planning",
+             "New controlled evidence may affect linked methods; human review required. No routing or EWI change was applied."),
+            ("controlled-drawing-quality-review", "review-fai-characteristic-impact", "quality",
+             "Compare old and new FAI characteristics manually; no inspection acceptance, plan edit, or release was applied."),
+        ):
+            with db() as con:
+                already = con.execute(
+                    """SELECT 1 FROM workflow_actions
+                       WHERE workflow_key=? AND entity_type='fai' AND entity_id=? LIMIT 1""",
+                    (workflow_key, str(fai_id)),
+                ).fetchone()
+            if not already:
+                create_action(
+                    event, workflow_key=workflow_key, step_key=step_key,
+                    target_module=target_module,
+                    input_data={**evidence, "limitation": limitation},
+                )
 
     # Create a distinct, idempotent action per verified EWI job. The action
     # keeps the original FAI event ID and correlation; only its review scope
     # is the canonical job ID. No job/drawing/route/clocking record is edited.
     for job_id, job in sorted(ewi_targets.items()):
+        if ewi_job_only is not None and job_id != ewi_job_only:
+            continue
         if job_id in ewi_ambiguous:
             continue
         step_key = f"review-job-packet-fai-{fai_id}"
@@ -212,3 +216,67 @@ def review_controlled_fai_revision(event: DomainEvent) -> None:
                 "limitation": "Advisory human EWI packet review only; no released drawing, routing, clocking or automatic hold was changed.",
             },
         )
+
+
+def repair_missing_ewi_review(job_id: int, event_id: str) -> int | None:
+    """Explicitly restore only one missing EWI review from a delivered FAI event.
+
+    The existing read-only SQL evidence guard must prove the exact job, controlled
+    source and missing consumer action. No event or receipt is replayed, and no
+    Planning/Quality actions, released records or clocking sessions are changed.
+    The resulting action remains open for independent human reconciliation.
+    """
+    if type(job_id) is not int or job_id <= 0 or not isinstance(event_id, str) or not event_id:
+        return None
+    step_key = ""
+    with db() as con:
+        event_row = con.execute(
+            """SELECT * FROM event_ledger WHERE event_id=?
+               AND event_type='fai.imported' AND source_module='ezfair'
+               AND entity_type='fai' AND status='delivered'""",
+            (event_id,),
+        ).fetchone()
+        if event_row is None:
+            return None
+        step_key = f"review-job-packet-fai-{event_row['entity_id']}"
+        existing = con.execute(
+            """SELECT id FROM workflow_actions
+               WHERE event_id=? AND workflow_key='controlled-drawing-ewi-review'
+                 AND step_key=? AND target_module='ewi'
+                 AND entity_type='job' AND entity_id=?
+               ORDER BY id LIMIT 1""",
+            (event_id, step_key, str(job_id)),
+        ).fetchone()
+        if existing is not None:
+            return int(existing["id"])
+        pending = pending_ewi_revision_event(con, job_id)
+        if (pending is None or pending["event_id"] != event_id
+                or pending["delivery_status"] != "delivered"):
+            return None
+        try:
+            payload = json.loads(event_row["payload_json"])
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        event = DomainEvent(
+            event_id=event_row["event_id"], event_type=event_row["event_type"],
+            source_module=event_row["source_module"], entity_type=event_row["entity_type"],
+            entity_id=event_row["entity_id"], actor=event_row["actor"] or "",
+            reason=event_row["reason"] or "", payload=payload,
+            correlation_id=event_row["correlation_id"] or "",
+            parent_event_id=event_row["parent_event_id"] or "",
+        )
+    # The original subscriber re-verifies all source identities before writing.
+    # Limit its effect to this job's EWI action; do not replay other consumers.
+    review_controlled_fai_revision(event, ewi_job_only=job_id)
+    with db() as con:
+        restored = con.execute(
+            """SELECT id FROM workflow_actions
+               WHERE event_id=? AND workflow_key='controlled-drawing-ewi-review'
+                 AND step_key=? AND target_module='ewi'
+                 AND entity_type='job' AND entity_id=?
+               ORDER BY id LIMIT 1""",
+            (event_id, step_key, str(job_id)),
+        ).fetchone()
+    return int(restored["id"]) if restored is not None else None
