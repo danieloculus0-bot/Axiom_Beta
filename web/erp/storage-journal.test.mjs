@@ -34,3 +34,28 @@ test("recovery can be retried after a transient write failure",()=>{
  assert.equal(recoverBrowserSave(retry,keys),true);
  assert.deepEqual(keys.map(k=>JSON.parse(retry.getItem(k))),next);
 });
+
+
+test("quota rejection of journal leaves all legacy records unchanged",()=>{
+  const initial={erp:'{"v":1}',clock:"[]",people:'{"v":1}'};
+  const s=quotaStore(80,initial);
+  assert.throws(()=>persistBrowserSave(s,keys,[{v:2},[{id:"fictional"}],{v:2}]),{name:"QuotaExceededError"});
+  assert.deepEqual(Object.fromEntries(s.data),initial);
+});
+test("quota rejection after journal write retains recoverable snapshot",()=>{
+  const initial={erp:'{"v":1}',clock:"[]",people:'{"v":1}'};
+  const s=quotaStore(140,initial);
+  assert.throws(()=>persistBrowserSave(s,keys,[{v:2},[{id:"fictional"}],{v:2}]),{name:"QuotaExceededError"});
+  assert.ok(s.getItem(JOURNAL_KEY));
+  const recovered=quotaStore(1000,Object.fromEntries(s.data));
+  assert.equal(recoverBrowserSave(recovered,keys),true);
+  assert.deepEqual(JSON.parse(recovered.getItem("erp")),{v:2});
+});
+function quotaStore(limit,seed={}) {
+  const data=new Map(Object.entries(seed));
+  return {data,getItem:k=>data.get(k)??null,setItem(k,v){
+    const size=[...data].reduce((n,[a,b])=>n+(a===k?0:a.length+b.length),0)+k.length+v.length;
+    if(size>limit)throw new DOMException("Quota exceeded","QuotaExceededError");
+    data.set(k,v);
+  },removeItem:k=>data.delete(k)};
+}
