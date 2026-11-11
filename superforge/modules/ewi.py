@@ -7,6 +7,7 @@ local allowlisted path and SHA-256 all agree. No part-only release inference.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import sqlite3
@@ -134,6 +135,30 @@ def packet(job_id: int) -> dict | None:
             SELECT * FROM ewi_clock_sessions WHERE job_id=?
             ORDER BY started_utc DESC LIMIT 30
         """, (job_id,))]
+        revision_actions = [dict(r) for r in con.execute(
+            """SELECT id, event_id, input_json FROM workflow_actions
+               WHERE workflow_key='controlled-drawing-ewi-review'
+                 AND target_module='ewi' AND entity_type='job'
+                 AND entity_id=? AND status='open' ORDER BY id""",
+            (str(job_id),),
+        )]
+    revision_reviews = []
+    for action in revision_actions:
+        try:
+            evidence = json.loads(action["input_json"])
+        except (TypeError, ValueError):
+            continue
+        if (not isinstance(evidence, dict)
+                or evidence.get("job_id") != job_id
+                or evidence.get("review_state") != "REVIEW_REQUIRED"):
+            continue
+        revision_reviews.append({
+            "action_id": action["id"],
+            "event_id": action["event_id"],
+            "fai_run_id": evidence.get("fai_run_id"),
+            "previous_revision": evidence.get("previous_revision"),
+            "new_revision": evidence.get("new_revision"),
+        })
     path, drawing, issue = _released_pdf(job)
     errors = [issue] if issue else []
     if not routes:
@@ -143,7 +168,8 @@ def packet(job_id: int) -> dict | None:
     if (job.get("status") or "").lower() in {"closed", "cancelled", "canceled", "hold", "on_hold"}:
         errors.append("Job status does not permit starting work")
     return {"job": job, "drawing": drawing, "pdf_path": path, "routes": routes,
-            "sessions": sessions, "issues": errors, "ready": not errors}
+            "sessions": sessions, "issues": errors, "ready": not errors,
+            "revision_reviews": revision_reviews}
 
 
 def save_remote_routes(job_id: int, routes: list[dict]) -> int:
@@ -279,6 +305,17 @@ def job_view(job_id: int):
         body += "<section class='panel'>" + notice + "</section>"
     if alerts:
         body += "<section class='panel'><h2>Release / sync checks</h2>" + alerts + "</section>"
+    if data["revision_reviews"]:
+        body += ("<section class='panel'><h2>Controlled drawing revision review pending</h2>"
+                 "<p class='sub'>A newer EZ FAIR controlled drawing was imported for this "
+                 "job's previously linked Methods evidence. Review the EWI packet manually. "
+                 "This is advisory; no drawing, route, clocking or automatic hold was changed.</p>")
+        for review in data["revision_reviews"]:
+            body += ("<p>Review action #" + _e(review["action_id"]) +
+                     " | Prior rev " + _e(review["previous_revision"]) +
+                     " | New rev " + _e(review["new_revision"]) +
+                     " | FAI #" + _e(review["fai_run_id"]) + "</p>")
+        body += "</section>"
     body += "<section class='panel'><h2>JobBOSS² routed operations</h2>"
     body += ("<p class='sub'>API read: " + ("Configured" if configured() else "Not configured") +
              ". Sync reads routing data only. No production ERP updates.</p>"

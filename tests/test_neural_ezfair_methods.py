@@ -353,3 +353,128 @@ def test_quality_review_replays_independently_without_mutating_methods(tmp_path,
         assert con.execute("SELECT status FROM fai_runs WHERE id=?",(imported["id"],)).fetchone()[0]=="review_required"
         assert con.execute("SELECT COUNT(*) FROM quality_records").fetchone()[0]==0
         assert con.execute("SELECT COUNT(*) FROM inspections").fetchone()[0]==0
+
+
+def _seed_ewi_packet_for_revision(source, plan, *, document_hash=None, route=True, released_count=1):
+    """Bind one fictional Methods plan to an exact canonical EWI job/part."""
+    with db() as con:
+        part = con.execute(
+            "INSERT INTO parts(part_number,revision) VALUES (?,?)",
+            ("SYN-PART-01", "B"),
+        ).lastrowid
+        job = con.execute(
+            "INSERT INTO jobs(job_number,part_id,status) VALUES (?,?,'open')",
+            ("SYN-JOB-01", part),
+        ).lastrowid
+        con.execute(
+            "UPDATE ezm_method_plans SET job_id=?,part_id=? WHERE id=?",
+            (job, part, plan),
+        )
+        for i in range(released_count):
+            con.execute(
+                """INSERT INTO documents
+                   (document_number,title,revision,status,job_id,part_id,storage_reference,sha256)
+                   VALUES(?,?,'B','released',?,?,?,?)""",
+                (f"SYN-EWI-DWG-{i}", "Fictional released packet",
+                 job, part, f"synthetic-packet-{i}.pdf",
+                 source["sha256"] if document_hash is None else document_hash),
+            )
+        if route:
+            con.execute(
+                """INSERT INTO ewi_routes
+                   (job_id,step,operation,work_center,instruction,part_number,pulled_at)
+                   VALUES(?,'10','Cut','SYN-CENTER-01','Synthetic instruction',?,'2026-11-01T00:00:00Z')""",
+                (job, "SYN-PART-01"),
+            )
+    return job, part
+
+
+def test_controlled_revision_reaches_exact_ewi_job_and_visible_review(tmp_path, monkeypatch):
+    source, plan, old_fai = _seed(tmp_path, monkeypatch)
+    job, part = _seed_ewi_packet_for_revision(source, plan)
+    link_controlled_drawing_to_method(plan, source, actor="synthetic-tester")
+    imported, digest = _import_next_synthetic_fai_version()
+    with db() as con:
+        actions = con.execute(
+            "SELECT * FROM workflow_actions WHERE workflow_key='controlled-drawing-ewi-review'"
+        ).fetchall()
+        assert len(actions) == 1
+        action = dict(actions[0])
+        assert action["target_module"] == "ewi"
+        assert action["entity_type"] == "job" and action["entity_id"] == str(job)
+        assert action["status"] == "open"
+        evidence = json.loads(action["input_json"])
+        assert evidence["contract_version"] == 1
+        assert evidence["job_id"] == job and evidence["part_id"] == part
+        assert evidence["previous_fai_run_id"] == old_fai
+        assert evidence["fai_run_id"] == imported["id"]
+        assert evidence["previous_sha256"] == source["sha256"]
+        assert evidence["new_sha256"] == digest
+        assert evidence["previous_revision"] == "B" and evidence["new_revision"] == "C"
+        assert evidence["review_state"] == "REVIEW_REQUIRED"
+        ledger = con.execute(
+            "SELECT event_id,entity_type,entity_id FROM event_ledger WHERE event_id=?",
+            (action["event_id"],),
+        ).fetchone()
+        assert ledger["entity_type"] == "fai"
+        assert ledger["entity_id"] == str(imported["id"])
+        assert evidence["source_event_id"] == ledger["event_id"]
+        assert con.execute(
+            "SELECT COUNT(*) FROM ewi_routes WHERE job_id=?", (job,)
+        ).fetchone()[0] == 1
+        assert con.execute(
+            "SELECT revision FROM parts WHERE id=?", (part,)
+        ).fetchone()[0] == "B"
+        assert con.execute(
+            "SELECT status FROM ezm_method_plans WHERE id=?", (plan,)
+        ).fetchone()[0] == "DRAFT"
+        assert con.execute(
+            "SELECT COUNT(*) FROM ewi_clock_sessions"
+        ).fetchone()[0] == 0
+    from superforge.modules.ewi import packet
+    reviews = packet(job)["revision_reviews"]
+    assert len(reviews) == 1
+    assert reviews[0]["fai_run_id"] == imported["id"]
+    html = create_app({"TESTING": True}).test_client().get(
+        f"/ewi/jobs/{job}"
+    ).get_data(as_text=True)
+    assert "Controlled drawing revision review pending" in html
+    assert "Prior rev B" in html and "New rev C" in html
+    assert "no drawing, route, clocking or automatic hold was changed" in html
+    publish(
+        "fai.imported", source_module="ezfair", entity_type="fai",
+        entity_id=str(imported["id"]), actor="synthetic-tester",
+        payload={"vault_version": "SYN-VERSION-02", "drawing_sha256": digest,
+                 "inspection_status": "review_required"},
+    )
+    with db() as con:
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-ewi-review'"
+        ).fetchone()[0] == 1
+
+
+def test_ewi_revision_requires_unique_released_job_pdf_and_routing(tmp_path, monkeypatch):
+    for case in ("wrong_hash", "no_route", "duplicate_release", "no_job_link"):
+        source, plan, _ = _seed(tmp_path / case, monkeypatch)
+        job, part = _seed_ewi_packet_for_revision(
+            source, plan,
+            document_hash="f" * 64 if case == "wrong_hash" else None,
+            route=case != "no_route",
+            released_count=2 if case == "duplicate_release" else 1,
+        )
+        if case == "no_job_link":
+            with db() as con:
+                con.execute("UPDATE ezm_method_plans SET job_id=NULL WHERE id=?", (plan,))
+        link_controlled_drawing_to_method(plan, source, actor="synthetic-tester")
+        _import_next_synthetic_fai_version()
+        with db() as con:
+            assert con.execute(
+                "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-ewi-review'"
+            ).fetchone()[0] == 0
+            # Planning and Quality still receive their independent review.
+            assert con.execute(
+                "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-revision-review'"
+            ).fetchone()[0] == 1
+            assert con.execute(
+                "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='controlled-drawing-quality-review'"
+            ).fetchone()[0] == 1
