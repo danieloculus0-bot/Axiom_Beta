@@ -13,7 +13,7 @@ import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction,qualityJobSummary,jobQualityTarget} from "./quality-case.mjs";
-import {renderQualityCase,renderJobQualityEvidence,renderJobRegisterInspectionEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction,qualityJobInspectionTarget,qualityJobCorrectiveTarget} from "./quality-case-view.mjs";
+import {renderQualityCase,renderJobQualityEvidence,renderJobRegisterInspectionEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction,qualityJobInspectionTarget,qualityJobCorrectiveTarget,qualityJobFollowupTarget,qualityJobDispositionTarget} from "./quality-case-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
@@ -660,10 +660,14 @@ document.addEventListener("click",event=>{
       if(location.hash==="#quality")render();
       else location.hash="#quality";
     }
-    if(action==="job-quality-inspection"||action==="job-quality-corrective"){
+    if(["job-quality-inspection","job-quality-corrective","job-quality-followup","job-quality-disposition"].includes(action)){
       const target=action==="job-quality-inspection"?
         qualityJobInspectionTarget(state,button.dataset.job,button.dataset.case,id):
-        qualityJobCorrectiveTarget(state,button.dataset.job,button.dataset.case,id);
+        action==="job-quality-corrective"?
+          qualityJobCorrectiveTarget(state,button.dataset.job,button.dataset.case,id):
+          action==="job-quality-followup"?
+            qualityJobFollowupTarget(state,button.dataset.job,button.dataset.case,id):
+            qualityJobDispositionTarget(state,button.dataset.job,button.dataset.case);
       const view=currentView();
       if(!target||!["routing","jobs"].includes(view)||
          (view==="routing"&&selectedJobId!==target.jobId)||

@@ -219,6 +219,34 @@ export function qualityJobCorrectiveTarget(state,jobId,caseId,actionId){
   if(actions.filter(item=>item?.id===actionId).length!==1)return null;
   return {caseId,jobId,kind:"corrective",id:actionId};
 }
+/* A disposition is the current decision on one exact fictional NCR.
+ * Closed-case history remains readable without creating a second record.
+ */
+export function qualityJobDispositionTarget(state,jobId,caseId){
+  if(typeof jobId!=="string"||!jobId||typeof caseId!=="string"||!caseId)return null;
+  if(!Array.isArray(state?.jobs)||state.jobs.filter(job=>job?.id===jobId).length!==1||
+     !Array.isArray(state?.quality))return null;
+  const cases=state.quality.filter(record=>record?.id===caseId);
+  if(cases.length!==1||cases[0].jobId!==jobId||
+     !["OPEN","CLOSED"].includes(cases[0].status)||
+     !QUALITY_DISPOSITIONS.some(item=>item.id===cases[0].disposition?.decision))return null;
+  return {caseId,jobId,kind:"disposition",id:caseId};
+}
+/* Follow-ups belong to the canonical fictional NCR, even when entered after
+ * closure. Only one exact job, case and follow-up ID can produce a link.
+ */
+export function qualityJobFollowupTarget(state,jobId,caseId,followupId){
+  if(typeof jobId!=="string"||!jobId||typeof caseId!=="string"||!caseId||
+     typeof followupId!=="string"||!followupId)return null;
+  if(!Array.isArray(state?.jobs)||state.jobs.filter(job=>job?.id===jobId).length!==1||
+     !Array.isArray(state?.quality))return null;
+  const cases=state.quality.filter(record=>record?.id===caseId);
+  if(cases.length!==1||cases[0].jobId!==jobId||
+     !["OPEN","CLOSED"].includes(cases[0].status))return null;
+  const followups=Array.isArray(cases[0].followUps)?cases[0].followUps:[];
+  if(followups.filter(item=>item?.id===followupId).length!==1)return null;
+  return {caseId,jobId,kind:"followup",id:followupId};
+}
 /* Direct links preserve the exact NCR identity, including closed cases.
  * No links are offered for a job without linked quality records.
  */
@@ -227,11 +255,15 @@ export function renderJobQualityEvidence(state,jobId){
   if(!cases.length)return '<p class="small muted">No fictional NCR evidence for this work order.</p>';
   return '<div class="quality-evidence-index">'+cases.map(record=>{
     const evidence=qualityCaseEvidenceSummary(record);
+    const disposition=qualityJobDispositionTarget(state,jobId,record.id);
     return '<div class="receipt"><button type="button" class="action secondary" '+
       'data-action="report-quality-case" data-id="'+h(record.id)+'">Open '+h(record.number)+'</button> '+
       '<span class="small">'+h(record.status)+' · '+h(evidence.inspections)+' inspections · '+
       h(evidence.correctiveActions)+' corrective actions · effectiveness: '+
       h(evidence.latestEffectiveness)+'</span>'+
+      (disposition?'<button type="button" class="action secondary" data-action="job-quality-disposition" data-case="'+
+        h(disposition.caseId)+'" data-job="'+h(disposition.jobId)+'" data-id="'+h(disposition.id)+
+        '">Disposition · '+h(record.disposition.decision)+'</button> ':"")+
       (Array.isArray(record.inspections)?record.inspections.map(inspection=>{
         const target=qualityJobInspectionTarget(state,jobId,record.id,inspection?.id);
         return target?'<button type="button" class="action secondary" data-action="job-quality-inspection" data-case="'+
@@ -243,6 +275,12 @@ export function renderJobQualityEvidence(state,jobId){
         return target?'<button type="button" class="action secondary" data-action="job-quality-corrective" data-case="'+
           h(target.caseId)+'" data-job="'+h(target.jobId)+'" data-id="'+h(target.id)+
           '">Corrective action '+h(index+1)+' · '+h(action.ownerRole)+'</button>':"";
+      }).join(" "):"")+
+      (Array.isArray(record.followUps)?" "+record.followUps.map((item,index)=>{
+        const target=qualityJobFollowupTarget(state,jobId,record.id,item?.id);
+        return target?'<button type="button" class="action secondary" data-action="job-quality-followup" data-case="'+
+          h(target.caseId)+'" data-job="'+h(target.jobId)+'" data-id="'+h(target.id)+
+          '">Case follow-up '+h(index+1)+'</button>':"";
       }).join(" "):"")+'</div>';
   }).join("")+'</div>';
 }
@@ -388,7 +426,10 @@ export function renderJobRegisterInspectionEvidence(state,jobId){
       qualityJobInspectionTarget(state,jobId,record.id,item?.id)).length;
     const actions=(Array.isArray(record.correctiveActions)?record.correctiveActions:[])
       .filter(item=>qualityJobCorrectiveTarget(state,jobId,record.id,item?.id)).length;
-    return total+inspections+actions;
+    const followups=(Array.isArray(record.followUps)?record.followUps:[])
+      .filter(item=>qualityJobFollowupTarget(state,jobId,record.id,item?.id)).length;
+    const disposition=qualityJobDispositionTarget(state,jobId,record.id)?1:0;
+    return total+inspections+actions+followups+disposition;
   },0);
   if(!count)return "";
   return '<details class="job-inspection-details"><summary>Quality evidence ('+count+')</summary>'+
