@@ -118,6 +118,122 @@ def main():
                     return !event.defaultPrevented;
                 }""")
                 assert native_menu, "Native context menu must remain available in editable fields"
+
+                # A job's dashboard NCR badge must open its canonical case, even
+                # when the global job selector currently points to another job.
+                page.locator('#module-nav a[data-nav="dashboard"]').click()
+                page.wait_for_function("location.hash === '#dashboard'")
+                other_job = page.locator("#job-context option").evaluate_all(
+                    "(options, selected) => options.map(o => o.value).find(v => v !== selected)", job_id
+                )
+                assert other_job, "Synthetic seed must have another work order"
+                page.locator("#job-context").select_option(other_job)
+                dashboard_badge = page.locator(
+                    f'button[data-action="job-quality-cases"][data-id="{job_id}"]'
+                )
+                expect(dashboard_badge).to_have_count(1)
+                dashboard_badge.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+                expect(
+                    panel.locator(
+                        f'[data-evidence-kind="inspection"][data-evidence-id="{inspection_id}"]'
+                    ).first
+                ).to_be_visible()
+
+                # Search is an independent entry point into the same working
+                # Quality Control screen, not a second copy of the NCR data.
+                page.locator('#module-nav a[data-nav="jobs"]').click()
+                page.wait_for_function("location.hash === '#jobs'")
+                search = page.locator("#menu-search")
+                search.fill("effectiveness review")
+                expect(page.locator('#module-nav a[data-nav="quality"]')).to_be_visible()
+                search.press("Enter")
+                page.wait_for_function("location.hash === '#quality'")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+                expect(
+                    panel.locator(
+                        f'[data-evidence-kind="effectiveness"][data-evidence-id="{review_id}"]'
+                    ).first
+                ).to_be_visible()
+                assert search.input_value() == "", "Successful search navigation should clear its query"
+
+                # Existing inline part records provide a real Open with entry
+                # point even while the separate record-row fix remains in #48.
+                page.locator('#module-nav a[data-nav="jobs"]').click()
+                page.wait_for_function("location.hash === '#jobs'")
+                part_record = page.locator('#view .context-record[data-ctx-type="part"]').first
+                expect(part_record).to_be_visible()
+                part_number = part_record.get_attribute("data-ctx-id")
+                assert part_number, "Part Open with requires a canonical fictional part"
+                job_count = page.locator("#job-context option").count()
+                record_menu = page.locator("#axiom-record-menu")
+
+                # The app must not hijack native browser menus on links,
+                # Shift+right-click, or selected text.
+                native_link = page.locator("#view a.cell-link").first
+                native_link_result = native_link.evaluate("""el => {
+                    const event = new MouseEvent('contextmenu',
+                        {bubbles: true, cancelable: true, button: 2});
+                    el.dispatchEvent(event);
+                    return !event.defaultPrevented;
+                }""")
+                assert native_link_result, "Links must retain native right-click"
+                shifted_result = part_record.evaluate("""el => {
+                    const event = new MouseEvent('contextmenu',
+                        {bubbles: true, cancelable: true, button: 2, shiftKey: true});
+                    el.dispatchEvent(event);
+                    return !event.defaultPrevented;
+                }""")
+                assert shifted_result, "Shift+right-click must retain browser menu"
+                selected_text_result = part_record.evaluate("""el => {
+                    const selection = window.getSelection();
+                    const range = document.createRange();
+                    range.selectNodeContents(el);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                    const event = new MouseEvent('contextmenu',
+                        {bubbles: true, cancelable: true, button: 2});
+                    el.dispatchEvent(event);
+                    const preserved = !event.defaultPrevented;
+                    selection.removeAllRanges();
+                    return preserved;
+                }""")
+                assert selected_text_result, "Selected text must retain native context menu"
+                expect(record_menu).to_be_hidden()
+
+                # Both keyboard paths open the same real part actions.
+                part_record.focus()
+                part_record.press("Shift+F10")
+                expect(record_menu).to_be_visible()
+                expect(record_menu.locator(".record-menu-heading")).to_have_text(part_number)
+                entry_action = record_menu.get_by_role("menuitem", name="Job Entry (this part)")
+                expect(entry_action).to_be_visible()
+                page.keyboard.press("Escape")
+                expect(record_menu).to_be_hidden()
+                assert part_record.evaluate("el => document.activeElement === el"), (
+                    "Escape should return focus to the originating part"
+                )
+
+                part_record.press("ContextMenu")
+                expect(record_menu).to_be_visible()
+                record_menu.get_by_role("menuitem", name="Job Entry (this part)").click()
+                expect(record_menu).to_be_hidden()
+                expect(page.locator('[data-form="new-job"] select[name="part"]')).to_have_value(part_number)
+                expect(page.locator(".context-trail")).to_contain_text(part_number)
+                assert page.locator("#job-context option").count() == job_count, (
+                    "Opening Job Entry must not silently create a work order"
+                )
+                # Returning to Quality must show the original canonical case,
+                # not create a second quality register.
+                page.locator('#module-nav a[data-nav="quality"]').click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
                 assert not page_errors, f"Browser JavaScript errors: {page_errors}"
                 print("PASS: 3 evidence types, closed-case return focus, wrong-job guard, native editable context menu")
             finally:
