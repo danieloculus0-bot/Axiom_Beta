@@ -12,7 +12,7 @@ import {renderHr,renderMorale} from "./workforce-view.mjs";
 import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
-import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection} from "./quality-case.mjs";
+import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction} from "./quality-case.mjs";
 import {renderQualityCase} from "./quality-case-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
@@ -651,6 +651,16 @@ document.addEventListener("submit",event=>{
         transact(recordQualityInspection(state,selectedQualityId,String(f.get("stage")),
           String(f.get("step")),String(f.get("result")),String(f.get("observation"))),
           "Fictional inspection observation saved on this NCR and routed step. No job release.");break;
+      case "quality-corrective-action":
+        selectedQualityId=String(f.get("id"));
+        transact(recordQualityCorrectiveAction(state,selectedQualityId,String(f.get("ownerRole")),
+          String(f.get("description")),String(f.get("inspectionId"))),
+          "Fictional corrective action linked to this NCR. No job release.");break;
+      case "quality-effectiveness":
+        selectedQualityId=String(f.get("id"));
+        transact(reviewQualityCorrectiveAction(state,selectedQualityId,String(f.get("actionId")),
+          String(f.get("result")),String(f.get("note"))),
+          "Fictional effectiveness review recorded. No automatic change to case closure.");break;
       case "quality-disposition":
         selectedQualityId=String(f.get("id"));
         transact(recordQualityDisposition(state,selectedQualityId,String(f.get("decision")),String(f.get("note"))),

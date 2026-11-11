@@ -22,6 +22,8 @@ test("search finds working screens by label, synonym and group",()=>{
  assert.equal(searchMenu("training matrix")[0].id,"hr");
  assert.equal(searchMenu("QCDSM")[0].id,"qcdsm");
  assert.equal(searchMenu("root cause")[0].id,"qcdsm");
+ assert.equal(searchMenu("corrective action")[0].id,"quality");
+ assert.equal(searchMenu("effectiveness review")[0].id,"quality");
  assert.ok(searchMenu("manufacturing").some(x=>x.id==="routing"));
  assert.equal(searchMenu("make a fake dummy module").length,0);
  assert.equal(searchMenu("").length,MENU_ITEMS.length);

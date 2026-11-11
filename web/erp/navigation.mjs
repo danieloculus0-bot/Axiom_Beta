@@ -20,7 +20,7 @@ export const MENU_GROUPS=[
     {id:"requests",label:"Request Desk",icon:"☑",hint:"Purchase and maintenance requests, assignments, follow-ups",keywords:["purchase request","requisition","purchase requisition","maintenance request","requests","follow up","assigned","overdue","request tracker"]}
   ]},
   {id:"operations",label:"Quality & Assets",items:[
-    {id:"quality",label:"Quality Control",icon:"◉",hint:"Hold and release examples",keywords:["NCR","inspection","nonconformance"]},
+    {id:"quality",label:"Quality Control",icon:"◉",hint:"Hold and release examples",keywords:["NCR","inspection","nonconformance","corrective action","CAPA","CAR","effectiveness review"]},
     {id:"pm",label:"PM Tracker",icon:"⚙",hint:"Scheduled asset maintenance",keywords:["preventive maintenance","machine","asset","due date"]}
   ]},
   {id:"people",label:"People & Culture",items:[
