@@ -5,6 +5,7 @@ import {
   setDrawingRevision,emulatorFetchJobs,emulatorFetchRouting,syncEmulatorJob,postEmulatorTicket
 } from "./engine.mjs";
 import {startSession,stopSession,durationSeconds,sessionsCsv} from "../ewi/engine.mjs";
+import {recoverBrowserSave,persistBrowserSave} from "./storage-journal.mjs";
 import {renderPm} from "./pm-view.mjs";
 import {reviewPmWorkCenterAssociation} from "./pm-work-center-link.mjs";
 import {renderRequestDesk} from "./request-view.mjs";
@@ -42,6 +43,7 @@ let qcdsmDepartment="Assembly";
 let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""},routeDraft=null,capacityReview=null;
 function load(){
   try{
+    recoverBrowserSave(localStorage,[ERP_KEY,CLOCK_KEY,WORKFORCE_KEY]);
     const raw=localStorage.getItem(ERP_KEY);
     if(raw && raw.length<1800000) state=validateState(JSON.parse(raw));
     const clocks=localStorage.getItem(CLOCK_KEY);
@@ -65,7 +67,7 @@ function load(){
 }
 function persist(){
   if(!stored) return;
-  try{localStorage.setItem(ERP_KEY,JSON.stringify(state));localStorage.setItem(CLOCK_KEY,JSON.stringify(sessions));localStorage.setItem(WORKFORCE_KEY,JSON.stringify(workforce));}
+  try{persistBrowserSave(localStorage,[ERP_KEY,CLOCK_KEY,WORKFORCE_KEY],[state,sessions,workforce]);}
   catch{stored=false;flash="Local storage unavailable. Export records before refreshing.";}
 }
 function transact(next,message){state=next;capacityReview=null;flash=message;persist();syncJobUrl();render();}
