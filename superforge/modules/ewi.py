@@ -210,6 +210,34 @@ def _sql_operation_review_html(job_id: int) -> str:
         )
     elif status == "stale_identity" and evidence.get("changed_fields"):
         html += "<p class='sub'>Changed evidence fields: " + _e(", ".join(evidence["changed_fields"])) + "</p>"
+    # The SQL candidate alone is not an EWI route/drawing match. Reuse the
+    # separately tested, read-only cross-source contract on the same page.
+    if current and evidence.get("event_id"):
+        from ..integrations.ewi_operation_alignment import inspect_ewi_operation_alignment
+
+        try:
+            alignment = inspect_ewi_operation_alignment(job_id, evidence["event_id"])
+        except (OSError, sqlite3.Error, ValueError, KeyError):
+            alignment = {"status": "evidence_unavailable"}
+        alignment_status = alignment.get("status", "evidence_unavailable")
+        html += (
+            "<p class='sub'>EWI route and drawing check: <code>" +
+            _e(alignment_status) + "</code></p>"
+        )
+        if alignment_status == "cross_source_candidate_review_required":
+            html += (
+                "<p>Local EWI step " + _e(alignment["ewi_step"]) +
+                " and checksum-verified drawing #" + _e(alignment["drawing_document_id"]) +
+                " / rev " + _e(alignment["drawing_revision"]) +
+                " match this Methods candidate for manual review only. "
+                "No external ERP operation identity or released-route approval is established.</p>"
+            )
+        else:
+            html += (
+                "<p class='sub'>No EWI step is confirmed by both local routing and "
+                "the controlled drawing. Check the job packet before relying on "
+                "the Methods candidate.</p>"
+            )
     return html + "</section>"
 
 def save_remote_routes(job_id: int, routes: list[dict]) -> int:

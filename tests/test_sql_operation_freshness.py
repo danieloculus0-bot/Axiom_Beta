@@ -460,3 +460,96 @@ def test_ewi_alignment_receipt_loss_replay_and_restart(tmp_path, monkeypatch):
         assert con.execute(
             "SELECT status FROM event_ledger WHERE event_id=?", (event_id,)
         ).fetchone()[0] == "delivered"
+
+
+def test_ewi_operator_panel_shows_sql_route_drawing_alignment_and_recovery(tmp_path, monkeypatch):
+    """Operator sees verified local evidence, not a claimed external route approval."""
+    import hashlib
+    from superforge.app import create_app
+    from superforge.modules.ewi import save_remote_routes
+
+    client, path, cid, job_id, part_id, plan_id, op_id = _setup(tmp_path, monkeypatch)
+    result = IntegrationService().pull(cid, "job", actor="synthetic-panel")
+    assert (result["applied"], result["errors"]) == (1, 0)
+    with db() as con:
+        event_id = _event_id(con, job_id)
+        action_id = con.execute(
+            "SELECT id FROM workflow_actions WHERE event_id=? AND workflow_key='job-change'",
+            (event_id,),
+        ).fetchone()[0]
+
+    url = f"/ewi/jobs/{job_id}"
+    no_packet = client.get(url).get_data(as_text=True)
+    assert "current_review_candidate" in no_packet
+    assert "EWI route and drawing check: <code>ewi_packet_not_ready</code>" in no_packet
+    assert "Local EWI step 10 and checksum-verified drawing" not in no_packet
+
+    root = tmp_path / "fictional-controlled-drawings"
+    root.mkdir()
+    monkeypatch.setenv("AXIOM_EWI_DOCUMENT_ROOT", str(root))
+    pdf = root / "fictional.pdf"
+    original = b"%PDF-1.4\\n% Synthetic operator panel fixture\\n%%EOF\\n"
+    pdf.write_bytes(original)
+    with db() as con:
+        drawing_id = int(con.execute(
+            """INSERT INTO documents
+               (document_number,title,revision,document_type,status,part_id,job_id,storage_reference,sha256)
+               VALUES('SYN-PANEL-001','Fictional controlled drawing','A','drawing','released',?,?,?,?)""",
+            (part_id, job_id, "fictional.pdf", hashlib.sha256(original).hexdigest()),
+        ).lastrowid)
+    route = {"step": "10", "operation": "SYN-OP-10", "part_number": "SYN-FRESH-PART-001",
+             "external_id": "SYN-PANEL-ROUTE-10"}
+    assert save_remote_routes(job_id, [route]) == 1
+    with db() as con:
+        before = tuple(con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                       for table in ("event_ledger", "workflow_actions",
+                                     "module_suggestions", "event_delivery_receipts"))
+    aligned = client.get(url).get_data(as_text=True)
+    assert "cross_source_candidate_review_required" in aligned
+    assert f"Local EWI step 10 and checksum-verified drawing #{drawing_id} / rev A" in aligned
+    assert f"Operation candidate #{op_id}" in aligned
+    assert "No external ERP operation identity or released-route approval" in aligned
+    with db() as con:
+        after = tuple(con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                      for table in ("event_ledger", "workflow_actions",
+                                    "module_suggestions", "event_delivery_receipts"))
+        assert before == after
+
+    assert save_remote_routes(job_id, [route, dict(route, step="20")]) == 2
+    ambiguous = client.get(url).get_data(as_text=True)
+    assert "ambiguous_ewi_operation" in ambiguous
+    assert "Local EWI step 10 and checksum-verified drawing" not in ambiguous
+    save_remote_routes(job_id, [route])
+
+    pdf.write_bytes(b"%PDF-1.4\\n% Tampered fictional fixture\\n%%EOF\\n")
+    tampered = client.get(url).get_data(as_text=True)
+    assert "ewi_packet_not_ready" in tampered
+    assert "Local EWI step 10 and checksum-verified drawing" not in tampered
+    pdf.write_bytes(original)
+
+    with db() as con:
+        con.execute(
+            "DELETE FROM event_delivery_receipts WHERE event_id=? AND handler_key=?",
+            (event_id, event_bus._handler_key(event_bus._job_changed)),
+        )
+    missing_receipt = client.get(url).get_data(as_text=True)
+    assert "consumer_evidence_incomplete" in missing_receipt
+    assert "Local EWI step 10 and checksum-verified drawing" not in missing_receipt
+    event_bus.deliver_staged(event_id)
+    client = create_app({"TESTING": True}).test_client()
+    restored = client.get(url).get_data(as_text=True)
+    assert "cross_source_candidate_review_required" in restored
+    with db() as con:
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE event_id=? AND workflow_key='job-change'",
+            (event_id,),
+        ).fetchone()[0] == 1
+        assert con.execute(
+            "SELECT id FROM workflow_actions WHERE event_id=? AND workflow_key='job-change'",
+            (event_id,),
+        ).fetchone()[0] == action_id
+        assert con.execute(
+            "SELECT status FROM event_ledger WHERE event_id=?", (event_id,),
+        ).fetchone()[0] == "delivered"
+    repeat = IntegrationService().pull(cid, "job", actor="synthetic-panel-repeat")
+    assert (repeat["applied"], repeat["skipped"], repeat["errors"]) == (0, 1, 0)
