@@ -107,8 +107,16 @@ def create_app(test_config:dict|None=None)->Flask:
     register_iso_hungry_logic()
     register_collaboration_logic()
     register_executive_logic()
-    # Recover committed, undelivered SQL events after a crash, once consumers are registered.
-    recover_undelivered(limit=1000)
+    # Replay bounded pages of committed events after subscribers register.
+    # A failing early subscriber must not starve later committed changes.
+    cursor=0
+    for _ in range(10):  # at most 10,000 distinct events per startup
+        batch=recover_undelivered(limit=1000,after_id=cursor)
+        if not batch["events"]:
+            break
+        cursor=batch["last_id"]
+        if batch["events"]<1000:
+            break
     app=Flask(__name__)
     app.config.update(SECRET_KEY=application_secret())
     if test_config: app.config.update(test_config)
