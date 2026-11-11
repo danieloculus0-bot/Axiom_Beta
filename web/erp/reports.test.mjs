@@ -85,7 +85,7 @@ test("quality register reports canonical NCR inspection, disposition and correct
  assert.deepEqual(contextRelated(state,{type:"quality",id},"quality"),["sample-1001"]);
  const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
  assert.ok(app.includes('data-action="report-quality-case"'));
- assert.match(app,/openContext\(\{type:"quality",id\},\{view:"quality",intent:"quality"\}\)/);
+ assert.ok(app.includes('openContext({type:"quality",id:target.caseId},{view:"quality",intent:"quality"})'));
 });
 test("quality report retains legacy case records and chooses latest timestamped effectiveness evidence",()=>{
  const state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
@@ -241,7 +241,7 @@ test("quality evidence links escape legacy text and use existing record-aware na
  assert.ok(app.includes("renderJobQualityEvidence(state,j.id)"));
  assert.ok(app.includes("qualityCaseEvidenceSummary(q)"));
  assert.ok(app.includes('if(action==="report-quality-case")'));
- assert.ok(app.includes('openContext({type:"quality",id},{view:"quality",intent:"quality"})'));
+ assert.ok(app.includes('openContext({type:"quality",id:target.caseId},{view:"quality",intent:"quality"})'));
 });
 
 test("quality evidence links resolve exact inspection, corrective action and effectiveness receipts",()=>{
