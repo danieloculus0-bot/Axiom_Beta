@@ -12,6 +12,19 @@ let sessions = [];
 let storageEnabled = false;
 let lastMessage = "";
 
+// Preserve the selected synthetic job when moving between the ERP and EWI pages.
+function syncJobLinks() {
+  if (!job || !jobs.some(item=>item.id===job.id)) return;
+  const url = new URL(location.href);
+  url.searchParams.set("job",job.id);
+  if (url.search !== location.search)
+    history.replaceState(history.state,"",url.pathname+url.search+url.hash);
+  document.querySelectorAll('a[href^="../erp/"]').forEach(link=>{
+    const target = new URL(link.getAttribute("href"),location.href);
+    target.searchParams.set("job",job.id);
+    link.href=target.href;
+  });
+}
 function issuesFor(item) {
   return erpState ? packetIssues(erpState, item.id) : evaluatePacket(item);
 }
@@ -37,6 +50,7 @@ function refreshJobs() {
   select.replaceChildren();
   jobs.forEach(j => select.add(new Option(j.jobNumber + " | " + j.partNumber + " | Rev " + j.revision, j.id)));
   select.value = job.id;
+  syncJobLinks();
 }
 
 function genericDrawing(item) {
@@ -290,6 +304,7 @@ function install() {
   $("job-select").addEventListener("change", e=>{
     job = jobs.find(j=>j.id===e.target.value) || jobs[0];
     selectedStep = job.routing.operations[0].step;
+    syncJobLinks();
     renderJob();
     showMessage("");
   });
