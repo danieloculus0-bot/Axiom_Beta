@@ -4,7 +4,7 @@ import {seedState,makePurchaseOrder,receivePurchaseOrder,raiseQuality,createJob}
 import {makeReport,reportCsv,REPORTS} from "./reports.mjs";
 import {startSession,stopSession} from "../ewi/engine.mjs";
 import {completePmTask} from "./pm.mjs";
-import {recordQualityInspection,recordQualityDisposition,closeReviewedQuality,
+import {qualityJobSummary,jobQualityTarget,recordQualityInspection,recordQualityDisposition,closeReviewedQuality,
   recordQualityCorrectiveAction,reviewQualityCorrectiveAction,recordQualityFollowup} from "./quality-case.mjs";
 import {contextActions,contextRelated} from "./context-actions.mjs";
 import {readFileSync} from "node:fs";
@@ -96,4 +96,64 @@ test("quality report retains legacy case records and chooses latest timestamped 
  assert.equal(report.rows[0][7],0);
  assert.equal(report.rows[0][10],0);
  assert.equal(report.columns.length,report.rows[0].length);
+});
+
+test("work order readiness derives NCR and effectiveness status from the same canonical cases",()=>{
+ let state=seedState();
+ let summary=qualityJobSummary(state,"sample-1001");
+ assert.deepEqual([summary.total,summary.open,summary.correctiveActions,summary.latestEffectiveness],
+   [0,0,0,"NO ACTION"]);
+ state=raiseQuality(state,"sample-1001","Generic drawing revision conflict",at);
+ state=raiseQuality(state,"sample-1002","Generic drawing revision conflict",at);
+ const id=state.quality[0].id,step=state.jobs[0].routing.operations[0].step;
+ state=recordQualityInspection(state,id,"FIRST_PIECE",step,"FAIL","Fictional sample observation",later);
+ state=recordQualityCorrectiveAction(state,id,"QUALITY","Review fictional example process",
+   state.quality[0].inspections[0].id,"2026-10-30T12:01:00.000Z");
+ const actionId=state.quality[0].correctiveActions[0].id;
+ state=reviewQualityCorrectiveAction(state,id,actionId,"EFFECTIVE","Initial fictional check",
+   "2026-10-30T12:02:00.000Z");
+ state=recordQualityDisposition(state,id,"SCRAP","Fictional disposition evidence",
+   "2026-10-30T12:03:00.000Z");
+ state=closeReviewedQuality(state,id,"2026-10-30T12:04:00.000Z");
+ state=reviewQualityCorrectiveAction(state,id,actionId,"NOT_EFFECTIVE","Fictional later review",
+   "2026-10-30T12:05:00.000Z");
+ summary=qualityJobSummary(state,"sample-1001");
+ assert.deepEqual([summary.total,summary.open,summary.inspections,summary.correctiveActions,summary.latestEffectiveness],
+   [1,0,1,1,"NOT_EFFECTIVE"]);
+ assert.equal(summary.cases[0].id,id);
+ const report=makeReport(state,[],"jobs");
+ assert.deepEqual(report.rows[0].slice(7),[1,0,1,"NOT_EFFECTIVE"]);
+ assert.deepEqual(report.rows[1].slice(7),[1,1,0,"NO ACTION"]);
+ assert.equal(report.rows[0][6],"Example checks passed");
+ assert.match(report.rows[1][6],/quality hold/);
+ assert.equal(report.columns.length,report.rows[0].length);
+ assert.match(reportCsv(report),/NOT_EFFECTIVE/);
+});
+test("job-linked NCR entry points preserve job and case identity and hide empty links",()=>{
+ const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
+ assert.ok(app.includes('function jobQualityCell(j)'));
+ assert.ok(app.includes('if(!summary.total)return'));
+ assert.ok(app.split("jobQualityCell(j)").length-1>=4);
+ assert.ok(app.includes('if(action==="job-quality-cases")'));
+ assert.ok(app.includes('selectedContext={type:"job",id:target.jobId}'));
+ assert.ok(app.includes('selectedQualityId=target.caseId'));
+ assert.ok(app.includes('if(view==="quality"&&selectedContext?.type==="job")'));
+ assert.ok(app.includes('if(selected.id==="jobs"&&col===7&&Number(value)>0)'));
+});
+
+test("job quality navigation target selects a real open case before closed history",()=>{
+ let state=seedState();
+ assert.equal(jobQualityTarget(state,"sample-1001"),null);
+ assert.equal(jobQualityTarget(state,"not-a-job"),null);
+ state=raiseQuality(state,"sample-1001","Generic drawing revision conflict",at);
+ state=raiseQuality(state,"sample-1001","Generic drawing revision conflict",later);
+ const first=state.quality[0].id,second=state.quality[1].id;
+ assert.deepEqual(jobQualityTarget(state,"sample-1001"),{jobId:"sample-1001",caseId:first});
+ state=recordQualityDisposition(state,first,"SCRAP","Fictional disposition",later);
+ state=closeReviewedQuality(state,first,"2026-10-30T12:01:00.000Z");
+ assert.equal(jobQualityTarget(state,"sample-1001").caseId,second);
+ state=recordQualityDisposition(state,second,"SCRAP","Fictional disposition","2026-10-30T12:02:00.000Z");
+ state=closeReviewedQuality(state,second,"2026-10-30T12:03:00.000Z");
+ assert.equal(jobQualityTarget(state,"sample-1001").caseId,first);
+ assert.equal(jobQualityTarget(state,"sample-1002"),null);
 });
