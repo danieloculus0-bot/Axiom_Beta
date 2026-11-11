@@ -9,6 +9,8 @@ export function qualityEvidenceTarget(record,kind,id){
   if(!record||typeof record!=="object"||typeof id!=="string"||!id)return null;
   const inspections=Array.isArray(record.inspections)?record.inspections:[];
   const actions=Array.isArray(record.correctiveActions)?record.correctiveActions:[];
+  if(kind==="disposition"&&id===record.id&&typeof record.disposition?.decision==="string"&&
+     record.disposition.decision)return {kind,id};
   if(kind==="inspection"&&inspections.some(item=>item?.id===id))return {kind,id};
   if(kind==="followup"&&Array.isArray(record.followUps)&&
      record.followUps.some(item=>item?.id===id))return {kind,id};
@@ -140,9 +142,10 @@ export function renderQualityCase(state,id){
     '<p class="small">Linked work order: <b>'+h(j?.jobNumber||"Missing fictional job")+'</b> · '+h(q.reason)+
     '. Browser-local demonstration only. No production disposition or release authority.</p>'+
     '<div class="controls">'+links+'</div>'+
-    '<div class="receipt"><b>Recorded fictional disposition:</b> '+
+    '<div class="receipt"'+(disp?evidenceAttrs("disposition",q.id):"")+'> <b>Recorded fictional disposition:</b> '+
     (disp?h(QUALITY_DISPOSITIONS.find(item=>item.id===disp.decision)?.label||disp.decision)+
-      ' · '+h(disp.note)+' · '+h(disp.recordedAt):"Not recorded. Case remains on hold.")+'</div>';
+      ' · '+h(disp.note)+' · '+h(disp.recordedAt):"Not recorded. Case remains on hold.")+
+    (disp?evidenceWorkOrderButton(state,q,"disposition",q.id):"")+'</div>';
   if(q.status==="OPEN"&&operations.length){
     html+='<h3>Fictional inspection observation</h3>'+
       '<p class="small">Record an illustrative check on a routed operation. PASS does not release a job, close a case or certify inspection.</p>'+
