@@ -12,6 +12,53 @@ from ..modules.ewi import packet
 from .operation_freshness import inspect_operation_event
 
 
+
+def _controlled_revision_review_gate(job_id: int) -> dict | None:
+    """Fail closed on any recorded EZ FAIR EWI revision review for this job.
+
+    Completing a workflow action records a human task state, not evidence that
+    the controlled drawing, Methods source and EWI routing were reconciled.
+    Existing EWI routes have no revision-scoped provenance to verify that.
+    Until a separately tested reconciliation contract exists, even a completed
+    action (or an unverified output_json claim) cannot restore alignment.
+    This read-only guard never changes routes, drawings or workflow actions.
+    """
+    with db() as con:
+        con.execute("PRAGMA query_only=ON")
+        action = con.execute(
+            """SELECT a.id,a.status,a.event_id,e.event_type,e.source_module
+               FROM workflow_actions a
+               LEFT JOIN event_ledger e ON e.event_id=a.event_id
+               WHERE a.workflow_key='controlled-drawing-ewi-review'
+                 AND a.target_module='ewi'
+                 AND a.entity_type='job' AND a.entity_id=?
+               ORDER BY CASE WHEN a.status='open' THEN 0 ELSE 1 END,
+                        a.id DESC LIMIT 1""",
+            (str(job_id),),
+        ).fetchone()
+    if action is None:
+        return None
+    verified = (action["event_type"] == "fai.imported"
+                and action["source_module"] == "ezfair")
+    is_open = action["status"] == "open"
+    return {
+        "status": ("controlled_revision_review_pending" if is_open
+                   else "controlled_revision_reconciliation_unverified"),
+        "revision_review_action_id": int(action["id"]),
+        "revision_review_action_status": action["status"],
+        "revision_review_source_event_id": action["event_id"] if verified else None,
+        "limitation": (
+            "An open EZ FAIR controlled drawing revision review requires human "
+            "reconciliation before EWI operation alignment can be offered. "
+            if is_open else
+            "Closing a drawing revision review does not verify the current "
+            "drawing, Methods source or revision-scoped EWI route. Alignment "
+            "remains unavailable until independent reconciliation evidence "
+            "can be verified. "
+        ) + "No released drawing, route or clocking state was changed.",
+    }
+
+
 def inspect_ewi_operation_alignment(job_id: int, event_id: str) -> dict:
     """Fail closed unless current SQL evidence, one route and a real PDF agree."""
     result = {
@@ -31,6 +78,13 @@ def inspect_ewi_operation_alignment(job_id: int, event_id: str) -> dict:
         evidence = inspect_operation_event(job_id, event_id)
         if evidence["status"] != "current_review_candidate":
             result["status"] = evidence["status"]
+            return result
+
+        # PR #106's verified FAI revision review is a separate producer. A
+        # still-open review invalidates an otherwise current SQL/route match.
+        pending = _controlled_revision_review_gate(job_id)
+        if pending:
+            result.update(pending)
             return result
 
         ewi = packet(job_id)
@@ -90,6 +144,13 @@ def inspect_ewi_operation_alignment(job_id: int, event_id: str) -> dict:
                 or second["routes"] != ewi["routes"]
                 or second["drawing"] != drawing):
             result["status"] = "ewi_evidence_changed_during_read"
+            return result
+
+        # Recheck after PDF I/O, so a revision review created during the
+        # alignment read cannot be overlooked by the final response.
+        pending = _controlled_revision_review_gate(job_id)
+        if pending:
+            result.update(pending)
             return result
 
         result.update({
