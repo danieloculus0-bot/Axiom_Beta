@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {seedState,makePurchaseOrder,receivePurchaseOrder,raiseQuality,createJob} from "./engine.mjs";
 import {makeReport,reportCsv,REPORTS} from "./reports.mjs";
 import {qualityCaseTimeline} from "./quality-timeline.mjs";
-import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionRoutingStatus,qualityEvidenceWorkOrderTarget} from "./quality-case-view.mjs";
+import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionRoutingStatus,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction} from "./quality-case-view.mjs";
 import {startSession,stopSession} from "../ewi/engine.mjs";
 import {completePmTask} from "./pm.mjs";
 import {qualityJobSummary,jobQualityTarget,recordQualityInspection,recordQualityDisposition,closeReviewedQuality,
@@ -477,4 +477,73 @@ test("NCR evidence work-order actions are guarded for legacy, missing and unrela
   assert.ok(app.includes('selectedQualityId=target.caseId'));
   assert.ok(app.includes('rememberJob(target.jobId)'));
   assert.ok(app.includes('if(action==="quality-routing-step")'));
+});
+
+test("NCR evidence return keeps exact inspection, corrective and effectiveness identity on the same work order",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
+  const caseId=state.quality[0].id,step=state.jobs[0].routing.operations[0].step;
+  state=recordQualityInspection(state,caseId,"FIRST_PIECE",step,"FAIL",
+    "Synthetic first-piece evidence","2026-10-30T12:01:00Z");
+  const inspectionId=state.quality[0].inspections[0].id;
+  state=recordQualityCorrectiveAction(state,caseId,"QUALITY",
+    "Synthetic corrective action",inspectionId,"2026-10-30T12:02:00Z");
+  const actionId=state.quality[0].correctiveActions[0].id;
+  state=reviewQualityCorrectiveAction(state,caseId,actionId,"EFFECTIVE",
+    "Synthetic effectiveness review","2026-10-30T12:03:00Z");
+  const reviewId=state.quality[0].correctiveActions[0].reviews[0].id;
+  state=recordQualityDisposition(state,caseId,"SCRAP","Synthetic disposition","2026-10-30T12:04:00Z");
+  state=closeReviewedQuality(state,caseId,"2026-10-30T12:05:00Z");
+  const before=JSON.stringify(state);
+  for(const [kind,id] of [["inspection",inspectionId],["corrective",actionId],["effectiveness",reviewId]]){
+    const selection={caseId,kind,id};
+    assert.deepEqual(qualityEvidenceReturnTarget(state,selection,"sample-1001"),
+      {caseId,kind,id,jobId:"sample-1001"});
+    assert.equal(qualityEvidenceReturnTarget(state,selection,"sample-1002"),null);
+    const html=qualityEvidenceReturnAction(state,selection,"sample-1001");
+    assert.ok(html.includes('data-action="quality-evidence-return"'));
+    assert.ok(html.includes('data-case="'+caseId+'" data-kind="'+kind+'" data-id="'+id+'"'));
+    assert.ok(html.includes("Return to NCR evidence"));
+    assert.equal(qualityEvidenceReturnAction(state,selection,"sample-1002"),"");
+  }
+  assert.equal(state.quality[0].status,"CLOSED");
+  assert.equal(JSON.stringify(state),before);
+});
+
+test("NCR return suppresses stale, cross-case, orphaned and legacy evidence",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
+  state=raiseQuality(state,"sample-1002","Generic drawing revision conflict",later);
+  const caseId=state.quality[0].id,otherId=state.quality[1].id;
+  state=recordQualityInspection(state,caseId,"FINAL_REVIEW",
+    state.jobs[0].routing.operations[0].step,"PASS",
+    "Synthetic observation","2026-10-30T12:01:00Z");
+  const id=state.quality[0].inspections[0].id;
+  const selection={caseId,kind:"inspection",id};
+  for(const invalid of [null,{}, {...selection,caseId:otherId},
+    {...selection,kind:"corrective"},{...selection,id:"unknown"}]){
+    assert.equal(qualityEvidenceReturnTarget(state,invalid,"sample-1001"),null);
+    assert.equal(qualityEvidenceReturnAction(state,invalid,"sample-1001"),"");
+  }
+  const orphan=structuredClone(state);
+  orphan.jobs=orphan.jobs.filter(job=>job.id!=="sample-1001");
+  assert.equal(qualityEvidenceReturnAction(orphan,selection,"sample-1001"),"");
+  const legacy=structuredClone(state);
+  legacy.quality[0].inspections=[{observation:"Synthetic legacy note"}];
+  assert.equal(qualityEvidenceReturnAction(legacy,selection,"sample-1001"),"");
+  const changed=structuredClone(state);
+  changed.jobs[0].routing.operations[0].center="CHANGED";
+  assert.ok(qualityEvidenceReturnAction(changed,selection,"sample-1001").includes("Return to NCR evidence"),
+    "Historical inspection remains readable even when current routing changes");
+});
+
+test("work-order return action is scoped and focuses original NCR evidence after navigation",()=>{
+  const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
+  assert.ok(app.includes('selectedQualityEvidence={caseId:target.caseId,kind:target.kind,id:target.id}'));
+  assert.ok(app.includes('qualityEvidenceReturnAction(state,selectedQualityEvidence,selectedJobId)'));
+  assert.ok(app.includes('if(action==="quality-evidence-return")'));
+  assert.ok(app.includes('selectedQualityEvidence?.id!==selection.id'));
+  assert.ok(app.includes('selectedQualityId=target.caseId'));
+  assert.ok(app.includes('pendingQualityFocus={caseId:target.caseId,kind:target.kind,id:target.id}'));
+  assert.ok(app.includes('panel?.dataset.caseId===focus.caseId'));
+  assert.ok(app.includes('element.dataset.evidenceKind===focus.kind&&element.dataset.evidenceId===focus.id'));
+  assert.ok(app.includes('target.focus({preventScroll:true})'));
 });

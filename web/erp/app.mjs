@@ -13,7 +13,7 @@ import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction,qualityJobSummary,jobQualityTarget} from "./quality-case.mjs";
-import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityEvidenceWorkOrderTarget} from "./quality-case-view.mjs";
+import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction} from "./quality-case-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
@@ -36,7 +36,7 @@ const stateViews={
 };
 let workforce=seedWorkforce();
 let qcdsmDepartment="Assembly";
-let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""},routeDraft=null,selectedQualityId="",pendingRoutingStep=null;
+let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""},routeDraft=null,selectedQualityId="",pendingRoutingStep=null,selectedQualityEvidence=null,pendingQualityFocus=null;
 function load(){
   try{
     const raw=localStorage.getItem(ERP_KEY);
@@ -203,6 +203,9 @@ function dashboard(){
 function jobsView(){
   let s=heading("Production / job management","Work orders",
     "Add a fictional work order from the prebuilt catalog, or import separate emulator jobs. No private file upload or real job data.");
+  if(selectedIntent==="evidence-work-order"&&selectedContext?.type==="quality"&&
+     selectedContext.id===selectedQualityEvidence?.caseId)
+    s+=qualityEvidenceReturnAction(state,selectedQualityEvidence,selectedJobId);
   s+='<section class="panel"><h2>Create a synthetic work order</h2><form class="controls" data-form="new-job">'+
     '<label>Generic catalog item<select name="part">'+CATALOG.map(c=>'<option value="'+h(c.partNumber)+'">'+h(c.partNumber)+' · Rev '+h(c.revision)+'</option>').join("")+'</select></label>'+
     '<label>Order quantity<input type="number" name="quantity" min="1" max="1000" value="12" required></label>'+
@@ -477,6 +480,21 @@ function render(){
   menu?.markActive(view);
   $("view").innerHTML='<div id="flash" role="status">'+h(flash)+'</div>'+contextBanner()+renderers[view]();
   applyContextFocus();
+  if(view==="quality"&&pendingQualityFocus){
+    const focus=pendingQualityFocus;
+    pendingQualityFocus=null;
+    const panel=document.getElementById("quality-case-detail");
+    if(panel?.dataset.caseId===focus.caseId&&
+       qualityEvidenceReturnTarget(state,focus,selectedJobId)){
+      const target=[...panel.querySelectorAll("[data-evidence-kind][data-evidence-id]")]
+        .find(element=>element.dataset.evidenceKind===focus.kind&&element.dataset.evidenceId===focus.id);
+      if(target){
+        target.setAttribute("tabindex","-1");
+        target.scrollIntoView({block:"center"});
+        target.focus({preventScroll:true});
+      }
+    }
+  }
   if(view==="routing"&&pendingRoutingStep){
     const focus=pendingRoutingStep;
     pendingRoutingStep=null;
@@ -536,7 +554,7 @@ document.addEventListener("click",event=>{
       if(navigator.clipboard?.writeText){navigator.clipboard.writeText(link).then(()=>{flash="Fictional machine link copied.";render();}).catch(()=>window.prompt("Copy demo machine link:",link));}
       else window.prompt("Copy demo machine link:",link);
     }
-    if(action==="clear-record-context"){selectedContext=null;selectedIntent="";flash="Record context cleared.";render();}
+    if(action==="clear-record-context"){selectedContext=null;selectedIntent="";selectedQualityEvidence=null;pendingQualityFocus=null;flash="Record context cleared.";render();}
     if(action==="morale-close")workforceTransact(closeDemoAction(workforce,id),"morale.review.completed",id+" / FICTIONAL","Fictional workforce risk review marked complete.");
     if(action==="morale-approve"||action==="morale-reject")workforceTransact(reviewDemoNomination(workforce,id,action==="morale-approve"?"APPROVED":"REJECTED"),"morale.recognition.reviewed",id+" / FICTIONAL","Demonstration recognition nomination reviewed.");
     if(action==="pm-csv") download(completionsCsv(state.pm),"text/csv;charset=utf-8","axiom-synthetic-pm-completions.csv");
@@ -594,9 +612,27 @@ document.addEventListener("click",event=>{
       selectedQualityId=target.caseId;
       selectedContext={type:"quality",id:target.caseId};
       selectedIntent="evidence-work-order";
+      selectedQualityEvidence={caseId:target.caseId,kind:target.kind,id:target.id};
       rememberJob(target.jobId);
       if(location.hash==="#jobs")render();
       else location.hash="#jobs";
+    }
+    if(action==="quality-evidence-return"){
+      const selection={caseId:button.dataset.case,kind:button.dataset.kind,id};
+      const target=qualityEvidenceReturnTarget(state,selection,selectedJobId);
+      if(currentView()!=="jobs"||selectedIntent!=="evidence-work-order"||
+         selectedContext?.type!=="quality"||selectedContext.id!==target?.caseId||
+         selectedQualityEvidence?.caseId!==selection.caseId||
+         selectedQualityEvidence?.kind!==selection.kind||
+         selectedQualityEvidence?.id!==selection.id)
+        throw Error("Original fictional NCR evidence is no longer available from this work order");
+      selectedQualityId=target.caseId;
+      pendingQualityFocus={caseId:target.caseId,kind:target.kind,id:target.id};
+      selectedQualityEvidence=null;
+      selectedIntent="evidence-return";
+      rememberJob(target.jobId);
+      if(location.hash==="#quality")render();
+      else location.hash="#quality";
     }
     if(action==="job-quality-cases"){
       const target=jobQualityTarget(state,id);
@@ -640,7 +676,7 @@ document.addEventListener("click",event=>{
       state,sessions,workforce},null,2),"application/json","axiom-erp-synthetic-demo.json");
     if(action==="export-csv")download(sessionsCsv(sessions),"text/csv;charset=utf-8","axiom-erp-demo-clock.csv");
     if(action==="reset" && confirm("Delete all fictional Axiom ERP and EWI clock records in this browser and reset the demo?")){
-      state=seedState();sessions=[];workforce=seedWorkforce();selectedContext=null;selectedIntent="";rememberJob(state.jobs[0].id);
+      state=seedState();sessions=[];workforce=seedWorkforce();selectedContext=null;selectedIntent="";selectedQualityEvidence=null;pendingQualityFocus=null;rememberJob(state.jobs[0].id);
       flash="Local demo reset to fictional starter records.";persist();render();
     }
   }catch(e){flash=e.message;render();}
