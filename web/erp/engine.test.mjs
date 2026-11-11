@@ -768,3 +768,77 @@ test("Report Center opens exact canonical NCR rows even when displayed numbers c
   assert.ok(app.includes('qualityReportCaseTarget(state,reportWithContext("quality").rows[rowIndex],rowIndex)'));
   assert.match(app,/target.caseId!==id/);
 });
+
+test("Quality Forge inspection evidence refuses ambiguous current routing steps",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
+  const caseId=state.quality[0].id;
+  const [first,second]=state.jobs[0].routing.operations;
+  const ambiguous=structuredClone(state);
+  ambiguous.jobs[0].routing.operations.push({
+    ...structuredClone(first),name:"Alternative fictional operation"
+  });
+  const before=JSON.stringify(ambiguous);
+  assert.throws(()=>recordQualityInspection(ambiguous,caseId,"FIRST_PIECE",first.step,
+    "FAIL","Synthetic first-piece observation",u),/unambiguous routed operation/);
+  assert.equal(JSON.stringify(ambiguous),before,
+    "Ambiguous route must not create evidence or append an event");
+  const html=renderQualityCase(ambiguous,caseId);
+  assert.match(html,/data-form="quality-inspection"/,
+    "A separate uniquely routed step remains usable");
+  assert.ok(!html.includes('<option value="'+first.step+'">'),
+    "Ambiguous step must not appear in the inspection form");
+  assert.ok(html.includes('<option value="'+second.step+'">'),
+    "Unambiguous step must remain available");
+  const recorded=recordQualityInspection(ambiguous,caseId,"IN_PROCESS",second.step,
+    "PASS","Synthetic unique-step observation",u);
+  assert.equal(recorded.quality[0].inspections.length,1);
+  assert.equal(recorded.quality[0].inspections[0].step,String(second.step));
+  assert.equal(recorded.quality[0].inspections[0].operation,second.name);
+  assert.equal(recorded.events.at(-1).type,"quality.inspection.recorded");
+
+  const blocked=structuredClone(ambiguous);
+  blocked.jobs[0].routing.operations=[
+    structuredClone(first),{...structuredClone(first),name:"Another fictional operation"}
+  ];
+  assert.doesNotMatch(renderQualityCase(blocked,caseId),
+    /data-form="quality-inspection"/,
+    "All-ambiguous routing must not advertise a nonfunctional inspection form");
+  assert.match(renderQualityCase(blocked,caseId),
+    /No uniquely identifiable routed operations/);
+  assert.throws(()=>recordQualityInspection(blocked,caseId,"FINAL_REVIEW",first.step,
+    "PASS","Synthetic blocked observation",u),/unambiguous routed operation/);
+  assert.equal(blocked.quality[0].inspections?.length??0,0);
+});
+
+test("Quality Forge new inspection evidence IDs cannot collide with sparse browser-local history",()=>{
+  const initial=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
+  const caseId=initial.quality[0].id,step=initial.jobs[0].routing.operations[0].step;
+  for(const historicalSuffix of [3,9]){
+    let state=recordQualityInspection(initial,caseId,"FIRST_PIECE",step,
+      "FAIL","Synthetic original observation",t);
+    const historicalId=caseId+"-inspection-"+historicalSuffix;
+    state.quality[0].inspections.push({
+      ...structuredClone(state.quality[0].inspections[0]),
+      id:historicalId,observation:"Synthetic historical observation"
+    });
+    const before=JSON.stringify(state),events=state.events.length;
+    const updated=recordQualityInspection(state,caseId,"IN_PROCESS",step,
+      "PASS","Synthetic new observation",u);
+    const newId=caseId+"-inspection-"+(historicalSuffix+1);
+    assert.equal(JSON.stringify(state),before,"New evidence must not mutate its input");
+    assert.deepEqual(updated.quality[0].inspections.map(item=>item.id),
+      [caseId+"-inspection-1",historicalId,newId]);
+    assert.equal(updated.events.length,events+1,"Exactly one new event is recorded");
+    assert.deepEqual(qualityJobInspectionTarget(updated,"sample-1001",caseId,newId),
+      {caseId,jobId:"sample-1001",kind:"inspection",id:newId});
+    assert.deepEqual(qualityInspectionCorrectiveTarget(updated,caseId,newId),
+      {caseId,inspectionId:newId,jobId:"sample-1001"});
+    const html=renderJobRegisterInspectionEvidence(updated,"sample-1001");
+    assert.ok(html.includes('data-id="'+newId+'"'),
+      "Work-order register must navigate to the newly recorded exact inspection");
+    const following=recordQualityInspection(updated,caseId,"FINAL_REVIEW",step,
+      "PASS","Synthetic next observation",u);
+    assert.equal(following.quality[0].inspections.at(-1).id,
+      caseId+"-inspection-"+(historicalSuffix+2));
+  }
+});

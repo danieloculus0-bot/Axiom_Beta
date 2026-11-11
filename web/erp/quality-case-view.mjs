@@ -370,6 +370,11 @@ export function renderQualityCase(state,id){
   const actions=Array.isArray(q.correctiveActions)?q.correctiveActions:[];
   const followups=Array.isArray(q.followUps)?q.followUps:[];
   const operations=Array.isArray(j?.routing?.operations)?j.routing.operations:[];
+  // Match the mutation guard: never offer duplicate or missing step IDs.
+  const selectableOperations=operations.filter(op=>
+    op?.step!==undefined&&String(op.step).trim()&&
+    operations.filter(other=>other?.step!==undefined&&
+      String(other.step)===String(op.step)).length===1);
   let html='<section class="panel" id="quality-case-detail" data-case-id="'+h(q.id)+'"><div class="panel-head"><h2 class="context-record" data-ctx-type="quality" data-ctx-id="'+h(q.id)+'" tabindex="0" title="Right-click for Open with">Quality Forge case · '+h(q.number)+'</h2><span class="tag">'+h(q.status)+'</span></div>'+
     '<p class="small">Linked work order: <b>'+h(j?.jobNumber||"Missing fictional job")+'</b> · '+h(q.reason)+
     '. Browser-local demonstration only. No production disposition or release authority.</p>'+
@@ -378,19 +383,21 @@ export function renderQualityCase(state,id){
     (disp?h(QUALITY_DISPOSITIONS.find(item=>item.id===disp.decision)?.label||disp.decision)+
       ' · '+h(disp.note)+' · '+h(disp.recordedAt):"Not recorded. Case remains on hold.")+
     (disp?evidenceWorkOrderButton(state,q,"disposition",q.id):"")+'</div>';
-  if(q.status==="OPEN"&&operations.length){
+  if(q.status==="OPEN"&&selectableOperations.length){
     html+='<h3>Fictional inspection observation</h3>'+
       '<p class="small">Record an illustrative check on a routed operation. PASS does not release a job, close a case or certify inspection.</p>'+
       '<form class="controls" data-form="quality-inspection">'+
       '<input type="hidden" name="id" value="'+h(q.id)+'">'+
       '<label>Check stage<select name="stage">'+QUALITY_INSPECTION_STAGES.map(item=>
         '<option value="'+h(item.id)+'">'+h(item.label)+'</option>').join("")+'</select></label>'+
-      '<label>Routed operation<select name="step">'+operations.map(op=>
+      '<label>Routed operation<select name="step">'+selectableOperations.map(op=>
         '<option value="'+h(op.step)+'">'+h(op.step)+' · '+h(op.name)+' ('+h(op.center)+')</option>').join("")+'</select></label>'+
       '<label>Observation result<select name="result">'+QUALITY_INSPECTION_RESULTS.map(result=>
         '<option value="'+h(result)+'">'+h(result.replaceAll("_"," "))+'</option>').join("")+'</select></label>'+
       '<label>Fictional observation<textarea name="observation" minlength="5" maxlength="500" required placeholder="Describe a generic sample observation."></textarea></label>'+
       '<button class="action secondary" type="submit">Record sample inspection</button></form>';
+  }else if(q.status==="OPEN"&&operations.length){
+    html+='<p class="small" role="note">No uniquely identifiable routed operations are available for a fictional inspection.</p>';
   }
   if(q.status==="OPEN"){
     html+='<form class="controls" data-form="quality-disposition">'+
