@@ -1,5 +1,5 @@
 /* One job-linked fictional quality case, using existing ERP context and events. */
-import {QUALITY_DISPOSITIONS,QUALITY_INSPECTION_STAGES,QUALITY_INSPECTION_RESULTS,QUALITY_ACTION_ROLES,QUALITY_EFFECTIVENESS_RESULTS} from "./quality-case.mjs";
+import {QUALITY_DISPOSITIONS,QUALITY_INSPECTION_STAGES,QUALITY_INSPECTION_RESULTS,QUALITY_ACTION_ROLES,QUALITY_EFFECTIVENESS_RESULTS,uniqueQualityCase} from "./quality-case.mjs";
 import {qualityCaseTimeline} from "./quality-timeline.mjs";
 const h=value=>String(value??"").replace(/[&<>"']/g,c=>({
   "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
@@ -68,11 +68,18 @@ export function qualityEffectivenessInspectionTarget(record,reviewId){
  * Never offer a generic or unrelated job when the evidence/job is missing.
  */
 export function qualityEvidenceWorkOrderTarget(state,caseId,kind,id){
-  if(!Array.isArray(state?.quality)||!Array.isArray(state?.jobs))return null;
-  const record=state.quality.find(item=>item?.id===caseId);
+  const record=uniqueQualityCase(state,caseId);
   if(!qualityEvidenceTarget(record,kind,id))return null;
-  const job=state.jobs.find(item=>item?.id===record.jobId);
-  return job?{caseId:record.id,kind,id,jobId:job.id}:null;
+  // Historical browser-local data may contain duplicate evidence IDs. Never
+  // open a work order (or offer a return link) by guessing which receipt won.
+  const matches=kind==="disposition"?1:
+    kind==="inspection"?(Array.isArray(record.inspections)?record.inspections:[]).filter(item=>item?.id===id).length:
+    kind==="followup"?(Array.isArray(record.followUps)?record.followUps:[]).filter(item=>item?.id===id).length:
+    kind==="corrective"?(Array.isArray(record.correctiveActions)?record.correctiveActions:[]).filter(item=>item?.id===id).length:
+    kind==="effectiveness"?(Array.isArray(record.correctiveActions)?record.correctiveActions:[])
+      .flatMap(action=>Array.isArray(action?.reviews)?action.reviews:[])
+      .filter(item=>item?.id===id).length:0;
+  return matches===1?{caseId:record.id,kind,id,jobId:record.jobId}:null;
 }
 /* A corrective-action draft may start only from an inspection on the same
  * open fictional NCR and its existing work order. No case or job is created.
@@ -288,14 +295,24 @@ export function qualityJobFollowupTarget(state,jobId,caseId,followupId){
 /* Direct links preserve the exact NCR identity, including closed cases.
  * No links are offered for a job without linked quality records.
  */
+/* Resolve a work-order NCR entry to one canonical case before advertising a link.
+ * The report-only action is deliberately not reused outside Report Center.
+ */
+export function qualityJobCaseTarget(state,jobId,caseId){
+  if(typeof jobId!=="string"||!jobId||typeof caseId!=="string"||!caseId)return null;
+  const record=uniqueQualityCase(state,caseId);
+  return record?.jobId===jobId?{caseId,jobId}:null;
+}
 export function renderJobQualityEvidence(state,jobId){
   const cases=state.quality.filter(record=>record.jobId===jobId);
   if(!cases.length)return '<p class="small muted">No fictional NCR evidence for this work order.</p>';
   return '<div class="quality-evidence-index">'+cases.map(record=>{
     const evidence=qualityCaseEvidenceSummary(record);
     const disposition=qualityJobDispositionTarget(state,jobId,record.id);
-    return '<div class="receipt"><button type="button" class="action secondary" '+
-      'data-action="report-quality-case" data-id="'+h(record.id)+'">Open '+h(record.number)+'</button> '+
+    const caseTarget=qualityJobCaseTarget(state,jobId,record.id);
+    return '<div class="receipt">'+(caseTarget?'<button type="button" class="action secondary" '+
+      'data-action="job-quality-case" data-job="'+h(caseTarget.jobId)+'" data-id="'+h(caseTarget.caseId)+
+      '">Open '+h(record.number)+'</button> ':'<span class="small muted">Case unavailable</span> ')+
       '<span class="small">'+h(record.status)+' · '+h(evidence.inspections)+' inspections · '+
       h(evidence.correctiveActions)+' corrective actions · effectiveness: '+
       h(evidence.latestEffectiveness)+'</span>'+
@@ -330,7 +347,7 @@ export function renderJobQualityEvidence(state,jobId){
   }).join("")+'</div>';
 }
 export function renderQualityCase(state,id){
-  const q=state.quality.find(record=>record.id===id);
+  const q=uniqueQualityCase(state,id);
   if(!q)return '<section class="panel" id="quality-case-detail"><h2>Case review</h2><p class="small">Select a fictional nonconformance above to review its linked record.</p></section>';
   const j=state.jobs.find(job=>job.id===q.jobId);
   const links=j?'<a class="action secondary" href="#jobs" data-job="'+h(j.id)+'">Work order</a> '+

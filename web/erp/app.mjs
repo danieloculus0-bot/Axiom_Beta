@@ -12,8 +12,8 @@ import {renderHr,renderMorale} from "./workforce-view.mjs";
 import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
-import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction,qualityJobSummary,jobQualityTarget} from "./quality-case.mjs";
-import {renderQualityCase,renderJobQualityEvidence,renderJobRegisterInspectionEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction,qualityJobInspectionTarget,qualityJobCorrectiveTarget,qualityJobFollowupTarget,qualityJobDispositionTarget,qualityJobEffectivenessTarget,qualityReportCaseTarget} from "./quality-case-view.mjs";
+import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction,qualityJobSummary,jobQualityTarget,uniqueQualityCase} from "./quality-case.mjs";
+import {renderQualityCase,renderJobQualityEvidence,renderJobRegisterInspectionEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction,qualityJobInspectionTarget,qualityJobCorrectiveTarget,qualityJobFollowupTarget,qualityJobDispositionTarget,qualityJobEffectivenessTarget,qualityReportCaseTarget,qualityJobCaseTarget} from "./quality-case-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
@@ -104,6 +104,7 @@ function jobState(j){return packetIssues(state,j.id).length?'<span class="tag wa
 function jobQualityCell(j){
   const summary=qualityJobSummary(state,j.id);
   if(!summary.total)return '<span class="small muted">No NCRs</span>';
+  if(!jobQualityTarget(state,j.id))return '<span class="small muted">NCR evidence unavailable</span>';
   return '<button type="button" class="action secondary" data-action="job-quality-cases" data-id="'+h(j.id)+
     '" title="Review fictional NCRs linked to this work order">'+
     h(summary.open+" open / "+summary.total+" NCR"+(summary.total===1?"":"s"))+'</button>';
@@ -355,9 +356,12 @@ function qualityView(){
       const record=getJob(state,q.jobId),evidence=qualityCaseEvidenceSummary(q);
       return [h(q.number),jobLink(record,"ewi"),h(q.reason),status(q.status),
         '<span class="small">'+h(evidence.inspections)+' inspections · '+h(evidence.correctiveActions)+' actions · '+h(evidence.latestEffectiveness)+'</span>',
-        '<button class="action secondary" data-action="select-quality" data-id="'+h(q.id)+'">Review case</button>']
+        uniqueQualityCase(state,q.id)===q?
+          '<button class="action secondary" data-action="select-quality" data-id="'+h(q.id)+'">Review case</button>':
+          '<span class="small muted">Case unavailable</span>']
     }),"No matching fictional quality holds.",shownQuality.map(q=>({type:"quality",id:q.id})))+'</section>';
-  const selected=shownQuality.find(record=>record.id===selectedQualityId)||shownQuality[0];
+  const selected=shownQuality.find(record=>record.id===selectedQualityId&&uniqueQualityCase(state,record.id)===record)||
+    shownQuality.find(record=>uniqueQualityCase(state,record.id)===record);
   s+=renderQualityCase(state,selected?.id);
   s+=qualityRcaHtml(state,workforce,qcdsmDepartment,localDay());
   return s;
@@ -485,7 +489,12 @@ function render(){
     const focus=pendingQualityFocus;
     pendingQualityFocus=null;
     const panel=document.getElementById("quality-case-detail");
-    if(panel?.dataset.caseId===focus.caseId&&
+    if(panel?.dataset.caseId===focus.caseId&&focus.kind==="case"&&
+       uniqueQualityCase(state,focus.caseId)){
+      panel.setAttribute("tabindex","-1");
+      panel.scrollIntoView({block:"start"});
+      panel.focus({preventScroll:true});
+    }else if(panel?.dataset.caseId===focus.caseId&&
        qualityEvidenceReturnTarget(state,focus,selectedJobId)){
       const target=[...panel.querySelectorAll("[data-evidence-kind][data-evidence-id]")]
         .find(element=>element.dataset.evidenceKind===focus.kind&&element.dataset.evidenceId===focus.id);
@@ -666,9 +675,11 @@ document.addEventListener("click",event=>{
       if(location.hash==="#quality")render();
       else location.hash="#quality";
     }
-    if(["job-quality-inspection","job-quality-corrective","job-quality-followup","job-quality-disposition","job-quality-effectiveness"].includes(action)){
-      const target=action==="job-quality-inspection"?
-        qualityJobInspectionTarget(state,button.dataset.job,button.dataset.case,id):
+    if(["job-quality-case","job-quality-inspection","job-quality-corrective","job-quality-followup","job-quality-disposition","job-quality-effectiveness"].includes(action)){
+      const target=action==="job-quality-case"?
+        qualityJobCaseTarget(state,button.dataset.job,id):
+        action==="job-quality-inspection"?
+          qualityJobInspectionTarget(state,button.dataset.job,button.dataset.case,id):
         action==="job-quality-corrective"?
           qualityJobCorrectiveTarget(state,button.dataset.job,button.dataset.case,id):
           action==="job-quality-followup"?
@@ -684,7 +695,7 @@ document.addEventListener("click",event=>{
       selectedContext={type:"job",id:target.jobId};
       selectedIntent="quality";
       selectedQualityId=target.caseId;
-      pendingQualityFocus=target;
+      pendingQualityFocus=action==="job-quality-case"?{caseId:target.caseId,kind:"case",id:target.caseId}:target;
       rememberJob(target.jobId);
       if(location.hash==="#quality")render();
       else location.hash="#quality";
@@ -702,8 +713,9 @@ document.addEventListener("click",event=>{
       }else location.hash="#quality";
     }
     if(action==="select-quality"){
-      const record=state.quality.find(q=>q.id===id);
-      if(!record)throw Error("Fictional quality case not found");
+      const record=uniqueQualityCase(state,id);
+      if(currentView()!=="quality"||!record||!contextSelection("quality",state.quality).includes(record))
+        throw Error("Fictional quality case is unavailable or ambiguous");
       selectedQualityId=id;rememberJob(record.jobId);render();
       document.getElementById("quality-case-detail")?.scrollIntoView({block:"start"});
     }

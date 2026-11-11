@@ -8,7 +8,17 @@ export const QUALITY_DISPOSITIONS=[
   {id:"SCRAP",label:"Scrap (fictional)"},
   {id:"RETURN_FOR_REVIEW",label:"Return for review (fictional)"}
 ];
-const recordFor=(state,id)=>state.quality.find(q=>q.id===id);
+/* Canonical NCR IDs must resolve to exactly one case and one work order.
+ * Legacy duplicate IDs or orphaned records cannot authorize a mutation or
+ * navigate to whichever record Array.find happens to return first.
+ */
+export function uniqueQualityCase(state,id){
+  if(typeof id!=="string"||!id||!Array.isArray(state?.quality)||!Array.isArray(state?.jobs))return null;
+  const matches=state.quality.filter(q=>q?.id===id);
+  if(matches.length!==1||!["OPEN","CLOSED"].includes(matches[0].status))return null;
+  return state.jobs.filter(job=>job?.id===matches[0].jobId).length===1?matches[0]:null;
+}
+const recordFor=uniqueQualityCase;
 const noteText=value=>{
   const note=String(value??"").trim();
   if(note.length<5||note.length>500)throw Error("Enter a fictional case note of 5 to 500 characters");
@@ -148,8 +158,9 @@ export function qualityJobSummary(state,jobId){
 }
 /* Resolve a real job-linked case for any dashboard, register or report entry. */
 export function jobQualityTarget(state,jobId){
-  if(!state.jobs.some(job=>job.id===jobId))return null;
-  const cases=qualityJobSummary(state,jobId).cases;
+  if(!Array.isArray(state?.jobs)||state.jobs.filter(job=>job?.id===jobId).length!==1)return null;
+  const cases=qualityJobSummary(state,jobId).cases
+    .filter(q=>uniqueQualityCase(state,q.id)===q);
   const selected=cases.find(q=>q.status==="OPEN")||cases[0];
   return selected?{jobId,caseId:selected.id}:null;
 }

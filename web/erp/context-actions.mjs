@@ -5,6 +5,7 @@
  */
 import {CATALOG,getJob} from "./engine.mjs";
 import {getMachine,getTask} from "./pm.mjs";
+import {uniqueQualityCase} from "./quality-case.mjs";
 
 export const CONTEXT_TYPES=["job","part","stock","po","quality","drawing","machine","pm_task","pm_request","purchase_request"];
 const TARGETS={
@@ -58,7 +59,7 @@ export function resolveContext(state,type,id){
    case "part":record=CATALOG.find(x=>x.partNumber===id);part=record?.partNumber;break;
    case "stock":record=state.items.find(x=>x.id===id);itemId=record?.id;break;
    case "po":record=state.purchaseOrders.find(x=>x.id===id);itemId=record?.itemId;break;
-   case "quality":record=state.quality.find(x=>x.id===id);jobId=record?.jobId;break;
+   case "quality":record=uniqueQualityCase(state,id);jobId=record?.jobId;break;
    case "drawing":record=getJob(state,id);jobId=record?.id;break;
    case "machine":record=getMachine(state.pm,id);machineId=record?.id;break;
    case "pm_task":record=getTask(state.pm,id);machineId=record?.machineId;break;

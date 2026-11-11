@@ -859,6 +859,71 @@ def main():
                 page.wait_for_function("location.hash === '#quality'")
                 expect(panel).to_have_attribute("data-case-id", case_id)
                 expect(page.locator("#job-context")).to_have_value(job_id)
+                # Case entry in Routing and Shop order register must not use the
+                # Report Center-only handler. Both paths focus this exact NCR.
+                page.locator('#module-nav a[data-nav="routing"]').click()
+                page.wait_for_function("location.hash === '#routing'")
+                routing_case = page.locator(
+                    f'button[data-action="job-quality-case"][data-id="{case_id}"][data-job="{job_id}"]'
+                )
+                expect(routing_case).to_have_count(1)
+                routing_case.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                assert panel.evaluate("el => document.activeElement === el"), "Case detail should receive focus"
+                page.locator('#module-nav a[data-nav="jobs"]').click()
+                page.wait_for_function("location.hash === '#jobs'")
+                page.locator(".job-inspection-details summary").click()
+                register_case = page.locator(
+                    f'button[data-action="job-quality-case"][data-id="{case_id}"][data-job="{job_id}"]'
+                )
+                expect(register_case).to_have_count(1)
+                register_case.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                page.locator('#module-nav a[data-nav="jobs"]').click()
+                page.wait_for_function("location.hash === '#jobs'")
+                page.locator(".job-inspection-details summary").click()
+                register_case = page.locator(
+                    f'button[data-action="job-quality-case"][data-id="{case_id}"][data-job="{job_id}"]'
+                )
+                register_case.evaluate("el => { el.dataset.job = 'wrong-job'; el.click(); }")
+                assert page.url.endswith("#jobs"), "Stale job binding must not redirect"
+                # Duplicate canonical IDs are ambiguous even if the visible
+                # numbers differ. Neither register nor right-click may guess.
+                page.evaluate("""({originalId, otherId}) => {
+                    const key = "axiom_public_erp_suite_v1";
+                    const demo = JSON.parse(localStorage.getItem(key));
+                    const second = demo.quality.find(q => q.id === otherId);
+                    second.id = originalId;
+                    localStorage.setItem(key, JSON.stringify(demo));
+                }""", {"originalId": case_id, "otherId": duplicate_case_id})
+                page.goto(f"http://127.0.0.1:{server.server_port}/erp/#quality")
+                assert page.locator('button[data-action="select-quality"]').count() == 0, (
+                    "Ambiguous case IDs must not expose Review case destinations"
+                )
+                assert panel.get_attribute("data-case-id") is None, (
+                    "Ambiguous IDs must not render a different job's case"
+                )
+                # Probe the real Open with event handler using explicit
+                # context attributes, independent of table-row markup.
+                page.evaluate("""id => {
+                    const probe = document.createElement("span");
+                    probe.id = "ambiguous-quality-context-probe";
+                    probe.className = "context-record";
+                    probe.dataset.ctxType = "quality";
+                    probe.dataset.ctxId = id;
+                    probe.textContent = "Fictional NCR context";
+                    document.querySelector("#view").append(probe);
+                }""", case_id)
+                page.locator("#ambiguous-quality-context-probe").click(button="right")
+                expect(page.locator("#axiom-record-menu")).to_be_hidden()
+                page.goto(f"http://127.0.0.1:{server.server_port}/erp/#jobs")
+                assert page.locator('button[data-action="job-quality-cases"]').count() == 0, (
+                    "Work-order NCR links must not select an ambiguous case"
+                )
                 assert not page_errors, f"Browser JavaScript errors: {page_errors}"
                 print("PASS: Quality Forge navigation, duplicate-number report identity, native context menus")
             finally:

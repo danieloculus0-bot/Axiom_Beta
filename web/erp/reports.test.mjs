@@ -221,8 +221,8 @@ test("job routing evidence index links exact canonical cases and keeps closed re
  const before=JSON.stringify(state),html=renderJobQualityEvidence(state,"sample-1001");
  assert.deepEqual(qualityCaseEvidenceSummary(state.quality[0]),
    {inspections:1,correctiveActions:1,latestEffectiveness:"NOT_EFFECTIVE"});
- assert.match(html,new RegExp('data-action="report-quality-case" data-id="'+first+'"'));
- assert.match(html,new RegExp('data-action="report-quality-case" data-id="'+second+'"'));
+ assert.match(html,new RegExp('data-action="job-quality-case" data-job="sample-1001" data-id="'+first+'"'));
+ assert.match(html,new RegExp('data-action="job-quality-case" data-job="sample-1001" data-id="'+second+'"'));
  assert.ok(!html.includes('data-id="'+unrelated+'"'));
  assert.match(html,/NOT_EFFECTIVE/);
  assert.match(html,/CLOSED/);
@@ -395,8 +395,14 @@ test("historical routing hints explain stale evidence without offering a mislead
    assert.deepEqual(qualityInspectionRoutingStatus(stale,q.id,inspectionId),{target:null,reason});
    assert.equal(qualityInspectionRoutingTarget(stale,q.id,inspectionId),null);
    const html=renderQualityCase(stale,q.id);
-   assert.ok(html.includes("Historical route: "+reason+" Current step link unavailable."));
-   assert.ok(html.includes("Fictional historical inspection observation"));
+   if(reason==="Linked fictional work order is unavailable."){
+     // Orphaned cases have no canonical identity-bearing destination.
+     assert.match(html,/Select a fictional nonconformance above/);
+     assert.doesNotMatch(html,/data-case-id=/);
+   }else{
+     assert.ok(html.includes("Historical route: "+reason+" Current step link unavailable."));
+     assert.ok(html.includes("Fictional historical inspection observation"));
+   }
    assert.ok(!html.includes('data-action="quality-routing-step"'));
    assert.equal(JSON.stringify(stale),before);
  }
@@ -477,6 +483,67 @@ test("NCR evidence work-order actions are guarded for legacy, missing and unrela
   assert.ok(app.includes('selectedQualityId=target.caseId'));
   assert.ok(app.includes('rememberJob(target.jobId)'));
   assert.ok(app.includes('if(action==="quality-routing-step")'));
+});
+
+test("NCR evidence work-order and return links reject duplicate canonical or receipt IDs",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",at);
+  const caseId=state.quality[0].id,jobId="sample-1001";
+  const step=state.jobs[0].routing.operations[0].step;
+  state=recordQualityInspection(state,caseId,"FIRST_PIECE",step,"FAIL",
+    "Synthetic observation",later);
+  const inspectionId=state.quality[0].inspections[0].id;
+  state=recordQualityCorrectiveAction(state,caseId,"QUALITY",
+    "Synthetic corrective action",inspectionId,"2026-10-30T12:01:00Z");
+  const actionId=state.quality[0].correctiveActions[0].id;
+  state=reviewQualityCorrectiveAction(state,caseId,actionId,"EFFECTIVE",
+    "Synthetic review","2026-10-30T12:02:00Z");
+  const reviewId=state.quality[0].correctiveActions[0].reviews[0].id;
+  state=recordQualityFollowup(state,caseId,"Synthetic follow-up","2026-10-30T12:03:00Z");
+  const followupId=state.quality[0].followUps[0].id;
+  state=recordQualityDisposition(state,caseId,"SCRAP",
+    "Synthetic disposition","2026-10-30T12:04:00Z");
+  const evidence=[["inspection",inspectionId],["corrective",actionId],
+    ["effectiveness",reviewId],["followup",followupId],["disposition",caseId]];
+  const before=JSON.stringify(state);
+  for(const [kind,id] of evidence){
+    assert.deepEqual(qualityEvidenceWorkOrderTarget(state,caseId,kind,id),
+      {caseId,kind,id,jobId});
+    assert.deepEqual(qualityEvidenceReturnTarget(state,{caseId,kind,id},jobId),
+      {caseId,kind,id,jobId});
+  }
+  const duplicateCase=structuredClone(state);
+  duplicateCase.quality.push({...structuredClone(duplicateCase.quality[0]),jobId:"sample-1002"});
+  const duplicateJob=structuredClone(state);
+  duplicateJob.jobs.push(structuredClone(duplicateJob.jobs[0]));
+  for(const invalid of [duplicateCase,duplicateJob]){
+    for(const [kind,id] of evidence){
+      assert.equal(qualityEvidenceWorkOrderTarget(invalid,caseId,kind,id),null);
+      assert.equal(qualityEvidenceReturnTarget(invalid,{caseId,kind,id},jobId),null);
+      assert.equal(qualityEvidenceReturnAction(invalid,{caseId,kind,id},jobId),"");
+    }
+    assert.ok(!renderQualityCase(invalid,caseId).includes('data-action="quality-evidence-work-order"'));
+  }
+  for(const [kind,id,duplicate] of [
+    ["inspection",inspectionId,s=>s.quality[0].inspections.push(structuredClone(s.quality[0].inspections[0]))],
+    ["corrective",actionId,s=>s.quality[0].correctiveActions.push(structuredClone(s.quality[0].correctiveActions[0]))],
+    ["effectiveness",reviewId,s=>s.quality[0].correctiveActions[0].reviews.push(
+      structuredClone(s.quality[0].correctiveActions[0].reviews[0]))],
+    ["followup",followupId,s=>s.quality[0].followUps.push(structuredClone(s.quality[0].followUps[0]))]
+  ]){
+    const invalid=structuredClone(state);
+    duplicate(invalid);
+    assert.equal(qualityEvidenceWorkOrderTarget(invalid,caseId,kind,id),null);
+    assert.equal(qualityEvidenceReturnTarget(invalid,{caseId,kind,id},jobId),null);
+    assert.equal(qualityEvidenceReturnAction(invalid,{caseId,kind,id},jobId),"");
+    assert.ok(!renderQualityCase(invalid,caseId).includes(
+      'data-action="quality-evidence-work-order" data-case="'+caseId+
+      '" data-kind="'+kind+'" data-id="'+id+'"'));
+  }
+  assert.equal(JSON.stringify(state),before,"Read-only guards must not mutate evidence");
+  state=closeReviewedQuality(state,caseId,"2026-10-30T12:05:00Z");
+  for(const [kind,id] of evidence)
+    assert.deepEqual(qualityEvidenceWorkOrderTarget(state,caseId,kind,id),
+      {caseId,kind,id,jobId},"Closed fictional evidence stays accessible");
 });
 
 test("NCR evidence return keeps exact inspection, corrective and effectiveness identity on the same work order",()=>{
