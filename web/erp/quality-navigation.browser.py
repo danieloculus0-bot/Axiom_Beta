@@ -162,6 +162,79 @@ def main():
                 ).to_be_visible()
                 assert search.input_value() == "", "Successful search navigation should clear its query"
 
+                # Report Center is a third independent path to the same
+                # fictional NCR, including its post-closure evidence.
+                report_search = page.locator("#menu-search")
+                report_search.fill("report center")
+                expect(page.locator('#module-nav a[data-nav="reports"]')).to_be_visible()
+                report_search.press("Enter")
+                page.wait_for_function("location.hash === '#reports'")
+                page.locator("#report-select").select_option("quality")
+                report_case = page.locator(
+                    f'button[data-action="report-quality-case"][data-id="{case_id}"]'
+                )
+                expect(report_case).to_have_count(1)
+                expect(report_case).to_be_visible()
+                page.locator("#job-context").select_option(other_job)
+                report_case.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+                expect(panel.locator(
+                    f'[data-evidence-kind="effectiveness"][data-evidence-id="{review_id}"]'
+                ).first).to_be_visible()
+
+                # The report entry must also support the existing evidence
+                # to work-order to exact-evidence round trip.
+                panel.locator(
+                    f'button[data-action="quality-evidence-work-order"][data-kind="effectiveness"][data-id="{review_id}"]'
+                ).click()
+                page.wait_for_function("location.hash === '#jobs'")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                report_return = page.locator('button[data-action="quality-evidence-return"]')
+                expect(report_return).to_have_count(1)
+                assert report_return.get_attribute("data-case") == case_id
+                assert report_return.get_attribute("data-kind") == "effectiveness"
+                assert report_return.get_attribute("data-id") == review_id
+                report_return.click()
+                page.wait_for_function("location.hash === '#quality'")
+                review_evidence = panel.locator(
+                    f'[data-evidence-kind="effectiveness"][data-evidence-id="{review_id}"]'
+                ).first
+                expect(review_evidence).to_be_visible()
+                assert review_evidence.evaluate("el => document.activeElement === el")
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+
+                # The case's own related-workflow links must restore its job
+                # from a different global selection, without changing NCR
+                # identity or creating a second quality record.
+                for target_view in ("jobs", "routing", "documents", "ewi"):
+                    page.locator("#job-context").select_option(other_job)
+                    expect(panel).to_have_attribute("data-case-id", case_id)
+                    case_link = panel.locator(f'a[href="#{target_view}"][data-job="{job_id}"]')
+                    expect(case_link).to_have_count(1)
+                    native_case_link = case_link.evaluate("""el => {
+                        const event = new MouseEvent('contextmenu',
+                            {bubbles: true, cancelable: true, button: 2});
+                        el.dispatchEvent(event);
+                        return !event.defaultPrevented;
+                    }""")
+                    assert native_case_link, "Case links must retain native browser right-click"
+                    case_link.click()
+                    page.wait_for_function("(view) => location.hash === '#' + view", arg=target_view)
+                    expect(page.locator("#job-context")).to_have_value(job_id)
+                    page.locator('#module-nav a[data-nav="quality"]').click()
+                    page.wait_for_function("location.hash === '#quality'")
+                    expect(panel).to_have_attribute("data-case-id", case_id)
+                    expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+                    expect(panel.locator(
+                        f'[data-evidence-kind="effectiveness"][data-evidence-id="{review_id}"]'
+                    ).first).to_be_visible()
+                assert page.locator('#view [data-action="select-quality"][data-id="' + case_id + '"]').count() == 1, (
+                    "Related-workflow links must not duplicate the canonical NCR"
+                )
+
                 # Existing inline part records provide a real Open with entry
                 # point even while the separate record-row fix remains in #48.
                 page.locator('#module-nav a[data-nav="jobs"]').click()
