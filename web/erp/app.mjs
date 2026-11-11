@@ -13,7 +13,7 @@ import {recordDemoIncident,recordDemoSafetySurvey} from "./workforce.mjs";
 import {captureQualityContext,qcdsmEvidence} from "./qcdsm.mjs";
 import {renderQcdsm,qualityRcaHtml} from "./qcdsm-view.mjs";
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction,qualityJobSummary,jobQualityTarget} from "./quality-case.mjs";
-import {renderQualityCase,renderJobQualityEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction,qualityJobInspectionTarget} from "./quality-case-view.mjs";
+import {renderQualityCase,renderJobQualityEvidence,renderJobRegisterInspectionEvidence,qualityCaseEvidenceSummary,qualityEvidenceTarget,qualityInspectionRoutingTarget,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEvidenceWorkOrderTarget,qualityEvidenceReturnTarget,qualityEvidenceReturnAction,qualityJobInspectionTarget,qualityJobCorrectiveTarget} from "./quality-case-view.mjs";
 import {routingEditorHtml,readRoutingEditor} from "./routing-view.mjs";
 import {editableRouting,addRouteStep,moveRouteStep,removeRouteStep,saveRoutingDraft,reviewRoutingDraft} from "./routing-edit.mjs";
 import {requestMetrics,createPurchaseRequest,assignPurchaseRequest,approvePurchaseRequest,
@@ -214,7 +214,7 @@ function jobsView(){
   s+='<section class="panel"><div class="panel-head"><h2>Shop order register</h2><a class="action secondary" href="#bridge">Import simulator job</a></div>'+
     table(["Work order","Part","Rev","Qty","Reserved","Source","Readiness","Quality","EWI"],shownJobs.map(j=>[
       jobLink(j,"routing"),ctxSpan("part",j.partNumber,j.partNumber),h(j.revision),h(j.quantity),h(j.reserved||0),
-      h(j.origin),jobState(j),jobQualityCell(j),
+      h(j.origin),jobState(j),jobQualityCell(j)+renderJobRegisterInspectionEvidence(state,j.id),
       '<a class="action secondary" href="#ewi" data-job="'+h(j.id)+'">Open</a>'
     ]),"No related fictional jobs for this record.",shownJobs.map(j=>({type:"job",id:j.id})))+'</section>';
   return s;
@@ -660,10 +660,15 @@ document.addEventListener("click",event=>{
       if(location.hash==="#quality")render();
       else location.hash="#quality";
     }
-    if(action==="job-quality-inspection"){
-      const target=qualityJobInspectionTarget(state,button.dataset.job,button.dataset.case,id);
-      if(currentView()!=="routing"||!target||selectedJobId!==target.jobId)
-        throw Error("The selected fictional inspection is not linked to this work order");
+    if(action==="job-quality-inspection"||action==="job-quality-corrective"){
+      const target=action==="job-quality-inspection"?
+        qualityJobInspectionTarget(state,button.dataset.job,button.dataset.case,id):
+        qualityJobCorrectiveTarget(state,button.dataset.job,button.dataset.case,id);
+      const view=currentView();
+      if(!target||!["routing","jobs"].includes(view)||
+         (view==="routing"&&selectedJobId!==target.jobId)||
+         (view==="jobs"&&!contextSelection("jobs",state.jobs).some(item=>item.id===target.jobId)))
+        throw Error("The selected fictional quality evidence is not linked to this work order");
       selectedContext={type:"job",id:target.jobId};
       selectedIntent="quality";
       selectedQualityId=target.caseId;
