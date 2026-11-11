@@ -10,6 +10,7 @@ import sqlite3
 from ..db import db
 from ..modules.ewi import packet
 from .operation_freshness import inspect_operation_event
+from .ewi_revision_evidence import blocking_ewi_revision_review
 
 
 
@@ -25,17 +26,7 @@ def _controlled_revision_review_gate(job_id: int) -> dict | None:
     """
     with db() as con:
         con.execute("PRAGMA query_only=ON")
-        action = con.execute(
-            """SELECT a.id,a.status,a.event_id,e.event_type,e.source_module
-               FROM workflow_actions a
-               LEFT JOIN event_ledger e ON e.event_id=a.event_id
-               WHERE a.workflow_key='controlled-drawing-ewi-review'
-                 AND a.target_module='ewi'
-                 AND a.entity_type='job' AND a.entity_id=?
-               ORDER BY CASE WHEN a.status='open' THEN 0 ELSE 1 END,
-                        a.id DESC LIMIT 1""",
-            (str(job_id),),
-        ).fetchone()
+        action = blocking_ewi_revision_review(con, job_id)
     if action is None:
         return None
     verified = (action["event_type"] == "fai.imported"
@@ -92,7 +83,16 @@ def inspect_ewi_operation_alignment(job_id: int, event_id: str) -> dict:
             result["status"] = "job_not_found"
             return result
         if not ewi["ready"]:
-            result["status"] = "ewi_packet_not_ready"
+            # Packet readiness now blocks stale routes for clock-in. Preserve
+            # the established, specific read-only alignment status instead of
+            # collapsing that evidence into a generic packet-not-ready result.
+            issues = ewi.get("issues") or []
+            if any("routing revision stale" in issue for issue in issues):
+                result["status"] = "ewi_route_revision_stale"
+            elif any("routing revision snapshot unverified" in issue for issue in issues):
+                result["status"] = "ewi_route_revision_unverified"
+            else:
+                result["status"] = "ewi_packet_not_ready"
             return result
 
         drawing = ewi["drawing"]

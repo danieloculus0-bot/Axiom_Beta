@@ -22,6 +22,7 @@ from ..audit import record_event
 from ..db import db
 from ..ui import page
 from ..integrations.jobboss2_reader import JobBoss2Reader, JobBossError, configured
+from ..integrations.ewi_revision_evidence import blocking_ewi_revision_review
 
 ewi_blueprint = Blueprint("ewi", __name__)
 _EMPLOYEE = re.compile(r"^[A-Za-z0-9_.-]{1,32}$")
@@ -143,12 +144,33 @@ def packet(job_id: int) -> dict | None:
             SELECT * FROM ewi_clock_sessions WHERE job_id=?
             ORDER BY started_utc DESC LIMIT 30
         """, (job_id,))]
+        revision_review = blocking_ewi_revision_review(con, job_id)
     path, drawing, issue = _released_pdf(job)
     errors = [issue] if issue else []
+    if revision_review is not None:
+        errors.append(
+            f"controlled drawing revision review action #{revision_review['id']} "
+            f"({revision_review['status']}) requires independently verified "
+            "reconciliation; new clocking blocked"
+        )
     if not routes:
         errors.append("No JobBOSS² routed operations have been synchronized")
     if routes and any(r["part_number"] and r["part_number"] != (job.get("part_number") or "") for r in routes):
         errors.append("ERP routing part number conflicts with job part")
+    # A previously captured route is not safe for a later part revision.
+    # The advisory SQL alignment already checks this snapshot, but local
+    # clocking must independently fail closed rather than trust a stale route.
+    # This is only local provenance, not a verified remote ERP revision.
+    if routes:
+        current_revision = str(job.get("part_revision") or "").strip().casefold()
+        snapshots = [
+            str(route.get("local_part_revision_at_pull") or "").strip().casefold()
+            for route in routes
+        ]
+        if not current_revision or any(not revision for revision in snapshots):
+            errors.append("EWI routing revision snapshot unverified; refresh routing before clocking")
+        elif any(revision != current_revision for revision in snapshots):
+            errors.append("EWI routing revision stale; refresh routing before clocking")
     if (job.get("status") or "").lower() in {"closed", "cancelled", "canceled", "hold", "on_hold"}:
         errors.append("Job status does not permit starting work")
     return {"job": job, "drawing": drawing, "pdf_path": path, "routes": routes,
@@ -304,6 +326,32 @@ def clock_start(job_id: int, step: str, employee_ref: str, actor: str) -> str:
     stamp = _now()
     import json
     with db() as con:
+        # Reserve the SQL write transaction before reviewing action and route.
+        # An importer cannot insert a new review between this read and clock-in.
+        con.execute("BEGIN IMMEDIATE")
+        review = blocking_ewi_revision_review(con, job_id)
+        if review is not None:
+            raise ValueError(
+                f"EWI is blocked: controlled drawing revision review action #{review['id']} "
+                "requires independently verified reconciliation"
+            )
+        # Recheck inside the same SQL transaction that creates the clocking
+        # session. The part or route may have changed after packet() returned.
+        scope = con.execute(
+            """SELECT p.revision AS current_revision,
+                      r.local_part_revision_at_pull AS captured_revision
+               FROM jobs j
+               LEFT JOIN parts p ON p.id=j.part_id
+               LEFT JOIN ewi_routes r ON r.job_id=j.id AND r.step=?
+               WHERE j.id=?""",
+            (step, job_id),
+        ).fetchone()
+        if (scope is None
+                or not str(scope["current_revision"] or "").strip()
+                or not str(scope["captured_revision"] or "").strip()
+                or str(scope["current_revision"]).strip().casefold()
+                   != str(scope["captured_revision"]).strip().casefold()):
+            raise ValueError("EWI is blocked: routing revision changed before clocking")
         try:
             con.execute("""INSERT INTO ewi_clock_sessions
                 (id,employee_ref,job_id,step,started_utc,actor) VALUES (?,?,?,?,?,?)""",
