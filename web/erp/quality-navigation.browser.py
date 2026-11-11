@@ -541,7 +541,7 @@ def main():
                 expect(target_row).to_have_count(1)
                 details = target_row.locator("details.job-inspection-details")
                 expect(details).to_have_count(1)
-                expect(details.locator("summary")).to_have_text("Quality evidence (4)")
+                expect(details.locator("summary")).to_have_text("Quality evidence (5)")
                 unrelated_row = page.locator("#view table tbody tr").filter(
                     has=page.locator(f'a.cell-link[data-job="{other_job}"]')
                 )
@@ -601,7 +601,7 @@ def main():
                     has=page.locator(f'a.cell-link[data-job="{job_id}"]')
                 )
                 details = target_row.locator("details.job-inspection-details")
-                expect(details.locator("summary")).to_have_text("Quality evidence (4)")
+                expect(details.locator("summary")).to_have_text("Quality evidence (5)")
                 details.locator("summary").click()
                 register_corrective = details.locator(
                     f'button[data-action="job-quality-corrective"][data-case="{case_id}"]'
@@ -646,7 +646,7 @@ def main():
                     has=page.locator(f'a.cell-link[data-job="{job_id}"]')
                 )
                 details = target_row.locator("details.job-inspection-details")
-                expect(details.locator("summary")).to_have_text("Quality evidence (4)")
+                expect(details.locator("summary")).to_have_text("Quality evidence (5)")
                 details.locator("summary").click()
                 register_followup = details.locator(
                     f'button[data-action="job-quality-followup"][data-case="{case_id}"]'
@@ -687,7 +687,7 @@ def main():
                     has=page.locator(f'a.cell-link[data-job="{job_id}"]')
                 )
                 details = target_row.locator("details.job-inspection-details")
-                expect(details.locator("summary")).to_have_text("Quality evidence (4)")
+                expect(details.locator("summary")).to_have_text("Quality evidence (5)")
                 details.locator("summary").click()
                 register_disposition = details.locator(
                     f'button[data-action="job-quality-disposition"][data-case="{case_id}"]'
@@ -700,6 +700,50 @@ def main():
                 expect(page.locator("#job-context")).to_have_value(job_id)
                 expect(panel).to_have_attribute("data-case-id", case_id)
                 assert disposition_receipt.evaluate("el => document.activeElement === el")
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+
+                # The same recorded review is reachable from routing and the
+                # shop order register, even when another job is selected.
+                page.locator('#module-nav a[data-nav="routing"]').click()
+                page.wait_for_function("location.hash === '#routing'")
+                routing_review = page.locator(
+                    f'#view button[data-action="job-quality-effectiveness"][data-case="{case_id}"]'
+                    f'[data-job="{job_id}"][data-id="{review_id}"]'
+                )
+                expect(routing_review).to_have_count(1)
+                routing_review.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                review_receipt = panel.locator(
+                    f'[data-evidence-kind="effectiveness"][data-evidence-id="{review_id}"]'
+                ).first
+                assert review_receipt.evaluate("el => document.activeElement === el")
+                expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+
+                page.locator('#module-nav a[data-nav="jobs"]').click()
+                page.wait_for_function("location.hash === '#jobs'")
+                page.evaluate("""() => {
+                    document.querySelector('#view button[data-action="clear-record-context"]')?.click();
+                }""")
+                page.locator("#job-context").select_option(other_job)
+                target_row = page.locator("#view table tbody tr").filter(
+                    has=page.locator(f'a.cell-link[data-job="{job_id}"]')
+                )
+                details = target_row.locator("details.job-inspection-details")
+                expect(details.locator("summary")).to_have_text("Quality evidence (5)")
+                details.locator("summary").click()
+                register_review = details.locator(
+                    f'button[data-action="job-quality-effectiveness"][data-case="{case_id}"]'
+                    f'[data-job="{job_id}"][data-id="{review_id}"]'
+                )
+                expect(register_review).to_be_visible()
+                expect(page.locator("#job-context")).to_have_value(other_job)
+                register_review.click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(page.locator("#job-context")).to_have_value(job_id)
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                assert review_receipt.evaluate("el => document.activeElement === el")
                 expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
 
                 # Existing inline part records provide a real Open with entry
@@ -774,8 +818,49 @@ def main():
                 page.wait_for_function("location.hash === '#quality'")
                 expect(panel).to_have_attribute("data-case-id", case_id)
                 expect(panel.locator(".panel-head .tag")).to_have_text("CLOSED")
+                # A legacy duplicate visible NCR number must still open each
+                # distinct canonical case from its own Report Center row.
+                duplicate_case_id = "q-report-same-number"
+                page.evaluate("""({otherJob, duplicateId}) => {
+                    const key = "axiom_public_erp_suite_v1";
+                    const demo = JSON.parse(localStorage.getItem(key));
+                    const original = demo.quality.find(q => q.id === demo.quality[0].id);
+                    demo.quality.push({
+                        id: duplicateId, number: original.number, jobId: otherJob,
+                        reason: "Illustrative second-job observation", status: "OPEN",
+                        openedAt: "2026-11-01T12:00:00Z", closedAt: null,
+                        inspections: [], correctiveActions: [], followUps: []
+                    });
+                    localStorage.setItem(key, JSON.stringify(demo));
+                }""", {"otherJob": other_job, "duplicateId": duplicate_case_id})
+                page.goto(f"http://127.0.0.1:{server.server_port}/erp/#reports")
+                page.locator("#report-select").select_option("quality")
+                report_buttons = page.locator('button[data-action="report-quality-case"]')
+                expect(report_buttons).to_have_count(2)
+                expect(report_buttons.nth(0)).to_have_text(report_buttons.nth(1).inner_text())
+                expect(report_buttons.nth(0)).to_have_attribute("data-id", case_id)
+                expect(report_buttons.nth(1)).to_have_attribute("data-id", duplicate_case_id)
+                # A mismatched row binding must fail without redirecting.
+                report_buttons.nth(0).evaluate("el => el.dataset.rowIndex = '1'")
+                report_buttons.nth(0).click()
+                assert page.url.endswith("#reports"), "Stale report link must not change views"
+                page.locator(
+                    f'button[data-action="report-quality-case"][data-id="{duplicate_case_id}"]'
+                ).click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(panel).to_have_attribute("data-case-id", duplicate_case_id)
+                expect(page.locator("#job-context")).to_have_value(other_job)
+                page.locator('#module-nav a[data-nav="reports"]').click()
+                page.wait_for_function("location.hash === '#reports'")
+                page.locator("#report-select").select_option("quality")
+                page.locator(
+                    f'button[data-action="report-quality-case"][data-id="{case_id}"]'
+                ).click()
+                page.wait_for_function("location.hash === '#quality'")
+                expect(panel).to_have_attribute("data-case-id", case_id)
+                expect(page.locator("#job-context")).to_have_value(job_id)
                 assert not page_errors, f"Browser JavaScript errors: {page_errors}"
-                print("PASS: 3 evidence types, closed-case return focus, wrong-job guard, native editable context menu")
+                print("PASS: Quality Forge navigation, duplicate-number report identity, native context menus")
             finally:
                 browser.close()
     finally:

@@ -186,6 +186,23 @@ export function qualityCaseEvidenceSummary(record){
     latestEffectiveness:effectiveness?effectiveness.title.replace(/^Effectiveness: /,""):
       (correctiveActions?"NOT REVIEWED":"NO ACTION")};
 }
+/* Report Center rows are projections of the canonical NCR array, not lookup keys.
+ * Identical displayed NCR numbers must never redirect both rows to the first
+ * case. Bind the original row position, exact job, and unique case ID instead.
+ * The same resolver is used at render and click time to reject stale links.
+ */
+export function qualityReportCaseTarget(state,row,rowIndex){
+  if(!Array.isArray(state?.quality)||!Array.isArray(state?.jobs)||
+     !Array.isArray(row)||!Number.isSafeInteger(rowIndex)||rowIndex<0)return null;
+  const record=state.quality[rowIndex];
+  if(!record||typeof record.id!=="string"||!record.id||
+     typeof record.number!=="string"||!record.number||
+     row[0]!==record.number||!["OPEN","CLOSED"].includes(record.status)||
+     state.quality.filter(item=>item?.id===record.id).length!==1)return null;
+  const jobs=state.jobs.filter(item=>item?.id===record.jobId);
+  if(jobs.length!==1||row[1]!==jobs[0].jobNumber)return null;
+  return {caseId:record.id,jobId:record.jobId,rowIndex};
+}
 /* A job workspace may drill into a specific recorded inspection only when
  * the canonical job, case and inspection are all uniquely identifiable.
  * Historical closed-case evidence stays available without implying that its
@@ -218,6 +235,27 @@ export function qualityJobCorrectiveTarget(state,jobId,caseId,actionId){
   const actions=Array.isArray(cases[0].correctiveActions)?cases[0].correctiveActions:[];
   if(actions.filter(item=>item?.id===actionId).length!==1)return null;
   return {caseId,jobId,kind:"corrective",id:actionId};
+}
+/* An effectiveness review is historical evidence on exactly one corrective
+ * action of this fictional NCR. Never guess across duplicate legacy IDs.
+ */
+export function qualityJobEffectivenessTarget(state,jobId,caseId,reviewId){
+  if(typeof jobId!=="string"||!jobId||typeof caseId!=="string"||!caseId||
+     typeof reviewId!=="string"||!reviewId)return null;
+  if(!Array.isArray(state?.jobs)||state.jobs.filter(job=>job?.id===jobId).length!==1||
+     !Array.isArray(state?.quality))return null;
+  const cases=state.quality.filter(record=>record?.id===caseId);
+  if(cases.length!==1||cases[0].jobId!==jobId||
+     !["OPEN","CLOSED"].includes(cases[0].status))return null;
+  const actions=Array.isArray(cases[0].correctiveActions)?cases[0].correctiveActions:[];
+  const parents=actions.filter(action=>Array.isArray(action?.reviews)&&
+    action.reviews.some(review=>review?.id===reviewId));
+  if(parents.length!==1||typeof parents[0].id!=="string"||!parents[0].id||
+     actions.filter(action=>action?.id===parents[0].id).length!==1||
+     parents[0].reviews.filter(review=>review?.id===reviewId).length!==1||
+     !QUALITY_EFFECTIVENESS_RESULTS.some(item=>item.id===
+       parents[0].reviews.find(review=>review?.id===reviewId)?.result))return null;
+  return {caseId,jobId,kind:"effectiveness",id:reviewId};
 }
 /* A disposition is the current decision on one exact fictional NCR.
  * Closed-case history remains readable without creating a second record.
@@ -276,6 +314,13 @@ export function renderJobQualityEvidence(state,jobId){
           h(target.caseId)+'" data-job="'+h(target.jobId)+'" data-id="'+h(target.id)+
           '">Corrective action '+h(index+1)+' · '+h(action.ownerRole)+'</button>':"";
       }).join(" "):"")+
+      (Array.isArray(record.correctiveActions)?" "+record.correctiveActions.flatMap(action=>
+        (Array.isArray(action.reviews)?action.reviews:[]).map((review,index)=>{
+          const target=qualityJobEffectivenessTarget(state,jobId,record.id,review?.id);
+          return target?'<button type="button" class="action secondary" data-action="job-quality-effectiveness" data-case="'+
+            h(target.caseId)+'" data-job="'+h(target.jobId)+'" data-id="'+h(target.id)+
+            '">Effectiveness review '+h(index+1)+' · '+h(review.result)+'</button>':"";
+        })).join(" "):"")+
       (Array.isArray(record.followUps)?" "+record.followUps.map((item,index)=>{
         const target=qualityJobFollowupTarget(state,jobId,record.id,item?.id);
         return target?'<button type="button" class="action secondary" data-action="job-quality-followup" data-case="'+
@@ -429,7 +474,10 @@ export function renderJobRegisterInspectionEvidence(state,jobId){
     const followups=(Array.isArray(record.followUps)?record.followUps:[])
       .filter(item=>qualityJobFollowupTarget(state,jobId,record.id,item?.id)).length;
     const disposition=qualityJobDispositionTarget(state,jobId,record.id)?1:0;
-    return total+inspections+actions+followups+disposition;
+    const reviews=(Array.isArray(record.correctiveActions)?record.correctiveActions:[])
+      .flatMap(action=>Array.isArray(action?.reviews)?action.reviews:[])
+      .filter(review=>qualityJobEffectivenessTarget(state,jobId,record.id,review?.id)).length;
+    return total+inspections+actions+followups+disposition+reviews;
   },0);
   if(!count)return "";
   return '<details class="job-inspection-details"><summary>Quality evidence ('+count+')</summary>'+

@@ -1,5 +1,5 @@
 import {recordQualityDisposition,recordQualityFollowup,closeReviewedQuality,recordQualityInspection,recordQualityCorrectiveAction,reviewQualityCorrectiveAction} from "./quality-case.mjs";
-import {renderQualityCase,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEffectivenessInspectionTarget,qualityCorrectiveInspectionTarget,qualityInspectionCorrectiveTargets,qualityJobInspectionTarget,qualityJobCorrectiveTarget,qualityJobFollowupTarget,qualityJobDispositionTarget,renderJobQualityEvidence,renderJobRegisterInspectionEvidence} from "./quality-case-view.mjs";
+import {renderQualityCase,qualityInspectionCorrectiveTarget,qualityCorrectiveReviewTarget,qualityEffectivenessInspectionTarget,qualityCorrectiveInspectionTarget,qualityInspectionCorrectiveTargets,qualityJobInspectionTarget,qualityJobCorrectiveTarget,qualityJobFollowupTarget,qualityJobDispositionTarget,qualityJobEffectivenessTarget,qualityReportCaseTarget,renderJobQualityEvidence,renderJobRegisterInspectionEvidence} from "./quality-case-view.mjs";
 import {contextActions,contextRelated} from "./context-actions.mjs";
 import {readFileSync} from "node:fs";
 import test from "node:test";
@@ -491,7 +491,7 @@ test("job routing evidence opens only uniquely linked fictional inspections, inc
   assert.equal(html.split(button(first)).length-1,1);
   assert.equal(state.quality[0].inspections.length,2,"read-only job links cannot write evidence");
   assert.match(readFileSync(new URL("./app.mjs",import.meta.url),"utf8"),
-    /if\(\["job-quality-inspection","job-quality-corrective","job-quality-followup","job-quality-disposition"\]\.includes\(action\)\)/);
+    /if\(\["job-quality-inspection","job-quality-corrective","job-quality-followup","job-quality-disposition","job-quality-effectiveness"\]\.includes\(action\)\)/);
 });
 
 test("work-order register reveals only uniquely linked inspections and reuses canonical case links",()=>{
@@ -562,7 +562,7 @@ test("canonical work-order corrective evidence is reachable without guessing or 
   assert.equal(renderJobQualityEvidence(state,"sample-1001").split(button(second)).length-1,1);
   assert.equal(state.quality[0].correctiveActions.length,2,"navigation is read-only");
   const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
-  assert.match(app,/if\(\["job-quality-inspection","job-quality-corrective","job-quality-followup","job-quality-disposition"\]\.includes\(action\)\)/);
+  assert.match(app,/if\(\["job-quality-inspection","job-quality-corrective","job-quality-followup","job-quality-disposition","job-quality-effectiveness"\]\.includes\(action\)\)/);
   assert.match(app,/qualityJobCorrectiveTarget\(state,button.dataset.job,button.dataset.case,id\)/);
 });
 
@@ -638,4 +638,97 @@ test("work-order disposition navigation uses exact canonical NCR from two entry 
   assert.equal(JSON.stringify(state),before,"navigation must not write evidence");
   assert.ok(readFileSync(new URL("./app.mjs",import.meta.url),"utf8").includes(
     "qualityJobDispositionTarget(state,button.dataset.job,button.dataset.case)"));
+});
+
+test("work-order effectiveness review links preserve exact closed-case evidence in both views",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
+  const caseId=state.quality[0].id;
+  state=recordQualityCorrectiveAction(state,caseId,"QUALITY","Synthetic corrective review check","",t);
+  const actionId=state.quality[0].correctiveActions[0].id;
+  assert.equal(qualityJobEffectivenessTarget(state,"sample-1001",caseId,"missing"),null);
+  state=reviewQualityCorrectiveAction(state,caseId,actionId,"MORE_EVIDENCE","Synthetic evidence needs another review",u);
+  state=recordQualityDisposition(state,caseId,"SCRAP","Synthetic disposition reviewed",u);
+  state=closeReviewedQuality(state,caseId,u);
+  state=reviewQualityCorrectiveAction(state,caseId,actionId,"NOT_EFFECTIVE",
+    "Synthetic post-closure verification failed","2026-10-31T12:00:00Z");
+  const [first,second]=state.quality[0].correctiveActions[0].reviews.map(review=>review.id);
+  const expected={caseId,jobId:"sample-1001",kind:"effectiveness",id:second};
+  assert.deepEqual(qualityJobEffectivenessTarget(state,"sample-1001",caseId,second),expected);
+  assert.equal(qualityJobEffectivenessTarget(state,"sample-1002",caseId,second),null);
+  assert.equal(qualityJobEffectivenessTarget(state,"sample-1001",caseId,undefined),null);
+  assert.equal(qualityJobEffectivenessTarget(state,"sample-1001","missing",second),null);
+  const button=id=>'data-action="job-quality-effectiveness" data-case="'+caseId+
+    '" data-job="sample-1001" data-id="'+id+'"';
+  const before=JSON.stringify(state);
+  const routing=renderJobQualityEvidence(state,"sample-1001");
+  const register=renderJobRegisterInspectionEvidence(state,"sample-1001");
+  for(const id of [first,second]){
+    assert.equal(routing.split(button(id)).length-1,1);
+    assert.equal(register.split(button(id)).length-1,1);
+  }
+  assert.ok(register.includes("Quality evidence (4)"));
+  assert.equal(renderJobRegisterInspectionEvidence(state,"sample-1002"),"");
+  assert.equal(JSON.stringify(state),before,"navigation cannot change review history");
+  const duplicate=structuredClone(state);
+  duplicate.quality[0].correctiveActions[0].reviews.push({...duplicate.quality[0].correctiveActions[0].reviews[0]});
+  assert.equal(qualityJobEffectivenessTarget(duplicate,"sample-1001",caseId,first),null);
+  assert.ok(!renderJobQualityEvidence(duplicate,"sample-1001").includes(button(first)));
+  const duplicateCase=structuredClone(state);
+  duplicateCase.quality.push({...structuredClone(state.quality[0]),jobId:"sample-1002"});
+  assert.equal(qualityJobEffectivenessTarget(duplicateCase,"sample-1001",caseId,second),null);
+  assert.equal(renderJobRegisterInspectionEvidence(duplicateCase,"sample-1001"),"");
+  const duplicateParent=structuredClone(state);
+  duplicateParent.quality[0].correctiveActions.push({...structuredClone(state.quality[0].correctiveActions[0]),reviews:[]});
+  assert.equal(qualityJobEffectivenessTarget(duplicateParent,"sample-1001",caseId,second),null);
+  const invalid=structuredClone(state);
+  invalid.quality[0].correctiveActions[0].reviews[1].result="NOT_A_RESULT";
+  assert.equal(qualityJobEffectivenessTarget(invalid,"sample-1001",caseId,second),null);
+  assert.ok(!renderJobQualityEvidence(invalid,"sample-1001").includes(button(second)));
+  const missingJob=structuredClone(state);missingJob.jobs=[];
+  assert.equal(qualityJobEffectivenessTarget(missingJob,"sample-1001",caseId,second),null);
+  const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
+  assert.ok(app.includes("qualityJobEffectivenessTarget(state,button.dataset.job,button.dataset.case,id)"));
+  assert.match(app,/job-quality-effectiveness/);
+});
+
+test("Report Center opens exact canonical NCR rows even when displayed numbers collide",()=>{
+  let state=raiseQuality(seedState(),"sample-1001","Generic drawing revision conflict",t);
+  state=raiseQuality(state,"sample-1002","Generic drawing revision conflict",u);
+  const [first,second]=state.quality;
+  // A legacy import can repeat a human-readable number without sharing an ID.
+  const repeated=structuredClone(state);
+  repeated.quality[1].number=first.number;
+  const row=(q)=>[q.number,repeated.jobs.find(job=>job.id===q.jobId).jobNumber];
+  const before=JSON.stringify(repeated);
+  assert.deepEqual(qualityReportCaseTarget(repeated,row(repeated.quality[0]),0),
+    {caseId:first.id,jobId:first.jobId,rowIndex:0});
+  assert.deepEqual(qualityReportCaseTarget(repeated,row(repeated.quality[1]),1),
+    {caseId:second.id,jobId:second.jobId,rowIndex:1});
+  assert.notEqual(first.id,second.id,"same visible number must not redirect to first NCR");
+  assert.equal(qualityReportCaseTarget(repeated,row(repeated.quality[1]),0),null,
+    "stale row must not open a different job's case");
+  assert.equal(qualityReportCaseTarget(repeated,row(repeated.quality[1]),-1),null);
+  assert.equal(qualityReportCaseTarget(repeated,row(repeated.quality[1]),1.5),null);
+  assert.equal(qualityReportCaseTarget(repeated,[],1),null);
+  const duplicateId=structuredClone(repeated);
+  duplicateId.quality[1].id=first.id;
+  assert.equal(qualityReportCaseTarget(duplicateId,row(duplicateId.quality[0]),0),null);
+  assert.equal(qualityReportCaseTarget(duplicateId,row(duplicateId.quality[1]),1),null);
+  const missingJob=structuredClone(repeated);
+  missingJob.jobs=missingJob.jobs.filter(job=>job.id!==second.jobId);
+  assert.equal(qualityReportCaseTarget(missingJob,row(repeated.quality[1]),1),null);
+  const duplicateJob=structuredClone(repeated);
+  duplicateJob.jobs.push(structuredClone(duplicateJob.jobs.find(job=>job.id===second.jobId)));
+  assert.equal(qualityReportCaseTarget(duplicateJob,row(repeated.quality[1]),1),null);
+  const staleNumber=structuredClone(repeated);
+  staleNumber.quality[1].number="SIM-NCR-CHANGED";
+  assert.equal(qualityReportCaseTarget(staleNumber,row(repeated.quality[1]),1),null);
+  const badStatus=structuredClone(repeated);
+  badStatus.quality[1].status="UNKNOWN";
+  assert.equal(qualityReportCaseTarget(badStatus,row(repeated.quality[1]),1),null);
+  assert.equal(JSON.stringify(repeated),before,"report navigation must be read-only");
+  const app=readFileSync(new URL("./app.mjs",import.meta.url),"utf8");
+  assert.ok(app.includes("qualityReportCaseTarget(state,row,rowIndex)"));
+  assert.ok(app.includes('qualityReportCaseTarget(state,reportWithContext("quality").rows[rowIndex],rowIndex)'));
+  assert.match(app,/target.caseId!==id/);
 });
