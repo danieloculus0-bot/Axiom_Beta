@@ -1,5 +1,5 @@
 from __future__ import annotations
-import hashlib,json,uuid
+import hashlib,json,uuid,os,re
 from pathlib import Path
 from typing import Any
 from ..audit import record_event
@@ -69,9 +69,17 @@ def _job_event_identity(con, job_id:int)->dict[str,Any]:
     identity.update(resolve_method_operation(con,identity))
     return identity
 
+def _environment_credentials(reference: str) -> dict:
+    """Resolve an environment token reference, never a literal secret in SQLite."""
+    if not isinstance(reference, str) or not re.fullmatch(r"env:[A-Z][A-Z0-9_]{0,127}", reference):
+        return {}
+    value = os.environ.get(reference[4:], "")
+    return {"token": value} if value else {}
+
+
 class IntegrationService:
     def __init__(self,credential_loader=None):
-        self.credential_loader=credential_loader or (lambda ref:{})
+        self.credential_loader=credential_loader or _environment_credentials
     def connection(self,connection_id:int):
         with db() as con:
             row=con.execute("SELECT * FROM erp_connections WHERE id=?",(connection_id,)).fetchone()
