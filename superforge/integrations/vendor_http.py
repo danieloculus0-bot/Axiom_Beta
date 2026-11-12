@@ -146,6 +146,11 @@ class MyTrackAdapter(VendorHTTP):
     No MyTrack endpoint is assumed; an unrelated product with the same name
     must not become a pretend live integration.
     """
+    def _route(self, entity_type, operation, payload=None):
+        if not self.config.get("mytrack_interface_verified"):
+            raise VendorError("MyTrack interface not verified; configure approved vendor API")
+        return super()._route(entity_type, operation, payload)
+
     def _base_url(self):
         if not self.config.get("mytrack_interface_verified"):
             raise VendorError("MyTrack interface not verified; configure approved vendor API")
