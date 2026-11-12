@@ -610,10 +610,23 @@ def create_app(test_config:dict|None=None)->Flask:
     @app.route("/integrations",methods=["GET","POST"])
     def integrations():
         if request.method=="POST":
-            config={"path":request.form.get("path",""),"outbox":request.form.get("outbox",""),"base_url":request.form.get("base_url","")}
+            try:
+                extra = json.loads(request.form.get("config_json") or "{}")
+                if not isinstance(extra, dict):
+                    return "Advanced connector configuration must be a JSON object", 400
+            except (ValueError, TypeError):
+                return "Invalid advanced connector JSON", 400
+            if any(k.lower() in {"token","api_token","password","client_secret","headers","authorization","bearer_token"} for k in extra):
+                return "Credential values belong in the environment, not configuration", 400
+            adapter_type=request.form.get("adapter_type") or "flatfile"
+            if adapter_type not in {"flatfile","rest","sql","paperless_parts","fulcrum","jobboss2_write","mytrack"}:
+                return "Unknown adapter type", 400
+            config={**extra,"path":request.form.get("path",""),"outbox":request.form.get("outbox",""),"base_url":request.form.get("base_url","")}
+            # UI opt-in only. The existing outbox is not automatically flushed.
+            config["allow_writes"] = request.form.get("allow_writes") == "on"
             with db() as con:
                 cur=con.execute("INSERT INTO erp_connections(name,erp_type,adapter_type,direction,config_json,credentials_ref) VALUES(?,?,?,?,?,?)",
-                    (request.form.get("name"),request.form.get("erp_type") or "generic",request.form.get("adapter_type") or "flatfile",request.form.get("direction") or "bidirectional",json.dumps(config),request.form.get("credentials_ref")))
+                    (request.form.get("name"),request.form.get("erp_type") or "generic",adapter_type,request.form.get("direction") or "bidirectional",json.dumps(config),request.form.get("credentials_ref")))
                 rid=cur.lastrowid
             record_event(event_type="INTEGRATION_CONFIG",action="CREATE",module="integrations",entity_type="erp_connection",entity_id=rid,actor=verified_actor("local"),data={"name":request.form.get("name"),"adapter":request.form.get("adapter_type")})
             publish("erp.connection.created",source_module="integrations",entity_type="erp_connection",entity_id=str(rid),actor=verified_actor("local"),payload={"name":request.form.get("name"),"erp_type":request.form.get("erp_type") or "generic","adapter_type":request.form.get("adapter_type") or "flatfile","direction":request.form.get("direction") or "bidirectional"})
@@ -621,11 +634,14 @@ def create_app(test_config:dict|None=None)->Flask:
         rows=_list("SELECT id,name,erp_type,adapter_type,direction,enabled,credentials_ref,updated_at FROM erp_connections ORDER BY id DESC")
         runs=_list("SELECT id,run_id,direction,entity_type,status,read_count,applied_count,error_count,started_at,completed_at FROM integration_runs ORDER BY id DESC LIMIT 30")
         form="""<details class='panel'><summary><b>Add ERP / system connection</b></summary><form method='post' class='form-grid' style='margin-top:12px'>
-<label>Name<input name='name' required placeholder='JobBOSS2 Production'></label><label>ERP Type<input name='erp_type' placeholder='JobBOSS2, Epicor, Plex, SAP, Infor...'></label>
-<label>Adapter<select name='adapter_type'><option value='flatfile'>CSV/JSON Report Drop</option><option value='rest'>REST API</option><option value='sql'>Approved SQL/Report View</option></select></label>
+<label>Name<input name='name' required placeholder='Vendor connection'></label><label>ERP Type<input name='erp_type' placeholder='JobBOSS2, Epicor, Plex, SAP, Infor...'></label>
+<label>Adapter<select name='adapter_type'><option value='flatfile'>CSV/JSON Report Drop</option><option value='rest'>REST API</option><option value='sql'>Approved SQL/Report View</option><option value='paperless_parts'>Paperless Parts</option><option value='fulcrum'>Fulcrum</option><option value='jobboss2_write'>JobBOSS2 Public API</option><option value='mytrack'>MyTrack (configured vendor API)</option></select></label>
 <label>Direction<select name='direction'><option>bidirectional</option><option>in</option><option>out</option></select></label>
 <label>File / DB Path<input name='path'></label><label>Outbox Path<input name='outbox'></label><label class='wide'>REST Base URL<input name='base_url'></label>
-<label class='wide'>Credential Reference<input name='credentials_ref' placeholder='Reference to OS/secret-store credential, never the secret itself'></label><div><button>Save Connection</button></div></form></details>"""
+<label class='wide'>Credential Reference<input name='credentials_ref' placeholder='env:AXIOM_VENDOR_TOKEN (environment variable name only)'></label>
+<label class='wide'>Advanced JSON Configuration<textarea name='config_json' placeholder='{"read_routes":{}}'></textarea></label>
+<label class='wide'><input type='checkbox' name='allow_writes'> Enable outbound create/edit requests (approved API only)</label>
+<div><button>Save Connection</button></div></form></details>"""
         body="<section class='page-head'><div><p class='eyebrow'>Universal adapter layer</p><h1>ERP / Systems Integration</h1><p class='sub'>Flat files, scheduled report drops, REST APIs, approved report/database views and queued outbound writes use configurable mappings, durable sync IDs, conflict handling and audit receipts. Proprietary ERPs only need an adapter for the interface they expose.</p></div></section>"+context_banner()+form+"<div class='panel'><h2>Connections</h2>"+table_html(rows,[("name","Name"),("erp_type","ERP"),("adapter_type","Adapter"),("direction","Direction"),("enabled","Enabled"),("credentials_ref","Credential Ref"),("updated_at","Updated")],"erp_connection","name")+"</div><div class='panel'><h2>Recent sync runs</h2>"+table_html(runs,[("run_id","Run"),("direction","Direction"),("entity_type","Entity"),("status","Status"),("read_count","Read"),("applied_count","Applied"),("error_count","Errors"),("started_at","Started"),("completed_at","Done")],"integration_run","run_id")+"</div>"
         return page("ERP / Systems",body,module_key="integrations")
 
