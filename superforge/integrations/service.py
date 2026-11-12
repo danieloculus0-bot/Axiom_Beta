@@ -8,10 +8,15 @@ from ..event_bus import publish, stage_event, deliver_staged
 from .flatfile import FlatFileAdapter
 from .mapping import map_record
 from .rest import RESTAdapter
+from .paperless_fulcrum import PaperlessPartsAdapter, FulcrumAdapter
+from .jobboss2_writer import JobBoss2WriteAdapter
+from .vendor_http import MyTrackAdapter
 from .sql import SQLReportAdapter
 from .method_operation_identity import resolve_method_operation
 
-ADAPTERS={"flatfile":FlatFileAdapter,"rest":RESTAdapter,"sql":SQLReportAdapter}
+ADAPTERS={"flatfile":FlatFileAdapter,"rest":RESTAdapter,"sql":SQLReportAdapter,
+          "paperless_parts":PaperlessPartsAdapter,"fulcrum":FulcrumAdapter,
+          "jobboss2_write":JobBoss2WriteAdapter,"mytrack":MyTrackAdapter}
 ENTITY_TABLES={
  "job":("jobs","job_number"),
  "purchase_order":("purchase_orders","po_number"),
