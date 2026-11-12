@@ -142,6 +142,14 @@ def test_unknown_collection_does_not_silently_skip_records():
         records({"unexpected": [{"id": "test"}]})
 
 
+def test_environment_credential_reference_uses_only_explicit_env_name(monkeypatch):
+    from superforge.integrations.service import _environment_credentials
+    monkeypatch.setenv("AXIOM_EXAMPLE_VENDOR_TOKEN", "SYNTHETIC-SECRET")
+    assert _environment_credentials("env:AXIOM_EXAMPLE_VENDOR_TOKEN") == {"token": "SYNTHETIC-SECRET"}
+    assert _environment_credentials("SYNTHETIC-SECRET") == {}
+    assert _environment_credentials("env:malformed") == {}
+
+
 def test_registry_contains_vendor_adapters():
     from superforge.integrations.service import ADAPTERS
     assert {"paperless_parts", "fulcrum", "jobboss2_write", "mytrack"} <= set(ADAPTERS)
