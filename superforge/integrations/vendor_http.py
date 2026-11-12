@@ -141,7 +141,7 @@ class VendorHTTP(ERPAdapter):
 
 
 class MyTrackAdapter(VendorHTTP):
-    """WMF MyTrack mapping shell. Vendor product, paths and permissions MUST be provided.
+    """MyTrack mapping shell. Vendor product, paths and permissions MUST be provided.
 
     No MyTrack endpoint is assumed; an unrelated product with the same name
     must not become a pretend live integration.

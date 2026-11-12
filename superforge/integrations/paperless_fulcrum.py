@@ -1,7 +1,7 @@
 """Paperless Parts and Fulcrum adapters for a configurable quoting-to-ERP bridge."""
 from __future__ import annotations
 
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from .base import ExternalRecord, PushReceipt
 from .vendor_http import VendorError, VendorHTTP, records, safe_segment
@@ -13,7 +13,11 @@ class PaperlessPartsAdapter(VendorHTTP):
 
     def _base_url(self):
         # Paperless Parts' public REST API endpoint, not Fulcrum's endpoint.
-        return super()._base_url()
+        base = super()._base_url()
+        hostname = urlsplit(base).hostname or ""
+        if not (hostname == "api.paperlessparts.com" or hostname.endswith(".paperlessparts.com")):
+            raise VendorError("Paperless Parts token cannot be sent to an unrelated host")
+        return base
 
     def pull(self, entity_type, *, cursor=""):
         if entity_type not in {"quote", "order"}:
@@ -30,11 +34,24 @@ class PaperlessPartsAdapter(VendorHTTP):
         # New-records feed is read first, then the full details are fetched.
         # A bounded batch avoids unbounded fan-out on first startup.
         index = self._http("GET", f"/{plural}/public/new")
-        entries = records(index, key=self.config.get("records_key"))
+        # Public feeds may return numbered objects or numeric identifiers.
+        if isinstance(index, dict):
+            for key in (self.config.get("records_key"), plural, "new_" + plural):
+                if key and isinstance(index.get(key), list):
+                    index = index[key]
+                    break
+        if not isinstance(index, list):
+            entries = records(index)
+        else:
+            entries = index
         if len(entries) > int(self.config.get("max_batch", 100)):
             raise VendorError("Feed exceeds bounded batch; use an incremental cursor")
         out = []
         for stub in entries:
+            if isinstance(stub, (int, str)):
+                stub = {"number": stub}
+            if not isinstance(stub, dict):
+                raise VendorError("Unexpected Paperless Parts feed identifier")
             number = stub.get("number")
             if number is None:
                 raise VendorError("Paperless Parts feed record missing number")
@@ -78,10 +95,18 @@ class FulcrumAdapter(VendorHTTP):
     def __init__(self, config, credentials=None, *, transport=None):
         super().__init__(config, credentials, transport=transport)
         self.config = dict(self.config)
-        self.config.setdefault("read_routes", {"sales_order": "/api/sales-orders/{id}"})
+        self.config.setdefault("read_routes", {"sales_order": "/api/sales-orders"})
         self.config.setdefault("write_routes", {
             "sales_order": {"create": "/api/sales-orders", "update": "/api/sales-orders/{id}"}
         })
+
+    def pull(self, entity_type, *, cursor=""):
+        if cursor and entity_type == "sales_order":
+            data = self._http("GET", "/api/sales-orders/" + safe_segment(cursor))
+            if not isinstance(data, dict):
+                raise VendorError("Expected a Fulcrum sales order object")
+            return [ExternalRecord(str(data.get("id") or cursor), entity_type, data)]
+        return super().pull(entity_type, cursor=cursor)
 
     def _base_url(self):
         base = super()._base_url()

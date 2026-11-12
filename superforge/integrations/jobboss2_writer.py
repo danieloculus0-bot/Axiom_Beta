@@ -17,7 +17,7 @@ class JobBoss2WriteAdapter(VendorHTTP):
         super().__init__(config, credentials, transport=transport)
         self.config = dict(config)
         self.config.setdefault("read_routes", {
-            "sales_order": "/api/v1/orders/{id}",
+            "sales_order": "/api/v1/orders",
         })
         self.config.setdefault("write_routes", {
             "sales_order": {"create": "/api/v1/orders", "update": "/api/v1/orders/{orderNumber}"},
@@ -55,6 +55,12 @@ class JobBoss2WriteAdapter(VendorHTTP):
         return str(token)
 
     def pull(self, entity_type, *, cursor=""):
+        if cursor and entity_type == "sales_order":
+            from .vendor_http import safe_segment
+            data = self._http("GET", "/api/v1/orders/" + safe_segment(cursor))
+            if not isinstance(data, dict):
+                raise VendorError("Expected JobBOSS2 order object")
+            return [ExternalRecord(str(data.get("orderNumber") or cursor), entity_type, data)]
         return super().pull(entity_type, cursor=cursor)
 
     def push(self, entity_type, operation, payload):

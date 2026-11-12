@@ -85,7 +85,7 @@ response and its effective ERP state before marking business operations done.
 ### MyTrack
 
 "MyTrack" is not a unique product identifier. The mytrack adapter makes no
-claim that any particular MyTrack vendor is WMF's system. Obtain WMF's
+claim that any particular MyTrack vendor is the intended system. Obtain the installation's
 approved system/vendor, base API URL, entity paths, authentication type,
 read/write permission and schema, then configure mytrack_interface_verified,
 read_routes and write_routes. Until then, network calls fail closed.
