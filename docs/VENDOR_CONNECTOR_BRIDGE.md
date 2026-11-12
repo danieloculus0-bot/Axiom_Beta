@@ -21,7 +21,14 @@ until tested against the relevant organization's approved environment.
 | mytrack | Endpoint mapping required | Endpoint and vendor interface verification required, opt-in |
 
 All four use the existing ERPAdapter/IntegrationService registration and may
-use an externally supplied credential_loader. Existing SQL import reconciliation,
+use an externally supplied credential_loader. Axiom's integration screen now
+lists all four adapters and offers advanced route configuration. A credential
+reference of env:AXIOM_VENDOR_TOKEN reads that variable from the local server
+environment and never persists the token in SQLite. The server process must
+actually have that variable set. JobBOSS2's documented OAuth client ID/secret
+may instead use its local AXIOM_JB2_CLIENT_ID and AXIOM_JB2_CLIENT_SECRET
+environment variables. Writes are unchecked by default and must be explicitly
+enabled.  Existing SQL import reconciliation,
 external references and outbound outbox must be configured separately. At present
 the service's import table mappings do **not** treat an entire quote or sales
 order as an Axiom job. Use the adapter's pull and a reviewed field mapping before
