@@ -76,11 +76,14 @@ Example adapter configuration (fictional values, do not commit secrets):
       "config_json": "{\"allow_writes\":true}"
     }
 
-The built-in create/update example targets the published order endpoints.
-For other entities, set read_routes, write_routes and id_fields to the
-exact ECI OpenAPI contract for the authorized tenant. POST and PATCH are
-different from deleting or editing unsupported fields. Reconcile the ECI
-response and its effective ERP state before marking business operations done.
+Built-in Public API routes support sales orders, quotes, customers, estimates,
+time tickets, time ticket details and order routings, using their documented
+create POST and edit PATCH paths. Authorization and exact write fields depend
+on the tenant's permissions and schema. For further entities, set read_routes,
+write_routes and id_fields to the ECI OpenAPI contract. POST and PATCH are
+different from deleting or editing unsupported fields. Reconcile ECI's actual
+ERP state before marking business operations done. OAuth tokens are cached
+per adapter instance until shortly before expiry.
 
 ### MyTrack
 

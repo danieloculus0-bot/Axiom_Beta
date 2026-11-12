@@ -88,6 +88,17 @@ def test_jobboss_oauth_and_record_edit():
     assert not api.push("sales_order", "delete", {"orderNumber": "TEST-001"}).ok
 
 
+def test_jobboss_write_routes_cover_time_and_customer_records():
+    transport = Transport([{"Data": {"timeTicketGUID": "sample-id"}}, {}])
+    api = JobBoss2WriteAdapter({"allow_writes": True}, {"token": "TEST"}, transport=transport)
+    assert api.pull("time_ticket_detail", cursor="sample-id")[0].external_id == "sample-id"
+    result = api.push("customer", "update", {"customerCode": "DEMO", "customerName": "Example Only"})
+    assert result.ok
+    assert transport.requests[0].full_url.endswith("/api/v1/time-ticket-details/sample-id")
+    assert transport.requests[1].full_url.endswith("/api/v1/customers/DEMO")
+    assert transport.requests[1].get_method() == "PATCH"
+
+
 def test_mytrack_requires_real_vendor_interface_and_never_invents_routes():
     transport = Transport([])
     api = MyTrackAdapter({"base_url": "https://api.example.invalid", "allow_writes": True}, {
