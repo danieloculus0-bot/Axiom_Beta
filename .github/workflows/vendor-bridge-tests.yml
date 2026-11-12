@@ -1,0 +1,27 @@
+name: Vendor Bridge Tests
+on:
+  push:
+    paths:
+      - 'superforge/integrations/**'
+      - 'tests/test_vendor_bridges.py'
+      - '.github/workflows/vendor-bridge-tests.yml'
+  pull_request:
+    paths:
+      - 'superforge/integrations/**'
+      - 'tests/test_vendor_bridges.py'
+      - '.github/workflows/vendor-bridge-tests.yml'
+permissions:
+  contents: read
+jobs:
+  vendor-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test runner
+        run: python -m pip install 'pytest>=8,<9'
+      - name: Run fictional vendor contract tests without real network calls
+        run: python -m pytest tests/test_vendor_bridges.py -q
