@@ -45,3 +45,19 @@ test("ecosystem navigation is not misrepresented as an integration API", () => {
     assert.ok(!html.includes('href="' + PROJECTS + '#'), "cross-site nav must not invent record context");
   }
 });
+
+test("ERP cross-project return links are prominent and remain available on mobile", () => {
+  const html = read("./erp/index.html");
+  const css = read("./erp/style.css");
+  const sidebar = html.split('<aside class="sidebar">')[1]?.split("</aside>")[0];
+  assert.ok(sidebar, "ERP must retain its sidebar");
+  const visibleNav = sidebar.split('<nav class="ecosystem-entry"')[1]?.split("</nav>")[0];
+  assert.ok(visibleNav, "prominent project navigation must exist outside the footer");
+  assert.match(visibleNav, /All Projects/);
+  assert.ok(visibleNav.includes('href="' + PROJECTS + '"'));
+  assert.ok(visibleNav.includes('href="' + BEAN + '"'));
+  assert.ok(sidebar.indexOf('<nav class="ecosystem-entry"') < sidebar.indexOf('class="environment"'), "return path should appear before the ERP menu");
+  assert.match(css, /\.ecosystem-entry\{display:flex/);
+  assert.match(css, /\.sidebar-footer\{display:none\}/);
+  assert.doesNotMatch(css, /\.ecosystem-entry\s*\{[^}]*display\s*:\s*none/i);
+});
