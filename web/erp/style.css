@@ -71,6 +71,13 @@
 .wheel-sector:focus-visible path{stroke:var(--lime)}
 @media(prefers-reduced-motion:reduce){.wheel-sector path{transition:none}}
 
+/* Always-visible return path into the wider portfolio, including narrow screens.
+   The legacy sidebar footer is intentionally hidden on mobile. */
+.ecosystem-entry{display:flex;gap:7px;margin:0 7px 14px}
+.sidebar .ecosystem-entry a{display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:#151719;color:var(--text);font-size:11px;font-weight:800;white-space:nowrap}
+.sidebar .ecosystem-entry .ecosystem-entry-primary{flex:1;color:var(--lime);border-color:#46604a}
+.sidebar .ecosystem-entry a:hover{background:#24282b;text-decoration:none}
+
 
 /* Embedded EZ CAM public workbench. Keep the simulator visually integrated
    while preserving its independent browser-local data and controls. */
