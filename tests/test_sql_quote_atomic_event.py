@@ -282,3 +282,36 @@ def test_default_quote_consumer_creates_one_review_action_after_replay(tmp_path,
         assert con.execute(
             "SELECT status FROM quote_intakes WHERE id=?", (quote["id"],)
         ).fetchone()[0] == "review_required"
+
+
+def test_quote_review_action_is_visible_in_operator_queues(tmp_path, monkeypatch):
+    """The shipped quote consumer must surface a canonical review action in both UIs."""
+    monkeypatch.setenv("AXIOM_DATA_DIR", str(tmp_path / "quote-operator-queue"))
+    from superforge.app import create_app
+    app = create_app({"TESTING": True})
+    proposal, pdf = _proposal()
+    result = ezstimate_quote.import_ezstimate_quote(
+        proposal, pdf_bytes=pdf, actor="synthetic-reviewer")
+    with db() as con:
+        action = con.execute(
+            """SELECT id,entity_id,status FROM workflow_actions
+               WHERE workflow_key='quote-draft-review'
+                 AND step_key='review-estimate-and-drawing'"""
+        ).fetchone()
+        assert action is not None
+        assert action["entity_id"] == str(result["quote_id"])
+        assert action["status"] == "open"
+
+    client = app.test_client()
+    quoting = client.get("/quoting")
+    assert quoting.status_code == 200
+    assert b"Quote review actions" in quoting.data
+    assert b"review-estimate-and-drawing" in quoting.data
+    assert b"SYN-QUOTE-001" in quoting.data
+    assert f"/context/workflow_action/{action['id']}".encode() in quoting.data
+
+    planning = client.get("/planning")
+    assert planning.status_code == 200
+    assert b"quote-draft-review" in planning.data
+    assert b"review-estimate-and-drawing" in planning.data
+    assert f"/context/workflow_action/{action['id']}".encode() in planning.data
