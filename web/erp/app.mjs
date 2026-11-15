@@ -48,11 +48,16 @@ function load(){
     try{recoverBrowserSave(localStorage,[ERP_KEY,CLOCK_KEY,WORKFORCE_KEY]);}
     catch(error){recoveryFailure=error;throw error;}
     const raw=localStorage.getItem(ERP_KEY);
-    if(raw && raw.length<1800000) state=validateState(JSON.parse(raw));
+    if(raw !== null){
+      if(raw.length>=1800000) throw Error("Oversized saved ERP record");
+      state=validateState(JSON.parse(raw));
+    }
     const clocks=localStorage.getItem(CLOCK_KEY);
-    if(clocks && clocks.length<2500000){
+    if(clocks !== null){
+      if(clocks.length>=2500000) throw Error("Oversized saved clock record");
       const data=JSON.parse(clocks);
-      if(Array.isArray(data)) sessions=data.filter(s=>s&&typeof s==="object" &&
+      if(!Array.isArray(data)) throw Error("Invalid saved clock record");
+      sessions=data.filter(s=>s&&typeof s==="object" &&
         typeof s.id==="string" && typeof s.jobId==="string" && typeof s.step==="string" &&
         typeof s.employee==="string" && /^DEMO-[A-Z0-9]{1,16}$/.test(s.employee) &&
         typeof s.jobNumber==="string" && typeof s.partNumber==="string" &&
@@ -61,10 +66,16 @@ function load(){
       ).slice(-2000);
     }
     const rawWorkforce=localStorage.getItem(WORKFORCE_KEY);
-    workforce=rawWorkforce&&rawWorkforce.length<800000?validateWorkforce(JSON.parse(rawWorkforce)):seedWorkforce();
+    if(rawWorkforce !== null){
+      if(rawWorkforce.length>=800000) throw Error("Oversized saved workforce record");
+      workforce=validateWorkforce(JSON.parse(rawWorkforce));
+    }else workforce=seedWorkforce();
     const k=ERP_KEY+"_test";localStorage.setItem(k,"ok");localStorage.removeItem(k);
     stored=true;
-  }catch{stored=false;state=seedState();sessions=[];workforce=seedWorkforce();}
+  }catch(error){
+    recoveryFailure=error;
+    stored=false;state=seedState();sessions=[];workforce=seedWorkforce();
+  }
 }
 function persist(){
   if(!stored) return;
@@ -472,7 +483,7 @@ function render(){
     const title=document.createElement("h1");
     title.textContent="Saved ERP data needs recovery";
     const detail=document.createElement("p");
-    detail.textContent="The browser save journal could not be validated. Existing records have not been discarded or replaced. Editing is disabled to avoid mixing saved revisions. Restore a valid journal or recover the browser storage, then reload.";
+    detail.textContent="Saved browser records could not be loaded or validated. Existing records have not been intentionally discarded or replaced. Editing is disabled to avoid mixing saved revisions. Recover browser storage, then reload.";
     notice.append(title,detail);
     document.body.replaceChildren(notice);
     return;
