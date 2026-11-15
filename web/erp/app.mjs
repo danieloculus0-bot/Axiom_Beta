@@ -38,12 +38,15 @@ const stateViews={
  quality:"Quality Control",documents:"Drawing Control",pm:"PM Tracker",requests:"Request Desk",hr:"Human Resources",morale:"Morale & Recognition",pto:"PTO Requests",payroll:"Payroll Preview",cam:"CAM Preparation",modules:"All Workbenches",qcdsm:"QCDSM",cost:"Cost",delivery:"Delivery",safety:"Safety",reports:"Report Center",bridge:"ERP Emulator",audit:"Event History"
 };
 let workforce=seedWorkforce();
+let recoveryFailure=null;
 let payPreviewResult=null,camEnvelopeResult=null;
 let qcdsmDepartment="Assembly";
 let state=seedState(),sessions=[],stored=false,selectedJobId="",selectedStep="10",operator="DEMO-01",flash="",selectedPmMachineId="",selectedReport="jobs",menu=null,selectedContext=null,selectedIntent="",selectedRequest={kind:"",id:""},routeDraft=null,capacityReview=null;
 function load(){
+  recoveryFailure=null;
   try{
-    recoverBrowserSave(localStorage,[ERP_KEY,CLOCK_KEY,WORKFORCE_KEY]);
+    try{recoverBrowserSave(localStorage,[ERP_KEY,CLOCK_KEY,WORKFORCE_KEY]);}
+    catch(error){recoveryFailure=error;throw error;}
     const raw=localStorage.getItem(ERP_KEY);
     if(raw && raw.length<1800000) state=validateState(JSON.parse(raw));
     const clocks=localStorage.getItem(CLOCK_KEY);
@@ -460,6 +463,20 @@ function rememberJob(id){
   history.replaceState(null,"",location.pathname+"?job="+encodeURIComponent(id)+location.hash);
 }
 function render(){
+  if(recoveryFailure){
+    // Never present editable demo defaults as recovered records after a corrupt journal.
+    // The journal and all legacy keys remain untouched for later recovery.
+    const notice=document.createElement("main");
+    notice.setAttribute("role","alert");
+    notice.style.cssText="max-width:52rem;margin:10vh auto;padding:2rem;font:1rem/1.6 system-ui;color:#f1f5f2;background:#202624;border:1px solid #a8d44d;border-radius:12px";
+    const title=document.createElement("h1");
+    title.textContent="Saved ERP data needs recovery";
+    const detail=document.createElement("p");
+    detail.textContent="The browser save journal could not be validated. Existing records have not been discarded or replaced. Editing is disabled to avoid mixing saved revisions. Restore a valid journal or recover the browser storage, then reload.";
+    notice.append(title,detail);
+    document.body.replaceChildren(notice);
+    return;
+  }
   if(!getJob(state,selectedJobId))selectedJobId=state.jobs[0].id;
   if(!getMachine(state.pm,selectedPmMachineId))selectedPmMachineId=state.pm.machines[0]?.id||"";
   const view=currentView(),j=job();
