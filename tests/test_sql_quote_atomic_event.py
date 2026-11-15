@@ -215,3 +215,70 @@ def test_quote_receipt_write_failure_replays_idempotent_consumer(tmp_path, monke
             (row["event_id"],)).fetchone()[0] == "delivered"
     assert event_bus.deliver_staged(row["event_id"])["skipped"] >= 1
     assert len(calls) == 2
+
+
+def test_default_quote_consumer_creates_one_review_action_after_replay(tmp_path, monkeypatch):
+    """Real registered consumer must create a discoverable, idempotent review task."""
+    monkeypatch.setenv("AXIOM_DATA_DIR", str(tmp_path / "default-consumer"))
+    from superforge.app import create_app
+    from superforge import event_bus
+    create_app({"TESTING": True})
+    proposal, pdf = _proposal()
+    event_type = "quote.estimate.draft_imported"
+    assert event_bus._quote_draft_imported in event_bus._HANDLERS[event_type]
+
+    result = ezstimate_quote.import_ezstimate_quote(
+        proposal, pdf_bytes=pdf, actor="synthetic-reviewer")
+    assert result["status"] == "review_required"
+    with db() as con:
+        quote = con.execute(
+            "SELECT id,status FROM quote_intakes WHERE id=?", (result["quote_id"],)
+        ).fetchone()
+        assert quote["status"] == "review_required"
+        event = con.execute(
+            "SELECT event_id,status FROM event_ledger WHERE event_type=?", (event_type,)
+        ).fetchone()
+        actions = con.execute(
+            """SELECT event_id,workflow_key,step_key,target_module,entity_type,entity_id,
+                      status,input_json FROM workflow_actions
+               WHERE workflow_key='quote-draft-review'"""
+        ).fetchall()
+        assert len(actions) == 1
+        action = actions[0]
+        assert action["event_id"] == event["event_id"]
+        assert action["step_key"] == "review-estimate-and-drawing"
+        assert action["target_module"] == "quoting"
+        assert action["entity_type"] == "quote_intake"
+        assert action["entity_id"] == str(quote["id"])
+        assert action["status"] == "open"
+        assert __import__("json").loads(action["input_json"])["quote_intake_id"] == str(quote["id"])
+        assert con.execute(
+            "SELECT status FROM event_delivery_receipts WHERE event_id=? AND handler_key=?",
+            (event["event_id"], event_bus._handler_key(event_bus._quote_draft_imported)),
+        ).fetchone()[0] == "delivered"
+
+    # Simulate lost receipt after a successful handler, then replay after restart.
+    with db() as con:
+        con.execute(
+            "DELETE FROM event_delivery_receipts WHERE event_id=? AND handler_key=?",
+            (event["event_id"], event_bus._handler_key(event_bus._quote_draft_imported)),
+        )
+        con.execute(
+            "UPDATE event_ledger SET status='partial_failure' WHERE event_id=?",
+            (event["event_id"],),
+        )
+    create_app({"TESTING": True})
+    event_bus.recover_undelivered()
+    assert ezstimate_quote.import_ezstimate_quote(
+        proposal, pdf_bytes=pdf, actor="synthetic-reviewer")["idempotent"]
+    with db() as con:
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='quote-draft-review'"
+        ).fetchone()[0] == 1
+        assert con.execute(
+            "SELECT status FROM event_delivery_receipts WHERE event_id=? AND handler_key=?",
+            (event["event_id"], event_bus._handler_key(event_bus._quote_draft_imported)),
+        ).fetchone()[0] == "delivered"
+        assert con.execute(
+            "SELECT status FROM quote_intakes WHERE id=?", (quote["id"],)
+        ).fetchone()[0] == "review_required"
