@@ -108,9 +108,13 @@ def import_ezstimate_quote(proposal:dict, *, pdf_bytes:bytes, actor:str):
             payload={"source_version": doc["file_version_id"], "drawing_sha256": observed,
                      "status": "review_required"},
         )
-    record_event(event_type="QUOTE",action="EZSTIMATE_DRAFT_IMPORTED",module="quoting",
-                 entity_type="quote_intake",entity_id=quote_id,actor=actor,
-                 data={"quote_number":quote_number,"source_version":doc["file_version_id"],
-                       "pdf_sha256":observed,"quote_status":"review_required"})
-    deliver_staged(event.event_id)
+    # The domain event is already committed. Audit failures must not prevent
+    # its delivery; the durable event bus handles receipts and replay.
+    try:
+        record_event(event_type="QUOTE",action="EZSTIMATE_DRAFT_IMPORTED",module="quoting",
+                     entity_type="quote_intake",entity_id=quote_id,actor=actor,
+                     data={"quote_number":quote_number,"source_version":doc["file_version_id"],
+                           "pdf_sha256":observed,"quote_status":"review_required"})
+    finally:
+        deliver_staged(event.event_id)
     return {"quote_id":quote_id,"status":"review_required","idempotent":False,"total":expected}

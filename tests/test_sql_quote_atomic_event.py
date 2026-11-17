@@ -315,3 +315,47 @@ def test_quote_review_action_is_visible_in_operator_queues(tmp_path, monkeypatch
     assert b"quote-draft-review" in planning.data
     assert b"review-estimate-and-drawing" in planning.data
     assert f"/context/workflow_action/{action['id']}".encode() in planning.data
+
+
+def test_post_commit_audit_failure_still_delivers_durable_quote_event(tmp_path, monkeypatch):
+    """An audit exception cannot strand the already-committed domain event."""
+    monkeypatch.setenv("AXIOM_DATA_DIR", str(tmp_path / "audit-failure"))
+    from superforge.app import create_app
+    from superforge import event_bus
+    create_app({"TESTING": True})
+    proposal, pdf = _proposal()
+
+    def fail_audit(**kwargs):
+        raise RuntimeError("synthetic audit unavailable")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ezstimate_quote, "record_event", fail_audit)
+        with pytest.raises(RuntimeError, match="synthetic audit unavailable"):
+            ezstimate_quote.import_ezstimate_quote(
+                proposal, pdf_bytes=pdf, actor="synthetic-reviewer")
+
+    with db() as con:
+        assert con.execute("SELECT COUNT(*) FROM quote_intakes").fetchone()[0] == 1
+        assert con.execute("SELECT COUNT(*) FROM ezstimate_quote_evidence").fetchone()[0] == 1
+        event = con.execute(
+            "SELECT event_id,status FROM event_ledger WHERE event_type=?",
+            ("quote.estimate.draft_imported",)).fetchone()
+        assert event["status"] == "delivered"
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='quote-draft-review'"
+        ).fetchone()[0] == 1
+        assert con.execute(
+            "SELECT status FROM event_delivery_receipts WHERE event_id=? AND handler_key=?",
+            (event["event_id"], event_bus._handler_key(event_bus._quote_draft_imported))
+        ).fetchone()[0] == "delivered"
+
+    assert ezstimate_quote.import_ezstimate_quote(
+        proposal, pdf_bytes=pdf, actor="synthetic-reviewer")["idempotent"]
+    event_bus.recover_undelivered()
+    with db() as con:
+        assert con.execute("SELECT COUNT(*) FROM quote_intakes").fetchone()[0] == 1
+        assert con.execute("SELECT COUNT(*) FROM event_ledger WHERE event_type=?",
+                           ("quote.estimate.draft_imported",)).fetchone()[0] == 1
+        assert con.execute(
+            "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='quote-draft-review'"
+        ).fetchone()[0] == 1
