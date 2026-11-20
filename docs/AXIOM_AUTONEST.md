@@ -18,6 +18,12 @@ Open web/erp/autonest.html through GitHub Pages or another local HTTP static ser
 - R2000 ASCII DXF exports for each sheet, with closed CUT_OUTER and CUT_INNER LWPOLYLINE contours only.
 - Explicit BEAN review-evidence JSON showing actual search alternatives, clearance settings and verification results.
 
+## EZ CAM press-brake simulation companion
+
+The sheet nesting workbench links to the [EZ CAM brake simulation lab](https://danieloculus0-bot.github.io/EZ-CAM/brake-lab.html). EZ CAM already owned generic Bystronic/Accurpress machine families and manual press-brake cycle estimates. Its new separate browser module adds **2D ideal-hinge bend-by-bend section geometry**, sampled self-contact, optional user-specified section obstacles, and a bounded bend-sequence search with evidence output.
+
+This is navigation between working public prototype tools, **not** automatic transfer of controlled Axiom parts, flat-pattern bend lines, machine data or BEAN Core output. A verified STEP/DXF bend-feature adapter, true 3D tooling/press kinematics, backgauge/tonnage verification, version-aware manufacturing records, and BEAN-driven constrained optimization remain follow-up work.
+
 ## Geometry and limits
 
 - Dimensions are supplied entirely in one unit system (inches or millimeters) with no automatic unit conversion.
