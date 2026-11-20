@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
 import {solveNest,verifyNest,polygonsOverlap,polygonArea} from "./autonest-engine.mjs";
 import {importDxfPart,exportDxfSheet} from "./autonest-dxf.mjs";
 
@@ -83,4 +84,10 @@ test("DXF bulge arcs are genuinely tessellated; open/unsupported entities are re
   assert.ok(arc.outline.length>5);
   assert.throws(()=>importDxfPart(prefix+"0\nLINE\n10\n0\n20\n0"+suffix),/Unsupported/);
   assert.throws(()=>importDxfPart(prefix+"0\nLWPOLYLINE\n90\n3\n70\n0\n10\n0\n20\n0\n10\n1\n20\n0\n10\n0\n20\n1"+suffix),/Open/);
+});
+
+test("AutoNest connects users to the EZ CAM brake section workbench without claiming integrated machine data",()=>{
+ const page=readFileSync(new URL("./autonest.html",import.meta.url),"utf8");
+ assert.match(page,/EZ-CAM\/brake-lab\.html/);
+ assert.match(page,/not a 3D machine simulator/);
 });
