@@ -61,3 +61,13 @@ test("ERP cross-project return links are prominent and remain available on mobil
   assert.match(css, /\.sidebar-footer\{display:none\}/);
   assert.doesNotMatch(css, /\.ecosystem-entry\s*\{[^}]*display\s*:\s*none/i);
 });
+
+test("every Axiom site and application, including AutoNest, has the shared BEAN navigation", () => {
+  for (const file of ["./index.html", "./erp/index.html", "./erp/autonest.html", "./ewi/index.html", "./lab/index.html"]) {
+    const html = read(file);
+    assert.equal(html.split('data-bean-ecosystem-nav="v1"').length - 1, 1, file);
+    assert.ok(html.includes('href="' + BEAN + '"'), file + " must link directly to BEAN");
+    assert.ok(html.includes('href="' + PROJECTS + '"'), file + " must link to all projects");
+    assert.ok(html.includes('href="' + BEAN + 'status.html"'), file + " must link to current build");
+  }
+});
