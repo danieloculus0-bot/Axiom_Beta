@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0f1416">
+<title>Axiom AutoNest | Intelligent Sheet Nesting</title>
+<style>
+:root{--bg:#0b1214;--panel:#172123;--line:#344044;--green:#a3ef62;--text:#e8eee9;--muted:#a7b8b6}
+*{box-sizing:border-box}body{margin:0;font:14px/1.5 system-ui,Segoe UI,sans-serif;color:var(--text);background:var(--bg)}
+header{padding:18px max(20px,calc((100vw - 1600px)/2));border-bottom:1px solid var(--line);display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+header b{font-size:21px;letter-spacing:-.7px}header em{font-style:normal;color:var(--green)}
+a{color:var(--green)}header nav{margin-left:auto;display:flex;gap:16px}
+main{max-width:1600px;margin:24px auto;padding:0 20px}.hero{margin-bottom:18px}.hero h1{font-size:clamp(24px,3vw,37px);margin:0}.hero p{color:var(--muted);max-width:900px;margin:7px 0}
+.columns{display:grid;grid-template-columns:minmax(310px,480px) 1fr;gap:18px;align-items:start}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:15px}
+.panel h2{font-size:18px;margin:0 0 12px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+label{font-size:12px;font-weight:700;color:var(--muted);display:block}
+input,select,textarea{display:block;margin:4px 0 8px;width:100%;border:1px solid #526065;border-radius:7px;background:#0c1618;color:var(--text);padding:9px;font:inherit}
+textarea{height:245px;resize:vertical;font:12px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace}
+button{background:var(--green);color:#13200d;border:0;border-radius:7px;padding:10px 14px;font-weight:800;cursor:pointer}
+button.secondary{background:#273335;color:var(--text);border:1px solid var(--line)}button:disabled{opacity:.4;cursor:not-allowed}
+.actions{display:flex;gap:9px;flex-wrap:wrap;margin:10px 0}.note{color:var(--muted);font-size:12px}
+.status{padding:12px;border:1px solid var(--line);border-radius:8px;background:#10191a}
+.status.error{border-color:#c56a6a;color:#ffb7b7}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:15px}
+.stat{background:#0e1b1c;border:1px solid var(--line);border-radius:9px;padding:12px}
+.stat strong{display:block;font-size:24px;color:var(--green)}.stat small{color:var(--muted)}
+.sheet{background:#10191b;border:1px solid var(--line);border-radius:10px;padding:14px;margin:13px 0}
+.sheet-title{display:flex;align-items:center;gap:12px;justify-content:space-between;margin-bottom:9px}
+svg{display:block;width:100%;max-height:580px;background:#0b1314;border:1px solid #4c595c}
+rect.stock{fill:#d4dcd8;stroke:#879694}path.part{stroke:#172123;stroke-width:.18;fill-rule:evenodd;vector-effect:non-scaling-stroke}
+.legend{font-size:12px;color:var(--muted);margin-top:9px}
+details summary{cursor:pointer;color:var(--green)}
+table{width:100%;border-collapse:collapse;font-size:12px}td,th{text-align:left;border-bottom:1px solid var(--line);padding:6px}
+#results:empty{display:none}
+@media(max-width:990px){.columns{grid-template-columns:1fr}header nav{margin-left:0}}
+</style>
+</head>
+<body>
+<header><b>AXIOM <em>AUTONEST</em></b><span class="note">POLYGON SOLVER · DXF CUT GEOMETRY</span><nav><a href="./">Axiom ERP</a><a href="https://github.com/danieloculus0-bot/Axiom_Beta">Source</a></nav></header>
+<main>
+<section class="hero"><h1>Intelligent sheet nesting, with measured results.</h1><p>Import closed DXF geometry or edit the part definition. AutoNest searches twelve packing strategies, checks polygon clearances, and exports cut contours per sheet. BEAN receives review-ready optimization evidence, but this release does not run a connected BEAN model.</p></section>
+<div class="columns">
+<div>
+<section class="panel">
+<h2>Sheet and cut settings</h2>
+<div class="grid">
+<label>Sheet width<input id="sheet-width" type="number" min="1" step="any" value="48"></label>
+<label>Sheet height<input id="sheet-height" type="number" min="1" step="any" value="36"></label>
+<label>Border margin<input id="margin" type="number" min="0" step="any" value=".25"></label>
+<label>Minimum material web<input id="spacing" type="number" min="0" step="any" value=".25"></label>
+<label>Kerf width<input id="kerf" type="number" min="0" step="any" value=".06"></label>
+<label>Drawing units<select id="units"><option value="in">Inches</option><option value="mm">Millimeters</option></select></label>
+</div>
+<p class="note">Part-to-part clearance = minimum web + kerf. Stock border uses margin + half kerf. Dimensions and geometry must use the same units.</p>
+</section>
+<section class="panel">
+<h2>Part geometry</h2>
+<label>Import part DXFs (closed LWPOLYLINE, bulge arcs, circles)<input id="upload-dxf" type="file" multiple accept=".dxf"></label>
+<label>DXF chord tolerance<input id="arc-tol" type="number" min=".001" step="any" value=".02"></label>
+<p class="note">Each DXF is one part. Edit quantities below after importing. Unsupported/open contours are explicitly rejected.</p>
+<label>Part list JSON<textarea id="parts" spellcheck="false" aria-label="Part list JSON"></textarea></label>
+<div class="actions"><button class="secondary" id="sample">Restore synthetic example</button><button id="nest">Generate Axiom AutoNest</button></div>
+</section>
+</div>
+<div>
+<section class="panel"><h2>Nesting results</h2><div id="status" class="status" role="status">Ready. Run a nest to generate layouts.</div><div id="results"></div></section>
+<section class="panel"><h2>Optimization evidence</h2><div id="evidence" class="note">Each run compares twelve deterministic layouts. Selected strategy, material utilization, geometry verification, and unplaced quantities can be exported for BEAN review.</div></section>
+</div>
+</div>
+</main>
+<script type="module" src="./autonest-ui.mjs"></script>
+</body>
+</html>
