@@ -81,6 +81,12 @@ The local Python application has a Flask-based interface and a SQLite data store
 
 For precise implementation details and current limitations, see the [engineering documents](#documentation-and-technical-details).
 
+## Axiom AutoNest
+
+The [Axiom AutoNest browser workbench](web/erp/autonest.html) implements a functioning, inspectable geometric nesting prototype: closed polygon and DXF profile intake, multi-rotation searches, collision and kerf/web checks, sheet layouts, per-sheet DXF cutting output and optimization evidence for BEAN review. It is browser-local and uses only invented sample shapes by default.
+
+**Current boundary:** the search engine is deterministic and does not call the live BEAN Core model. Axiom/BEAN learning, machines, production NC programs, common-line cutting, hole-in-hole nesting and qualification against real fabrication drawings remain future integrations. See [the implementation and verified scope](docs/AXIOM_AUTONEST.md).
+
 ## Where BEAN fits
 
 **Axiom is the manufacturing application. [BEAN](https://github.com/danieloculus0-bot/BEAN) is a separate intelligence and learning system.**
