@@ -1,0 +1,24 @@
+name: Axiom AutoNest validation
+on:
+  push:
+    branches: [main, feature/axiom-autonest-v1]
+    paths:
+      - "web/erp/autonest*"
+      - ".github/workflows/autonest.yml"
+  pull_request:
+    paths:
+      - "web/erp/autonest*"
+      - ".github/workflows/autonest.yml"
+  workflow_dispatch:
+jobs:
+  autonest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node --check web/erp/autonest-engine.mjs
+      - run: node --check web/erp/autonest-dxf.mjs
+      - run: node --check web/erp/autonest-ui.mjs
+      - run: node --test web/erp/autonest.test.mjs
