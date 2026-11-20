@@ -93,8 +93,12 @@ function normalizeInput(input){
     const outline=normalizePolygon(p.outline,id+" outline");
     const holes=(p.holes??[]).map((h,i)=>normalizePolygon(h,id+" hole "+i));
     for(const hole of holes){
-      if(!hole.every(v=>pointInPolygon(v,outline))||polygonsOverlap(hole,outline,0))
-        throw Error(id+": hole must be strictly inside outline");
+      const inside=hole.every(v=>pointInPolygon(v,outline)&&
+        !outline.some((v,i)=>onSegment(v,outline[(i+1)%outline.length],hole[0])));
+      let crossing=false;
+      for(let i=0;i<hole.length;i++)for(let j=0;j<outline.length;j++)
+        if(intersect(hole[i],hole[(i+1)%hole.length],outline[j],outline[(j+1)%outline.length]))crossing=true;
+      if(!inside||crossing)throw Error(id+": hole must be strictly inside outline");
       if(holes.some(other=>other!==hole&&polygonsOverlap(hole,other,0)))throw Error(id+": overlapping holes");
     }
     const angles=p.rotations??[0,90,180,270];
@@ -147,7 +151,7 @@ function candidates(placed,v,limits,style){
   const positions=[];
   for(const x of ax)for(const y of ay)positions.push([x,y]);
   if(style==="left")positions.sort((a,b)=>a[0]-b[0]||a[1]-b[1]);
-  else if(style==="compact")positions.sort((a,b)=>Math.max(a[0]+v.width,a[1]+v.height)**2||a[1]-b[1]||a[0]-b[0]);
+  else if(style==="compact")positions.sort((a,b)=>((a[0]+v.width)*(a[1]+v.height))-((b[0]+v.width)*(b[1]+v.height))||a[1]-b[1]||a[0]-b[0]);
   else positions.sort((a,b)=>a[1]-b[1]||a[0]-b[0]);
   return positions.slice(0,3000);
 }
