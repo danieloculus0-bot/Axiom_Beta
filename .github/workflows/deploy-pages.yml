@@ -40,6 +40,10 @@ jobs:
         uses: actions/upload-pages-artifact@v4
         with:
           path: web
+      # The upload endpoint can finish before the Pages artifact search API indexes it.
+      # Give the deployment action a fresh artifact on a new run, not a duplicate on retry.
+      - name: Allow Pages artifact metadata to settle
+        run: sleep 12
       - name: Publish static site
         id: deploy
         uses: actions/deploy-pages@v4
