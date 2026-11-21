@@ -91,3 +91,24 @@ test("AutoNest connects users to the EZ CAM brake section workbench without clai
  assert.match(page,/EZ-CAM\/brake-lab\.html/);
  assert.match(page,/not a 3D machine simulator/);
 });
+
+test("BEAN rotation-policy challenge recomputes geometry without trusting agent scores",async()=>{
+  const {evaluateNestDecision}=await import("./autonest-challenge.mjs");
+  const challenge=job([rect("A",7,3),rect("B",2,2)],{width:5,height:9,margin:0},0.2);
+  const action={rotations:{A:[90],B:[0,90]},claimedUtilization:999,claimedSheets:0};
+  const outcome=evaluateNestDecision(challenge,action);
+  assert.equal(outcome.status,"EVALUATED");
+  assert.equal(outcome.candidate.verified,true);
+  assert.equal(outcome.baseline.verified,true);
+  assert.ok(outcome.candidate.utilization<=100);
+  assert.ok(outcome.candidate.sheets>=1);
+  assert.deepEqual(challenge.parts[0].rotations,undefined);
+  assert.deepEqual(evaluateNestDecision(challenge,action),outcome);
+});
+test("BEAN nesting challenge refuses unknown parts, unauthorized angles and invalid geometry",async()=>{
+  const {evaluateNestDecision}=await import("./autonest-challenge.mjs");
+  const challenge=job([{...rect("A",4,2),rotations:[0,180]}]);
+  for(const rotations of [{A:[90]},{A:[0],EXTRA:[0]},{A:[]},{A:[0,0]},{A:[NaN]}])
+    assert.equal(evaluateNestDecision(challenge,{rotations}).status,"INVALID_ACTION");
+  assert.equal(evaluateNestDecision(job([{id:"BAD",outline:[[0,0],[2,2],[0,2],[2,0]]}]),{rotations:{BAD:[0]}}).status,"INVALID_ACTION");
+});
