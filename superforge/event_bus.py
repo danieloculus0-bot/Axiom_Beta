@@ -94,13 +94,19 @@ def _deliver(event:DomainEvent,*,skip_delivered:bool=False)->dict[str,int]:
             failed+=1
             error_text=f"{type(exc).__name__}: {exc}"
             _record_delivery(event,handler,"failed",error_text)
-            record_event(
-                event_type="EVENT_HANDLER_FAILURE",action="HANDLER_FAILED",module="event_bus",
-                source_module=event.source_module,target_module=_handler_key(handler),
-                entity_type=event.entity_type,entity_id=event.entity_id,actor=event.actor,
-                reason=error_text,data={"source_event_type":event.event_type,"handler":_handler_key(handler)},
-                parent_event_id=event.event_id,correlation_id=event.correlation_id,
-            )
+            try:
+                record_event(
+                    event_type="EVENT_HANDLER_FAILURE",action="HANDLER_FAILED",module="event_bus",
+                    source_module=event.source_module,target_module=_handler_key(handler),
+                    entity_type=event.entity_type,entity_id=event.entity_id,actor=event.actor,
+                    reason=error_text,data={"source_event_type":event.event_type,"handler":_handler_key(handler)},
+                    parent_event_id=event.event_id,correlation_id=event.correlation_id,
+                )
+            except Exception:
+                # Failure auditing is best-effort. Keep the SQL receipt and
+                # partial_failure ledger state recoverable, and continue with
+                # other subscribers and later queued events.
+                pass
         else:
             if _record_delivery(event,handler,"delivered"):
                 delivered+=1
