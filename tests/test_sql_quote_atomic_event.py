@@ -380,8 +380,12 @@ def test_failed_handler_and_failed_audit_do_not_abort_other_delivery(tmp_path, m
 
     monkeypatch.setitem(event_bus._HANDLERS, event_type, [flaky, healthy])
 
+    original_audit = event_bus.record_event
+
     def failed_audit(**kwargs):
-        raise OSError("synthetic audit backend unavailable")
+        if kwargs.get("event_type") == "EVENT_HANDLER_FAILURE":
+            raise OSError("synthetic audit backend unavailable")
+        return original_audit(**kwargs)
 
     with monkeypatch.context() as patch:
         patch.setattr(event_bus, "record_event", failed_audit)
