@@ -359,3 +359,59 @@ def test_post_commit_audit_failure_still_delivers_durable_quote_event(tmp_path, 
         assert con.execute(
             "SELECT COUNT(*) FROM workflow_actions WHERE workflow_key='quote-draft-review'"
         ).fetchone()[0] == 1
+
+
+def test_failed_handler_and_failed_audit_do_not_abort_other_delivery(tmp_path, monkeypatch):
+    """A broken audit backend cannot strand later subscribers or replay."""
+    monkeypatch.setenv("AXIOM_DATA_DIR", str(tmp_path / "dual-failure"))
+    from superforge.app import create_app
+    from superforge import event_bus
+    create_app({"TESTING": True})
+    event_type = "synthetic.reasoning.outcome"
+    calls = []
+
+    def flaky(event):
+        calls.append(("flaky", event.event_id))
+        if len([name for name, _ in calls if name == "flaky"]) == 1:
+            raise RuntimeError("synthetic handler failure")
+
+    def healthy(event):
+        calls.append(("healthy", event.event_id))
+
+    monkeypatch.setitem(event_bus._HANDLERS, event_type, [flaky, healthy])
+
+    def failed_audit(**kwargs):
+        raise OSError("synthetic audit backend unavailable")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(event_bus, "record_event", failed_audit)
+        event = event_bus.publish(
+            event_type, source_module="synthetic-simulator",
+            entity_type="simulation", entity_id="SYN-SIM-1", actor="synthetic-test",
+            payload={"outcome": "needs_review"},
+        )
+
+    with db() as con:
+        assert con.execute(
+            "SELECT status FROM event_ledger WHERE event_id=?",
+            (event.event_id,),
+        ).fetchone()[0] == "partial_failure"
+        assert con.execute(
+            "SELECT status FROM event_delivery_receipts WHERE event_id=? AND handler_key=?",
+            (event.event_id, event_bus._handler_key(healthy)),
+        ).fetchone()[0] == "delivered"
+        assert con.execute(
+            "SELECT status FROM event_delivery_receipts WHERE event_id=? AND handler_key=?",
+            (event.event_id, event_bus._handler_key(flaky)),
+        ).fetchone()[0] == "failed"
+
+    replay = event_bus.recover_undelivered()
+    assert replay["failed"] == 0
+    assert replay["delivered"] >= 1
+    assert len([name for name, _ in calls if name == "flaky"]) == 2
+    assert len([name for name, _ in calls if name == "healthy"]) == 1
+    with db() as con:
+        assert con.execute(
+            "SELECT status FROM event_ledger WHERE event_id=?",
+            (event.event_id,),
+        ).fetchone()[0] == "delivered"
